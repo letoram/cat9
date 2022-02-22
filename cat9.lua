@@ -11,9 +11,15 @@
 --    [ ] 'on finished' hook (alert jobid ok trigger)
 --    [ ] 'on failed' hook (alert jobid errc trigger)
 --
+--  CLI help:
+--    [ ] command- information message display
+--
 --  Data Processing:
+--    [ ] Pipelined  |   implementation
 --    [ ] Copy command
 --    [ ] Paste / drag and drop (add as 'job')
+--    [ ] err separation
+--    [ ] cycle presentation (out / err / histogram / ..)
 --
 --  Mouse:
 --    [ ] button on header-click into config
@@ -45,6 +51,7 @@ local selectedjob = nil -- used for mouse-motion and cursor-selection
 
 local lastdir = ""      -- cache for building prompt
 local lastmsg = nil     -- command error result to show once
+local laststr = ""      -- cached readline input in order to restore
 local maxrows = 0       -- updated on job-completion, job action and window resize
 local idcounter = 0     -- for referencing old outputs as part of pipeline/expansion
 
@@ -52,10 +59,11 @@ local idcounter = 0     -- for referencing old outputs as part of pipeline/expan
 local config =
 {
 	autoexpand_latest = true,
+	m1_click = "open #csel"
 }
 
-local on_line, readline, get_prompt, redraw, reset
-
+local on_line, readline, get_prompt, redraw, reset, idtojob, flag_dirty
+local root = lash.root
 local alive = true
 
 -- used with the prompt
@@ -72,12 +80,24 @@ end
 update_lastdir()
 
 function builtins.cd(step)
+	lastmsg = "step to " .. step
 	root:chdir(step)
 	update_lastdir()
 -- queue asynch cd / ls (and possibly thereafter inotify for new files)
 end
 
-function builtins.open(file)
+function builtins.open(file, mode)
+	if type(file) == "table" then
+	-- might need to cache this as it is getting big, but bufferview currently
+-- does not accept a table of strings doing the concat itself.
+		local buffer = table.concat(file.data, "")
+		root:revert()
+		readline = nil
+		root:bufferview(buffer, reset)
+		return true
+	end
+
+	lastmsg = "try top open " .. tostring(file and file or "")
 -- file or ID?
 end
 
@@ -101,9 +121,7 @@ function handlers.tick()
 	clock = clock - 1
 
 	if clock == 0 then
-		if readline then
-			readline:set_prompt(get_prompt())
-		end
+		flag_dirty()
 		clock = 10
 	end
 end
@@ -132,13 +150,13 @@ end
 
 function handlers.key(self, sub, keysym, code, mods)
 -- navigation key? otherwise feed into readline again
-	print("key", keysym, tui.keysyms[keysym])
 end
 
 function handlers.utf8(self, ch)
 -- setup readline, cancel current selection activity and inject ch
 end
 
+local mstate = {}
 function handlers.mouse_motion(self, rel, col, row)
 	if rel then
 		return
@@ -147,7 +165,7 @@ function handlers.mouse_motion(self, rel, col, row)
 	local job = rowtojob[row]
 	local cols, rows = root:dimensions()
 
--- deselect current
+-- deselect current unless the same
 	if selectedjob then
 		if job and selectedjob == job then
 			return
@@ -155,6 +173,8 @@ function handlers.mouse_motion(self, rel, col, row)
 
 		selectedjob.selected = nil
 		selectedjob = nil
+		flag_dirty()
+
 		return
 	end
 
@@ -166,20 +186,27 @@ function handlers.mouse_motion(self, rel, col, row)
 -- select new
 	job.selected = true
 	selectedjob = job
+	flag_dirty()
 end
 
-function handlers.mouse_button(self, index, x, y)
+function handlers.mouse_button(self, index, x, y, mods, active)
 -- motion will update current selection so no need to do the lookup twice
 	if not selectedjob then
 		return
 	end
 
--- might need to cache this as it is getting big, but bufferview currently
--- does not accept a table of strings doing the concat itself.
-	local buffer = table.concat(selectedjob.data, "")
-	root:revert()
-	readline = nil
-	root:bufferview(buffer, reset)
+-- track for drag
+	if not active and mstate[index] then
+		mstate[index] = nil
+
+		local str = string.format("m%d_click", index)
+		if config[str] then
+			on_line(nil, config[str])
+		end
+
+	elseif active then
+		mstate[index] = active
+	end
 end
 
 get_prompt =
@@ -210,7 +237,7 @@ local function draw_job(x, y, cols, rows, job)
 -- draw status: active? failed? ok? data fit? scrolling? selected?
 -- job.exit? number of bytes of data?
 
--- titebar format should be a user-configurable string really
+-- titebar format should be a user-configurable string
 	local title = {}
 	local len = 0
 	local cx, cy = root:cursor_pos()
@@ -238,7 +265,7 @@ local function draw_job(x, y, cols, rows, job)
 	end
 
 -- this (and the contents) come from process-inf
-	datastr = "[#" .. tostring(job.data.linecount) .. "]"
+	datastr = string.format("[#%d:%d]", job.data.linecount, job.data.errlinecount);
 
 	if job.data.bytecount > 0 then
 		local kb = job.data.bytecount / 1024
@@ -276,6 +303,9 @@ local function draw_job(x, y, cols, rows, job)
 -- draw as much as we can to fill screen, this takes wrapping into account
 -- up to a n threshold (due to the cost) - then we just switch expand
 -- to bufferwnd mode.
+--
+-- switch active data buffer (job.raw) and work with that
+--
 		return y + job.collapsed_rows
 	end
 
@@ -308,13 +338,7 @@ function()
 
 -- prority:
 -- alerts > active jobs > job history + scrolling offset
-
 	local left = rows
-	local margin = 0
-
-	if lastmsg then
-		margin = margin + 1
-	end
 
 -- walk active jobs and then jobs (not covered this frame) to figure out how many we fit
 	local lst = {}
@@ -383,47 +407,127 @@ table.sort(builtin_completion)
 
 --
 -- Higher level parsing
+--
 --  take a stream of tokens from the lexer and use to build a command table
+--  or a completion set helper where applicable (e.g. #<tab> job IDs)
 --
 -- Special token handling:
 --
 --  |  ->  set new destination table that grabs input from previous output
 --  ;  ->  set new 'post job swap', when job is finished, take the next one
---  @  ->  next symbol/string is used to lookup a job by ID
+--  #  ->  set execution mode (vt100 by default, or next sym)
+--  $  ->  set source address (next sym)
 --
-local function tokens_to_commands(tokens, types)
+
+-- ptable
+-- [OP_POUND, {SYMBOL, STRING}]
+-- [SYMBOL,
+-- [STRING,
+-- [NUMBER]
+
+local ptable, ttable
+
+local function lookup_job(s, v)
+	local job = idtojob(s[2][2])
+	if job then
+		table.insert(v, job)
+	else
+		return "no job matching ID " .. s[2][2]
+	end
+end
+
+local function build_ptable(t)
+	ptable = {}
+	ptable[t.OP_POUND] = {{t.SYMBOL, t.STRING, t.NUMBER}, lookup_job} -- #sym -> [job]
+	ptable[t.SYMBOL  ] = {function(s, v) table.insert(v, s[1][2]); end}
+	ptable[t.STRING  ] = {function(s, v) table.insert(v, s[1][2]); end}
+	ptable[t.NUMBER  ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
+
+	ttable = {}
+	for k,v in pairs(t) do
+		ttable[v] = k
+	end
+end
+
+local function tokens_to_commands(tokens, types, suggest)
 	local res = {}
 	local cmd = nil
+	local state = nil
 
-	for _,v in ipairs(tokens) do
-		if v[1] == types.SYMBOL or v[1] == types.STRING then
-			if not cmd then
-				local lst = string.split(v[2], "/")
-				cmd = {v[2]}
-			else
-				table.insert(cmd, v[2])
-			end
-		elseif v[1] == types.NUMBER then
-			table.insert(cmd, tostring(v[2]))
+	local fail = function(msg)
+-- just parsing debugging
+-- local lst = ""
+--		for _,v in ipairs(tokens) do
+--			if v[1] == types.OPERATOR then
+--				lst = lst .. ttable[v[2]] .. " "
+--			else
+--				lst = lst .. ttable[v[1]] .. " "
+--			end
+--		end
 
-		elseif v[1] == types.OPERATOR then
-
--- queue subjob
-			if v[2] == types.OP_PIPE then
-				table.insert(res, cmd)
-				cmd = nil
-
-			elseif v[2] == types.OP_STATESEP then
-				return res
-
-			else
-
-			end
+		if not suggest then
+			lastmsg = msg
 		end
+		return
 	end
 
-	if cmd and #cmd > 0 then
-		table.insert(res, cmd)
+-- deferred building the product table as the type mapping isn't
+-- known in beforehand the first time.
+	if not ptable then
+		build_ptable(types)
+	end
+
+-- just walk the sequence of the ptable until it reaches a consumer
+	local ind = 1
+	local seq = {}
+	local ent = nil
+
+	for _,v in ipairs(tokens) do
+		local ttype = v[1] == types.OPERATOR and v[2] or v[1]
+		local tdata = v[2]
+		if not ent then
+			ent = ptable[ttype]
+			if not ent then
+				return fail("token not supported")
+			end
+			table.insert(seq, v)
+			ind = 1
+		else
+			local tgt = ent[ind]
+-- multiple possible token types
+			if type(tgt) == "table" then
+				local found = false
+				for _,v in ipairs(tgt) do
+					if v == ttype then
+						found = true
+						break
+					end
+				end
+
+				if not found then
+					return fail("unexpected token in expression")
+				end
+				table.insert(seq, v)
+	-- direct match, queue
+			elseif tgt == ttype then
+				table.insert(seq, v)
+			else
+				return fail("unexpected token in expression")
+			end
+
+			ind = ind + 1
+		end
+
+-- when the sequence progress to the execution function that
+-- consumes the queue then reset the state tracking
+		if type(ent[ind]) == "function" then
+			local msg = ent[ind](seq, res)
+			if msg then
+				return fail(msg)
+			end
+			seq = {}
+			ent = nil
+		end
 	end
 
 	return res
@@ -436,7 +540,10 @@ local function suggest_for_context(tok, types)
 	end
 
 	readline:suggest({})
-	local res = tokens_to_commands(tok, types)
+	local res = tokens_to_commands(tok, types, true)
+	if not res then
+		return
+	end
 
 -- these can be delivered asynchronously, entirely based on the command
 -- also need to prefix filter the first part of the token ..
@@ -451,9 +558,30 @@ local function rl_verify(self, prefix, msg, suggest)
 		suggest_for_context(tokens, types)
 	end
 
+	laststr = msg
 	local tokens, msg, ofs, types = lash.tokenize_command(msg, true)
 	if msg then
 		return ofs
+	end
+end
+
+idtojob =
+function(id)
+	if string.lower(id) == "csel" then
+		return selectedjob
+	end
+
+	local num = tonumber(id)
+	if not num then
+		return
+	end
+
+-- with a large N here a lookup cache might be useful, (one-two elements)
+-- as typing with verification will cause retoken-reparse on every input
+	for _,v in ipairs(lash.jobs) do
+		if v.id == num then
+			return v
+		end
 	end
 end
 
@@ -467,18 +595,29 @@ reset =
 function()
 	root:revert()
 	readline = root:readline(
-		function(...)
-			on_line(...)
-			reset()
+		function(self, line)
+			local block_reset = on_line(self, line)
+			if not lash.history[line] then
+				lash.history[line] = true
+				table.insert(lash.history, line)
+			end
+			if not block_reset then
+				reset()
+			end
 		end, readline_opts)
+
+	readline:set(laststr);
 	readline:set_prompt(get_prompt())
 	readline:set_history(lash.history)
 end
 
 local function flush_job(job, linebuffer, limit)
 	local upd = false
+
+-- stdout
+	local outlim = limit
 	while true do
-		local msg, _, linef = job.out:read(linebuffer)
+		local msg = job.out:read(linebuffer)
 		if not msg or #msg == 0 then
 			break
 		end
@@ -493,13 +632,32 @@ local function flush_job(job, linebuffer, limit)
 			job.data.histogram[bv] = vl + 1
 		end
 
+-- linecount isn't entirely right here, the crutch is that when linebuffer is
+-- not set we need to count the linefeed occurence in msg
 		job.data.linecount = job.data.linecount + 1
 		job.data.bytecount = job.data.bytecount + n
-		table.insert(job.data, msg .. (linef and "\n" or ""))
+		table.insert(job.data, msg)
 		upd = true
 
 -- Only read a certain amount of lines before returning, this is better handled
 -- with a global timer to balance throughput and responsiveness
+		if outlimit then
+			outlimit = outlimit - 1
+			if outlimit == 0 then
+				break
+			end
+		end
+	end
+
+-- stderr
+	while job.err and true do
+		local msg, _, linef = job.err:read(linebuffer)
+		if not msg or #msg == 0 then
+			break
+		end
+		job.data.errlinecount = job.data.errlinecount + 1
+		table.insert(job.err_buffer, msg)
+
 		if limit then
 			limit = limit - 1
 			if limit == 0 then
@@ -556,7 +714,8 @@ local function import_job(v)
 		{
 			bytecount = 0,
 			histogram = histogram,
-			linecount = 0
+			linecount = 0,
+			errlinecount = 0
 		}
 		for i=0,255 do
 			histogram[i] = 0
@@ -595,44 +754,49 @@ local function import_job(v)
 	table.insert(lash.jobs, v)
 end
 
+flag_dirty =
+function()
+	if readline then
+		readline:set_prompt(get_prompt())
+	end
+end
+
 on_line =
 function(rl, line)
-	readline = nil
+	if rl then
+		readline = nil
+	end
+
 	if not line or #line == 0 then
 		return
 	end
 
+	laststr = ""
 	local tokens, msg, ofs, types = lash.tokenize_command(line, true)
 	if msg then
 		lastmsg = msg
 		return
 	end
 
-	if not lash.history[line] then
-		lash.history[line] = true
-		table.insert(lash.history, line)
-	end
-
 -- build job
 	local commands = tokens_to_commands(tokens, types)
-	if #commands == 0 then
+	if not commands or #commands == 0 then
 		return
 	end
 
 -- this prevents the builtins from being part of a pipeline
 -- is there a strong case for mixing the two?
-	if builtins[commands[1][1]] then
-		builtins[commands[1][1]](unpack(commands[1], 2))
-		return
+	if builtins[commands[1]] then
+		return builtins[commands[1]](unpack(commands, 2))
 	end
 
 -- could pick some other 'input' here, e.g.
 -- .in:stdin .env:key1=env;key2=env mycmd $2 arg ..
-	local lst = string.split(commands[1][1], "/")
-	table.insert(commands[1], 2, lst[#lst])
-	local _, outf, errf, pid = root:popen(commands[1], "r")
+	local lst = string.split(commands[1], "/")
+	table.insert(commands, 2, lst[#lst])
+	local _, outf, errf, pid = root:popen(commands, "r")
 	if not pid then
-		lastmsg = commands[1][1] .. " failed in " .. line
+		lastmsg = commands[1] .. " failed in " .. line
 		return
 	end
 
@@ -644,13 +808,10 @@ function(rl, line)
 		out = outf,
 		err = errf,
 		raw = line,
+		err_buffer = {},
 		dir = root:chdir(),
 		short = lst[#lst],
 	}
-
-	if #commands > 1 then
-		print("FIXME: build pipeline of job")
-	end
 
 	import_job(job)
 end
@@ -661,16 +822,16 @@ root:set_flags(tui.flags.mouse_full)
 reset()
 
 -- import job-table and add whatever metadata we want to track
-for _, v in ipairs(lash.jobs) do
+local old = lash.jobs
+lash.jobs = {}
+for _, v in ipairs(old) do
 	import_job(v)
 end
 
 while root:process() and alive do
 	if (process_jobs()) then
 -- updating the current prompt will also cause the contents to redraw
-		if readline then
-			readline:set_prompt(get_prompt())
-		end
+		flag_dirty()
 	end
 	root:refresh()
 end
