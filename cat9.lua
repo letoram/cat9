@@ -1,8 +1,13 @@
--- Prototyping setup for Lash:
+-- Description: Cat9 - reference user shell for Lash
+-- License:     Unlicense
+-- Reference:   https://github.com/letoram/cat9
+-- See also:    HACKING.md
+
+-- TODO
 --
 --  Job Control:
 --    [ ] repeat jobid [flush]
---    [ ] forget jobid
+--    [ ] kill levels (hard, ...)
 --
 --    [ ] completion oracle (default + command specific), asynch
 --        e.g. for cd, find prefix -maxdepth 1 -type d
@@ -16,22 +21,19 @@
 --
 --  Data Processing:
 --    [ ] Pipelined  |   implementation
---    [ ] Copy command
+--    [ ] Copy command (job to clip, to file, to ..)
 --    [ ] Paste / drag and drop (add as 'job')
---    [ ] err separation
---    [ ] cycle presentation (out / err / histogram / ..)
---
---  Mouse:
---    [ ] button on header-click into config
---    [ ] button on data-click into config
---    [ ] button on expanded data-click into config
 --
 --  Exec:
 --    [ ] exec with embed
 --    [ ] handover exec with split
 --    [ ] handover exec to vt100 (afsrv_terminal)
 --    [ ] Open (media, handover exec to afsrv_decode)
---    [ ] pty- exec
+--    [ ]   -> autodetect arcan appl (lwa)
+--    [ ] pty- exec (!...)
+--    [ ] explicit exec (!! e.g. sh -c soft-expand rest)
+--    [ ] controlling env per job
+--    [ ] pattern expand from file glob
 --
 --  [ ] data dependent expand print:
 --      [ ] hex
@@ -39,7 +41,7 @@
 --
 --  [ ] expanded scroll
 --  [ ] job history scroll
---
+
 local builtins   = {}   -- commands that we handle here
 local suggest    = {}   -- resolve / helper functions for completion based on first command
 
@@ -59,57 +61,151 @@ local idcounter = 0     -- for referencing old outputs as part of pipeline/expan
 local config =
 {
 	autoexpand_latest = true,
-	m1_click = "open #csel"
+	autoexpand_ratio  = 0.5,
+
+-- all clicks can also be bound as m1_header_index_click where index is the item group,
+-- and the binding value will be handled just as typed (with csel substituted for cursor
+-- position)
+	m1_click = "view #csel out toggle",
+	m2_click = "open #csel",
+	m3_click = "open #csel hex",
+
+	hex_mode = "hex_detail_meta", -- hex, hex_detail hex_detail_meta
+	content_offset = 1, -- columns to skip when drawing contents
+	job_pad        = 1, -- space after job data and next job header
+	collapsed_rows = 1, -- number of rows of contents to show when collapsed
 }
 
-local on_line, readline, get_prompt, redraw, reset, idtojob, flag_dirty
+local cat9 = {} -- vtable for local support functions
 local root = lash.root
 local alive = true
 
--- used with the prompt
-local function update_lastdir()
-	local wd = root:chdir()
-	local path_limit = 8
-
-	local dirs = string.split(wd, "/")
-	local dir = "/"
-	if #dirs then
-		lastdir = dirs[#dirs]
-	end
-end
-update_lastdir()
-
 function builtins.cd(step)
-	lastmsg = "step to " .. step
 	root:chdir(step)
-	update_lastdir()
+	cat9.update_lastdir()
 -- queue asynch cd / ls (and possibly thereafter inotify for new files)
 end
 
-function builtins.open(file, mode)
-	if type(file) == "table" then
-	-- might need to cache this as it is getting big, but bufferview currently
--- does not accept a table of strings doing the concat itself.
-		local buffer = table.concat(file.data, "")
-		root:revert()
-		readline = nil
-		root:bufferview(buffer, reset)
-		return true
+function builtins.forget(...)
+	local forget = function(job)
+		for i,v in ipairs(lash.jobs) do
+			if v == job then
+				table.remove(lash.jobs, i)
+				break
+			end
+		end
+-- kill the thing, can't remove it yet but mark it as hidden
+		if job.pid then
+			job.hidden = true
+		end
 	end
 
-	lastmsg = "try top open " .. tostring(file and file or "")
--- file or ID?
+	local set = {...}
+	local signal = "hup"
+
+	for _, v in ipairs(set) do
+		if type(v) == "table" then
+			forget(v, signal)
+		end
+	end
+
+	cat9.flag_dirty()
 end
 
-function builtins.hopen(file)
--- just asynch window request + wrap around open
+function builtins.open(file, ...)
+	local trigger
+	local opts = {...}
+	local spawn = false
+
+	if type(file) == "table" then
+		trigger =
+		function(wnd)
+			local arg = {read_only = true}
+			for _,v in ipairs(opts) do
+				if v == "hex" then
+					arg[config.hex_mode] = true
+				end
+			end
+			wnd:revert()
+			if not spawn then
+				wnd:bufferview(table.concat(file.data, ""), cat9.reset, arg)
+			else
+				wnd:bufferview(table.concat(file.data, ""),
+					function()
+						wnd:close()
+					end, arg
+				)
+			end
+		end
+	else
+		lastmsg = "missing handover-exec-open"
+		return
+	end
+
+	for _,v in ipairs(opts) do
+		if v == "new" then
+			spawn = true
+		elseif v == "hnew" then
+			spawn = true
+		elseif v == "vnew" then
+			spawn = true
+		end
+	end
+
+	if spawn then
+		root:new_window("tui",
+			function(par, wnd)
+				if not wnd then
+					return
+				end
+				trigger(wnd)
+			end
+		)
+		return true
+	else
+		cat9.readline = nil
+		trigger(root)
+		return true
+	end
 end
 
-function builtins.vopen(file)
-end
+local view_hlp_str = "view #job output(out|err) [form=expand|collapse|toggle]"
+function builtins.view(job, output, form)
+	if type(job) ~= "table" then
+		lastmsg = view_hlp_str
+		return
+	end
 
-function builtins.stop(id)
+	if type(output) ~= "string" then
+		lastmsg = view_hlp_str
+		return
+	end
 
+-- draw_job when it creates the wrap buffer will take care of details
+	if output == "out" or output == "stdout" then
+		job.view = "out"
+	elseif output == "err" or output == "stderr" then
+		job.view = "err"
+-- if not histogram tracking is enabled, we first need to build it
+-- and the presentation is special
+	elseif output == "histogram" then
+	end
+
+	if form and type(form) == "string" then
+		if form == "expand" then
+			job.expanded = -1
+		elseif form == "collapse" then
+			job.expanded = nil
+		elseif form == "toggle" then
+			if job.expanded then
+				job.expanded = nil
+			else
+				job.expanded = -1
+			end
+		end
+	end
+
+	cat9.flag_dirty()
 end
 
 function builtins.copy(src, dst)
@@ -121,31 +217,26 @@ function handlers.tick()
 	clock = clock - 1
 
 	if clock == 0 then
-		flag_dirty()
+		cat9.flag_dirty()
 		clock = 10
 	end
 end
 
 function handlers.recolor()
-	redraw()
+	cat9.redraw()
 end
 
 function handlers.resized()
 -- rebuild caches for wrapping, picking, ...
 	local cols, _ = root:dimensions()
-	maxrows = 0
 
--- only rewrap job that is expanded due to the cost
+-- only rewrap job that is expanded and marked for wrap due to the cost
 	for _, job in ipairs(lash.jobs) do
 		job.line_cache = nil
-		if job.expanded then
-		else
-			maxrows = maxrows + job.collapsed_rows
-		end
 	end
 
 	rowtojob = {}
-	redraw()
+	cat9.redraw()
 end
 
 function handlers.key(self, sub, keysym, code, mods)
@@ -157,12 +248,12 @@ function handlers.utf8(self, ch)
 end
 
 local mstate = {}
-function handlers.mouse_motion(self, rel, col, row)
+function handlers.mouse_motion(self, rel, x, y)
 	if rel then
 		return
 	end
 
-	local job = rowtojob[row]
+	local job = rowtojob[y]
 	local cols, rows = root:dimensions()
 
 -- deselect current unless the same
@@ -173,7 +264,7 @@ function handlers.mouse_motion(self, rel, col, row)
 
 		selectedjob.selected = nil
 		selectedjob = nil
-		flag_dirty()
+		cat9.flag_dirty()
 
 		return
 	end
@@ -186,7 +277,8 @@ function handlers.mouse_motion(self, rel, col, row)
 -- select new
 	job.selected = true
 	selectedjob = job
-	flag_dirty()
+	job.mouse_x = x
+	cat9.flag_dirty()
 end
 
 function handlers.mouse_button(self, index, x, y, mods, active)
@@ -198,10 +290,25 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 -- track for drag
 	if not active and mstate[index] then
 		mstate[index] = nil
+		local cols, _ = root:dimensions()
 
-		local str = string.format("m%d_click", index)
-		if config[str] then
-			on_line(nil, config[str])
+		local try =
+		function(...)
+			local str = string.format(...)
+			if config[str] then
+				cat9.parse_string(nil, config[str])
+				return true
+			end
+		end
+
+-- several possible 'on click' targets:
+-- 'header', 'header-column-item group and data (expanded or not)
+-- with a generic fallback for just any click
+		if (
+			try("m%d_header_%d_click", index, cat9.xy_to_hdr(x, y)) or
+			(cat9.xy_to_data(x, y) ~= nil and try("m%d_data_click", index)) or
+			try("m%d_click", index)) then
+			return
 		end
 
 	elseif active then
@@ -209,8 +316,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 	end
 end
 
-get_prompt =
-function()
+function cat9.get_prompt()
 -- context sensitive information? (e.g. git check on cd, ...)
 	local wdstr = "[ " .. lastdir .. " ]"
 	local res = {}
@@ -229,91 +335,201 @@ function()
 	return res
 end
 
-local function job_header(job, cols)
+-- resolve a grid coordinate to the header of a job,
+-- return the item header index (or -1 if these are not tracked)
+function cat9.xy_to_hdr(x, y)
+	local job = rowtojob[y]
 
+	if not job then
+		return
+	end
+
+	local id = -1
+	if not job.hdr_to_id then
+		return id, job
+	end
+
+	for i=1,#job.hdr_to_id do
+		if x < job.hdr_to_id[i] then
+			break
+		end
+		id = i
+	end
+
+	print(id, job)
+	return id, job
 end
 
-local function draw_job(x, y, cols, rows, job)
--- draw status: active? failed? ok? data fit? scrolling? selected?
--- job.exit? number of bytes of data?
+function cat9.xy_to_data(x, y)
+	local job = rowtojob[y]
+	if job and y >= job.last_row then
+		return job
+	end
+end
 
--- titebar format should be a user-configurable string
-	local title = {}
-	local len = 0
-	local cx, cy = root:cursor_pos()
-
--- x + 0 : status indicator, do we have any icon glyph available or go with color?
---  (primary, secondary, background, text, cursor, altcursor, highlight, label,
---  warning, error, alert, inactive, reference, ui)
 --
+-- This takes a job that is to be presented 'expanded' and make sure that the
+-- output follows wrapping rules. It should be rougly windowed so that the
+-- output isn't much larger than the actual
+--
+local function get_wrapped_job(job, rows, col)
+-- There can be (at least) two different content 'streams' to work with, the
+-- main being [stdout] and [stderr]. Others would be the histogram (if enabled)
+-- or an attachable post-process "filter" or the even more decadent 'MiM-pipe'
+-- where each individual part of a pipeline would be observable.
+
+	local cols, rows = root:dimensions()
+	if job.data_cache then
+		if job.data_cache.rows == rows and job.data_cache.cols == cols and job.data_cache.view == job.view then
+			return job.data_cache
+		end
+	end
+
+	return job.data
+end
+
+--
+-- Draw the [metadata][command(short | raw)] interactable one-line 'titlebar'
+--
+local function draw_job_header(x, y, cols, rows, job)
 	local hdrattr  = {fc = tui.colors.ui, bc = tui.colors.ui}
-	local dataattr = {fc = tui.colors.inactive, bc = tui.colors.inactive}
 
 	if job.selected then
 		hdrattr.fc = tui.colors.highlight
 		hdrattr.bc = tui.colors.highlight
 	end
 
-	if job.pid then
-		root:write_to(x, y, string.format("[%d:%d]", job.id, job.pid), hdrattr)
-	else
-		root:write_to(x, y, string.format("[%d:%d]", job.id, job.exit), hdrattr)
-		if not job.selected then
-			hdrattr.fc = tui.colors.inactive
-			hdrattr.bc = tui.colors.inactive
-		end
+	rowtojob[y] = job
+	job.hdr_to_id = {}
+
+	local hdr_exp_ch = function()
+		return job.expanded and "[-]" or "[+]"
 	end
 
--- this (and the contents) come from process-inf
-	datastr = string.format("[#%d:%d]", job.data.linecount, job.data.errlinecount);
+	local id = function()
+		return "[#" .. tostring(job.id) .. "]"
+	end
 
-	if job.data.bytecount > 0 then
-		local kb = job.data.bytecount / 1024
-		if kb > 1024 then
-			local mb = kb / 1024
-			if mb > 1024 then
-				local gb = mb / 1024
-				datastr = datastr .. string.format("[%.2f GiB]", gb)
+	local pid_or_exit = function()
+		local extid = -1
+		if job.pid then
+			extid = job.pid
+		elseif job.exit then
+			extid = job.exit
+		end
+		return "[" .. tostring(extid) .. "]"
+	end
+
+	local data = function()
+		return string.format("[#%d:%d]", job.data.linecount, #job.err_buffer)
+	end
+
+	local memory_use = function()
+		if job.data.bytecount > 0 then
+			local kb = job.data.bytecount / 1024
+			if kb > 1024 then
+				local mb = kb / 1024
+				if mb > 1024 then
+					local gb = mb / 1024
+					return string.format("[%.2f GiB]", gb)
+				else
+					return string.format("[%.2f MiB]", mb)
+				end
 			else
-				datastr = datastr .. string.format("[%.2f MiB]", mb)
+				return string.format("[%.2f KiB]", kb)
 			end
 		else
-			datastr = datastr .. string.format("[%.2f KiB]", kb)
+			return "[No Data]"
 		end
 	end
 
-	root:write(datastr, hdrattr)
-
--- if we can fit full, then write that otherwise go short.
-	cx, cy = root:cursor_pos()
-	if cols - cx > #job.raw then
-		if cols - cx > #job.dir + #job.raw then
-			root:write(job.dir .. "> " .. job.raw, hdrattr)
+	local hdr_data = function()
+		if cols - x > #job.raw then
+			if cols - x > #job.dir + #job.raw then
+				return job.dir .. "> " .. job.raw
+			else
+				return job.raw
+			end
 		else
-			root:write(job.raw, hdrattr)
+			return job.short
 		end
-	else
-		root:write(job.short, hdrattr)
 	end
+
+-- This should really be populated by a format string in config
+	local itemstack =
+	{
+		hdr_exp_ch,
+		id,
+		pid_or_exit,
+		data,
+		memory_use,
+		hdr_data
+	}
+
+	for i,v in ipairs(itemstack) do
+		if type(v) == "function" then
+			v = v()
+		end
+		job.hdr_to_id[i] = x
+		root:write_to(x, y, v, hdrattr)
+		x = x + #v
+	end
+end
+
+local function draw_job(x, y, cols, rows, job)
+	local len = 0
+	local dataattr = {fc = tui.colors.inactive, bc = tui.colors.background}
+	draw_job_header(x, y, cols, rows, job)
 
 	job.last_row = y
 	job.last_col = x
 
+--
+-- Two ways of drawing the contents, expanded or collapsed.
+--
+-- Expanded tries to fill as much as possible (or up to a threshold) of
+-- contents, respecting wrapping. Wrapping is difficult as the proper form has
+-- contents/locale specific rules and should be reapplied when the wrap-width
+-- is invalidated on a resize in order for 'scrollbar' like annotations to be
+-- accurate.
+--
+-- A heuristic is needed - for a lower amount of lines (n < 1000 or so) the
+-- wrapping can be recalculated each resize for job on expand/collapse. When
+-- larger than that, having a sliding window of wrapped seems the best. Then
+-- there are cases where you want compact (lots of empty linefeeds, ...)
+-- presentation so no vertical space is wasted.
+--
 	if job.expanded then
--- draw as much as we can to fill screen, this takes wrapping into account
--- up to a n threshold (due to the cost) - then we just switch expand
--- to bufferwnd mode.
---
--- switch active data buffer (job.raw) and work with that
---
-		return y + job.collapsed_rows
+		local limit = job.expanded > 0 and job.expanded or (rows - y)
+
+-- draw as much as we can to fill screen, the wrapped_job is supposed to return
+-- 'the right data' (multiple possible streams) wrapped based on contents and
+-- window columns
+		local lst = get_wrapped_job(job, limit, cols - config.content_offset)
+		local lc = #lst
+		local index = 1 -- + job.data_offset
+
+		if lc - (index) > limit then
+			limit = limit - 1
+		else
+			limit = lc - 1
+		end
+
+	-- drawing from the most recent to the least recent (within the window)
+	-- adjusting for possible data-offset ('index')
+		for i=limit,0,-1 do
+			root:write_to(config.content_offset, y+i+1, lst[lc - (limit - i)], dataattr)
+			rowtojob[y+i+1] = job
+		end
+
+		return y + limit + 2
 	end
 
 -- save the currently drawn rows for a reverse mapping (mouse action)
 	local ey = y + job.collapsed_rows
 	local line = #job.data
 
-	for i=y,ey-1 do
+	for i=y,ey do
 		rowtojob[i] = job
 		if line > 0 and i > y then
 			local len = root:utf8_len(job.data[line])
@@ -326,12 +542,11 @@ local function draw_job(x, y, cols, rows, job)
 	end
 
 -- return the number of consumed rows to the renderer
-	return y + job.collapsed_rows
+	return y + job.collapsed_rows + 1
 end
 
 local draw_cookie = 0
-redraw =
-function()
+function cat9.redraw()
 	local cols, rows = root:dimensions()
 	draw_cookie = draw_cookie + 1
 	root:erase()
@@ -343,21 +558,23 @@ function()
 -- walk active jobs and then jobs (not covered this frame) to figure out how many we fit
 	local lst = {}
 	local counter = (lastmsg ~= nil and 1 or 0)
-	if readline then
+	if cat9.readline then
 		counter = counter + 1
 	end
 
 -- always put the active first
 	for i=#activejobs,1,-1 do
-		table.insert(lst, activejobs[i])
-		counter = counter + activejobs[i].collapsed_rows
-		activejobs[i].cookie = draw_cookie
+		if not activejobs[i].hidden then
+			table.insert(lst, activejobs[i])
+			counter = counter + activejobs[i].collapsed_rows
+			activejobs[i].cookie = draw_cookie
+		end
 	end
 
--- then fill / pad with the others
+-- then fill / pad with the others, don't duplicated aliased active/other jobs
 	local jobs = lash.jobs
 	for i=#jobs,1,-1 do
-		if jobs[i].cookie ~= draw_cookie then
+		if jobs[i].cookie ~= draw_cookie and not jobs[i].hidden then
 			counter = counter + jobs[i].collapsed_rows
 			table.insert(lst, jobs[i])
 			jobs[i].cookie = draw_cookie
@@ -369,13 +586,18 @@ function()
 		end
 	end
 
+-- reserve space for possible readline prompt and alert message
 	local last_row = 0
+	local reserved = (cat9.readline and 1 or 0) + (lastmsg and 1 or 0)
+
+-- draw the jobs from bottom to top, this goes against the 'regular' prompt
+-- starts top until filled then always stays bottom.
 
 -- underflow? start from the top
 	if counter < rows then
 		for i=#lst,1,-1 do
 			if not lst[i].hidden then
-				last_row = draw_job(0, last_row, cols, rows, lst[i])
+				last_row = draw_job(0, last_row, cols, rows - reserved, lst[i])
 			end
 		end
 -- otherwise start drawing from the bottom
@@ -392,8 +614,8 @@ function()
 	end
 
 -- and the actual input / readline field
-	if readline then
-		readline:bounding_box(0, last_row, cols, last_row)
+	if cat9.readline then
+		cat9.readline:bounding_box(0, last_row, cols, last_row)
 	end
 
 -- update content-hint for scrollbars
@@ -427,8 +649,8 @@ table.sort(builtin_completion)
 
 local ptable, ttable
 
-local function lookup_job(s, v)
-	local job = idtojob(s[2][2])
+function cat9.lookup_job(s, v)
+	local job = cat9.idtojob(s[2][2])
 	if job then
 		table.insert(v, job)
 	else
@@ -438,7 +660,7 @@ end
 
 local function build_ptable(t)
 	ptable = {}
-	ptable[t.OP_POUND] = {{t.SYMBOL, t.STRING, t.NUMBER}, lookup_job} -- #sym -> [job]
+	ptable[t.OP_POUND] = {{t.SYMBOL, t.STRING, t.NUMBER}, cat9.lookup_job} -- #sym -> [job]
 	ptable[t.SYMBOL  ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.STRING  ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.NUMBER  ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
@@ -535,11 +757,11 @@ end
 
 local function suggest_for_context(tok, types)
 	if #tok == 0 then
-		readline:suggest(builtin_completion)
+		cat9.readline:suggest(builtin_completion)
 		return
 	end
 
-	readline:suggest({})
+	cat9.readline:suggest({})
 	local res = tokens_to_commands(tok, types, true)
 	if not res then
 		return
@@ -565,8 +787,7 @@ local function rl_verify(self, prefix, msg, suggest)
 	end
 end
 
-idtojob =
-function(id)
+function cat9.idtojob(id)
 	if string.lower(id) == "csel" then
 		return selectedjob
 	end
@@ -588,81 +809,82 @@ end
 local readline_opts =
 {
 	forward_mouse = true,
+	cancellable = true, -- cancel removes readline until we starts typing
+	forward_meta = false,
 	verify = rl_verify
 }
 
-reset =
-function()
+function cat9.reset()
 	root:revert()
-	readline = root:readline(
+	root:set_flags(tui.flags.mouse_full)
+
+	cat9.readline = root:readline(
 		function(self, line)
-			local block_reset = on_line(self, line)
+			local block_reset = cat9.parse_string(self, line)
+
+-- ensure that we do not have duplicates, but keep the line as most recent
 			if not lash.history[line] then
 				lash.history[line] = true
-				table.insert(lash.history, line)
+			else
+				for i=#lash.history,1,-1 do
+					if lash.history[i] == line then
+						table.remove(lash.history, i)
+						break
+					end
+				end
 			end
+			table.insert(lash.history, 1, line)
 			if not block_reset then
-				reset()
+				cat9.reset()
 			end
 		end, readline_opts)
 
-	readline:set(laststr);
-	readline:set_prompt(get_prompt())
-	readline:set_history(lash.history)
+	cat9.readline:set(laststr);
+	cat9.readline:set_prompt(cat9.get_prompt())
+	cat9.readline:set_history(lash.history)
 end
 
-local function flush_job(job, linebuffer, limit)
+local function flush_job(job, finish, limit)
 	local upd = false
 
--- stdout
+-- stdout, slightly more involved to build histogram
 	local outlim = limit
-	while true do
-		local msg = job.out:read(linebuffer)
-		if not msg or #msg == 0 then
-			break
-		end
+	local falive = true
 
--- Flush into job buffer, update job histogram, raw linecount and data counter.
-		local lc = 0
-		local n = #msg
+	while outlim > 0 and (finish or falive) do
+		outlim = outlim - 1
+		_, falive = job.out:read(false,
+		function(line, eof)
+				if eof then
+					outlim = 0
+				end
 
-		for i=1,n do
-			local bv = string.byte(msg, i)
-			local vl = job.data.histogram[bv]
-			job.data.histogram[bv] = vl + 1
-		end
+				if config.histogram then
+					for i=1,#line do
+						local bv = string.byte(msg, i)
+						local vl = job.data.histogram[bv]
+						job.data.histogram[bv] = vl + 1
+					end
+				end
 
--- linecount isn't entirely right here, the crutch is that when linebuffer is
--- not set we need to count the linefeed occurence in msg
-		job.data.linecount = job.data.linecount + 1
-		job.data.bytecount = job.data.bytecount + n
-		table.insert(job.data, msg)
-		upd = true
+				job.data.linecount = job.data.linecount + 1
+				if #line > 0 then
+					job.data.bytecount = job.data.bytecount + #line
+					table.insert(job.data, line)
+				end
+		end)
 
--- Only read a certain amount of lines before returning, this is better handled
--- with a global timer to balance throughput and responsiveness
-		if outlimit then
-			outlimit = outlimit - 1
-			if outlimit == 0 then
-				break
-			end
+		if outlim > 0 then
+			outlim = outlim - 1
 		end
 	end
 
 -- stderr
-	while job.err and true do
-		local msg, _, linef = job.err:read(linebuffer)
-		if not msg or #msg == 0 then
+	falive = true
+	while job.err and falive do
+		_, falive = job.err:read(false, job.err_buffer)
+		if not finish then
 			break
-		end
-		job.data.errlinecount = job.data.errlinecount + 1
-		table.insert(job.err_buffer, msg)
-
-		if limit then
-			limit = limit - 1
-			if limit == 0 then
-				break
-			end
 		end
 	end
 
@@ -671,14 +893,15 @@ end
 
 local function process_jobs()
 	local upd = false
-
 	for i=#activejobs,1,-1 do
 		local job = activejobs[i]
 		local running, code = root:pwait(job.pid)
 		if not running then
 			if job.out then
-				flush_job(job, true)
+				flush_job(job, true, 1)
+				job.out:close()
 				job.exit = code
+				job.out = nil
 				job.pid = nil
 			end
 
@@ -702,20 +925,32 @@ local function process_jobs()
 	return upd
 end
 
--- make sure the expected fields are in a job, used both when importing
--- from an outer context and when one has been created in on_line
-local function import_job(v)
-	if not v.collapsed_rows then
-		v.collapsed_rows = 2
+function cat9.update_lastdir()
+	local wd = root:chdir()
+	local path_limit = 8
+
+	local dirs = string.split(wd, "/")
+	local dir = "/"
+	if #dirs then
+		lastdir = dirs[#dirs]
 	end
+end
+
+-- make sure the expected fields are in a job, used both when importing
+-- from an outer context and when one has been created by parsing through
+-- 'cat9.parse_string'.
+function cat9.import_job(v)
+	if not v.collapsed_rows then
+		v.collapsed_rows = config.collapsed_rows
+	end
+	v.view = "out"
 	if not v.data then
 		local histogram = {}
 		v.data =
 		{
 			bytecount = 0,
 			histogram = histogram,
-			linecount = 0,
-			errlinecount = 0
+			linecount = 0
 		}
 		for i=0,255 do
 			histogram[i] = 0
@@ -747,24 +982,34 @@ local function import_job(v)
 		v.id = idcounter
 	end
 
-	if idcounter < v.id then
+	if idcounter <= v.id then
 		idcounter = v.id + 1
 	end
 
+-- mark latest one as expanded, and the previously 'latest' back to collapsed
+	if config.autoexpand_latest then
+		if latestjob then
+			latestjob.expanded = nil
+			latestjob = v
+		end
+		latestjob = v
+
+-- don't let latest 'fill' screen though, allocate a ratio
+		local _, rows = root:dimensions()
+		v.expanded = math.ceil(rows * config.autoexpand_ratio)
+	end
 	table.insert(lash.jobs, v)
 end
 
-flag_dirty =
-function()
-	if readline then
-		readline:set_prompt(get_prompt())
+function cat9.flag_dirty()
+	if cat9.readline then
+		cat9.readline:set_prompt(cat9.get_prompt())
 	end
 end
 
-on_line =
-function(rl, line)
+function cat9.parse_string(rl, line)
 	if rl then
-		readline = nil
+		cat9.readline = nil
 	end
 
 	if not line or #line == 0 then
@@ -794,7 +1039,7 @@ function(rl, line)
 -- .in:stdin .env:key1=env;key2=env mycmd $2 arg ..
 	local lst = string.split(commands[1], "/")
 	table.insert(commands, 2, lst[#lst])
-	local _, outf, errf, pid = root:popen(commands, "r")
+	local _, outf, errf, pid = root:popen(commands, "re")
 	if not pid then
 		lastmsg = commands[1] .. " failed in " .. line
 		return
@@ -813,25 +1058,25 @@ function(rl, line)
 		short = lst[#lst],
 	}
 
-	import_job(job)
+	cat9.import_job(job)
 end
 
 -- use mouse-forward mode, implement our own selection / picking
 root:set_handlers(handlers)
-root:set_flags(tui.flags.mouse_full)
-reset()
+cat9.reset()
+cat9.update_lastdir()
 
 -- import job-table and add whatever metadata we want to track
 local old = lash.jobs
 lash.jobs = {}
 for _, v in ipairs(old) do
-	import_job(v)
+	cat9.import_job(v)
 end
 
 while root:process() and alive do
 	if (process_jobs()) then
 -- updating the current prompt will also cause the contents to redraw
-		flag_dirty()
+		cat9.flag_dirty()
 	end
 	root:refresh()
 end
