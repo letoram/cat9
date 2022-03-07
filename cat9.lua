@@ -74,6 +74,7 @@ local config =
 	content_offset = 1, -- columns to skip when drawing contents
 	job_pad        = 1, -- space after job data and next job header
 	collapsed_rows = 1, -- number of rows of contents to show when collapsed
+	autoclear_empty = true, -- forget jobs without output
 }
 
 local cat9 = {} -- vtable for local support functions
@@ -156,12 +157,13 @@ function builtins.open(file, ...)
 		root:new_window("tui",
 			function(par, wnd)
 				if not wnd then
+					lastmsg  = "window request rejected"
 					return
 				end
 				trigger(wnd)
 			end
 		)
-		return true
+		return false
 	else
 		cat9.readline = nil
 		trigger(root)
@@ -271,6 +273,7 @@ function handlers.mouse_motion(self, rel, x, y)
 
 -- early out common case
 	if not job then
+		selectedjob = nil
 		return
 	end
 
@@ -897,10 +900,11 @@ local function process_jobs()
 		local job = activejobs[i]
 		local running, code = root:pwait(job.pid)
 		if not running then
+			job.exit = code
+
 			if job.out then
 				flush_job(job, true, 1)
 				job.out:close()
-				job.exit = code
 				job.out = nil
 				job.pid = nil
 			end
@@ -908,6 +912,20 @@ local function process_jobs()
 -- allow whatever 'on completion' handler one might attach to trigger
 			if job.closure then
 				job:closure()
+			end
+
+-- avoid polluting output history with simple commands that succeeded and did
+-- not return anything
+			if config.autoclear_empty and job.data.bytecount == 0 then
+				if job.exit ~= 0 then
+					lastmsg = string.format("#%d failed, code: %d (%s)", job.id, job.exit, job.raw)
+				end
+				for i, v in ipairs(lash.jobs) do
+					if v == job then
+						table.remove(lash.jobs, i)
+						break
+					end
+				end
 			end
 
 			table.remove(activejobs, i)
@@ -1005,6 +1023,7 @@ function cat9.flag_dirty()
 	if cat9.readline then
 		cat9.readline:set_prompt(cat9.get_prompt())
 	end
+	cat9.dirty = true
 end
 
 function cat9.parse_string(rl, line)
@@ -1022,6 +1041,7 @@ function cat9.parse_string(rl, line)
 		lastmsg = msg
 		return
 	end
+	lastmsg = nil
 
 -- build job
 	local commands = tokens_to_commands(tokens, types)
@@ -1078,5 +1098,8 @@ while root:process() and alive do
 -- updating the current prompt will also cause the contents to redraw
 		cat9.flag_dirty()
 	end
-	root:refresh()
+
+	if cat9.dirty then
+		root:refresh()
+	end
 end
