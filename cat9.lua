@@ -6,9 +6,6 @@
 -- TODO
 --
 --  Job Control:
---    [ ] repeat jobid [flush]
---    [ ] kill levels (hard, ...)
---
 --    [ ] completion oracle (default + command specific), asynch
 --        e.g. for cd, find prefix -maxdepth 1 -type d
 --
@@ -17,12 +14,16 @@
 --    [ ] 'on failed' hook (alert jobid errc trigger)
 --
 --  CLI help:
---    [ ] command- information message display
+--    [ ] command- information message display on completion
+--    [ ] lastmsg queue rather than one-slot
+--    [ ] visibility/focus state into loop
+--    [ ] alert / notifications
 --
 --  Data Processing:
 --    [ ] Pipelined  |   implementation
 --    [ ] Copy command (job to clip, to file, to ..)
 --    [ ] Paste / drag and drop (add as 'job')
+--        -> but mark it as something without data if bchunk (and just hold descriptor)
 --
 --  Exec:
 --    [ ] exec with embed
@@ -41,7 +42,9 @@
 --
 --  [ ] expanded scroll
 --  [ ] job history scroll
-
+--  [ ] alias
+--  [ ] history / alias persistence
+--
 local builtins   = {}   -- commands that we handle here
 local suggest    = {}   -- resolve / helper functions for completion based on first command
 
@@ -62,6 +65,7 @@ local config =
 {
 	autoexpand_latest = true,
 	autoexpand_ratio  = 0.5,
+	debug = true,
 
 -- all clicks can also be bound as m1_header_index_click where index is the item group,
 -- and the binding value will be handled just as typed (with csel substituted for cursor
@@ -87,30 +91,146 @@ function builtins.cd(step)
 -- queue asynch cd / ls (and possibly thereafter inotify for new files)
 end
 
+local sigmsg = "[default:kill,hup,user1,user2,stop,quit,continue]"
+local oksig = {
+	kill = true,
+	hup = true,
+	user1 = true,
+	user2 = true,
+	stop  = true,
+	quit = true,
+	continue = true
+}
+
+-- alias for handover into vt100
+builtins["!"] =
+function(a, ...)
+	root:new_window("handover",
+	function(wnd, new)
+		if not new then
+			return
+		end
+		wnd:phandover("/usr/bin/afsrv_terminal", "", {}, {})
+	end)
+end
+
 function builtins.forget(...)
-	local forget = function(job)
+	local forget =
+	function(job, sig)
+		local found
 		for i,v in ipairs(lash.jobs) do
-			if v == job then
+			if (type(job) == "number" and v.id == job) or v == job then
+				job = v
+				found = true
 				table.remove(lash.jobs, i)
 				break
 			end
 		end
 -- kill the thing, can't remove it yet but mark it as hidden
-		if job.pid then
+		if found and job.pid then
+			root:pkill(job.pid, sig)
 			job.hidden = true
 		end
 	end
 
 	local set = {...}
 	local signal = "hup"
+	local lastid
+	local in_range = false
 
 	for _, v in ipairs(set) do
 		if type(v) == "table" then
+			if in_range then
+				in_range = false
+				if lastid then
+					local start = lastid+1
+					for i=lastid,v.id do
+						forget(i, signal)
+					end
+				end
+			end
+			lastid = v.id
 			forget(v, signal)
+		elseif type(v) == "string" then
+			if v == ".." then
+				in_range = true
+			elseif v == "all" then
+				while #lash.jobs > 0 do
+					local item = table.remove(lash.jobs, 1)
+					if item.pid then
+						root:pkill(item.pid, signal)
+						item.hidden = true
+					end
+				end
+			else
+				signal = v
+			end
+		end
+	end
+end
+
+builtins["repeat"] =
+function(job, cmd)
+	if type(job) ~= "table" then
+		lastmsg = "repeat >#jobid< [flush] missing job reference"
+		return
+	end
+
+	if job.pid then
+		lastmsg = "job still running, terminate/stop first (signal #jobid kill)"
+		return
+	end
+
+	if not job["repeat"] then
+		lastmsg = "job not repeatable"
+		return
+	end
+
+	if cmd and type(cmd) == "string" then
+		if cmd == "flush" then
+			job:reset()
 		end
 	end
 
-	cat9.flag_dirty()
+	job["repeat"](job)
+end
+
+function builtins.signal(job, sig)
+	if not sig then
+		lastmsg = string.format("signal (#jobid or pid) >signal< missing: %s", sigmsg)
+		return
+	end
+
+	if type(sig) == "string" then
+		if not oksig[sig] then
+			lastmsg = string.format(
+				"signal (#jobid or pid) >signal< unknown signal (%s) %s", sig, sigmsg)
+			return
+		end
+	elseif type(sig) == "number" then
+	else
+		lastmsg = "signal (#jobid or pid) >signal< unexpected type (string or number)"
+		return
+	end
+
+	local pid
+	if type(job) == "table" then
+		if not job.pid then
+			lastmsg = "signal #jobid - job is not tied to a process"
+			return
+		end
+		pid = job.pid
+	elseif type(job) == "number" then
+		pid = job
+	else
+		pid = tonumber(job)
+		if not pid then
+			lastmsg = "signal (#jobid or pid) - unexpected type (" .. type(job) .. ")"
+			return
+		end
+	end
+
+	root:psignal(pid, sig)
 end
 
 function builtins.open(file, ...)
@@ -128,10 +248,13 @@ function builtins.open(file, ...)
 				end
 			end
 			wnd:revert()
+			local buf = file.view == "out" and file.data or file.err_buffer
+			buf = table.concat(buf, "")
+
 			if not spawn then
-				wnd:bufferview(table.concat(file.data, ""), cat9.reset, arg)
+				wnd:bufferview(buf, cat9.reset, arg)
 			else
-				wnd:bufferview(table.concat(file.data, ""),
+				wnd:bufferview(buf,
 					function()
 						wnd:close()
 					end, arg
@@ -143,13 +266,11 @@ function builtins.open(file, ...)
 		return
 	end
 
+	local spawn = false
 	for _,v in ipairs(opts) do
-		if v == "new" then
-			spawn = true
-		elseif v == "hnew" then
-			spawn = true
-		elseif v == "vnew" then
-			spawn = true
+		local opt = cat9.vl_to_dir(v)
+		if opt then
+			spawn = opt
 		end
 	end
 
@@ -161,7 +282,7 @@ function builtins.open(file, ...)
 					return
 				end
 				trigger(wnd)
-			end
+			end, spawn
 		)
 		return false
 	else
@@ -174,7 +295,7 @@ end
 local view_hlp_str = "view #job output(out|err) [form=expand|collapse|toggle]"
 function builtins.view(job, output, form)
 	if type(job) ~= "table" then
-		lastmsg = view_hlp_str
+		lastmsg = view_hlP_str
 		return
 	end
 
@@ -210,7 +331,28 @@ function builtins.view(job, output, form)
 	cat9.flag_dirty()
 end
 
+-- new window requests can add window hints on tabbing, sizing and positions,
+-- those are rather annoying to write so have this alias table
+function cat9.vl_to_dir(v)
+	local spawn
+	if v == "new" then
+		spawn = "split"
+	elseif v == "tnew" then
+		spawn = "split-t"
+	elseif v == "lnew" then
+		spawn = "split-l"
+	elseif v == "dnew" then
+		spawn = "split-d"
+	elseif v == "rnew" then
+		spawn = "split-r"
+	elseif v == "tab" then
+		spawn = "tab"
+	end
+	return spawn
+end
+
 function builtins.copy(src, dst)
+-- #job(l1,l2..l5) [clipboard, #jobid, ./file]
 end
 
 -- use for monotonic scrolling (drag+select on expanded?) and dynamic prompt
@@ -386,6 +528,10 @@ local function get_wrapped_job(job, rows, col)
 		if job.data_cache.rows == rows and job.data_cache.cols == cols and job.data_cache.view == job.view then
 			return job.data_cache
 		end
+	end
+
+	if job.view == "err" then
+		return job.err_buffer
 	end
 
 	return job.data
@@ -667,6 +813,7 @@ local function build_ptable(t)
 	ptable[t.SYMBOL  ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.STRING  ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.NUMBER  ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
+	ptable[t.OP_NOT  ] = {function(s, v) table.insert(v, "!"); end}
 
 	ttable = {}
 	for k,v in pairs(t) do
@@ -681,14 +828,17 @@ local function tokens_to_commands(tokens, types, suggest)
 
 	local fail = function(msg)
 -- just parsing debugging
--- local lst = ""
---		for _,v in ipairs(tokens) do
---			if v[1] == types.OPERATOR then
---				lst = lst .. ttable[v[2]] .. " "
---			else
---				lst = lst .. ttable[v[1]] .. " "
---			end
---		end
+		if config.debug then
+			local lst = ""
+				for _,v in ipairs(tokens) do
+					if v[1] == types.OPERATOR then
+						lst = lst .. ttable[v[2]] .. " "
+					else
+						lst = lst .. ttable[v[1]] .. " "
+					end
+				end
+				print(lst)
+		end
 
 		if not suggest then
 			lastmsg = msg
@@ -962,17 +1112,20 @@ function cat9.import_job(v)
 		v.collapsed_rows = config.collapsed_rows
 	end
 	v.view = "out"
-	if not v.data then
-		local histogram = {}
-		v.data =
-		{
+	v.reset =
+	function(v)
+		v.data = {
 			bytecount = 0,
-			histogram = histogram,
-			linecount = 0
+			linecount = 0,
+			histogram = {}
 		}
 		for i=0,255 do
-			histogram[i] = 0
+			v.data.histogram[i] = 0
 		end
+		v.err_buffer = {}
+	end
+	if not v.data then
+		v:reset()
 	end
 	if not v.cookie then
 		v.cookie = 0
@@ -1016,6 +1169,11 @@ function cat9.import_job(v)
 		local _, rows = root:dimensions()
 		v.expanded = math.ceil(rows * config.autoexpand_ratio)
 	end
+
+	if v.out then
+		v.out:lf_strip(false)
+	end
+
 	table.insert(lash.jobs, v)
 end
 
@@ -1065,7 +1223,6 @@ function cat9.parse_string(rl, line)
 		return
 	end
 
-	outf:lf_strip(false)
 -- insert/spawn
 	local job =
 	{
@@ -1077,6 +1234,17 @@ function cat9.parse_string(rl, line)
 		dir = root:chdir(),
 		short = lst[#lst],
 	}
+
+	job["repeat"] =
+	function()
+		if job.pid then
+			return
+		end
+		_, job.out, job.err, job.pid = root:popen(commands, "re")
+		if job.pid then
+			table.insert(activejobs, job)
+		end
+	end
 
 	cat9.import_job(job)
 end
