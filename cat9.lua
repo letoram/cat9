@@ -6,9 +6,6 @@
 -- TODO
 --
 --  Job Control:
---    [ ] completion oracle (default + command specific), asynch
---        e.g. for cd, find prefix -maxdepth 1 -type d
---
 --    [ ] 'on data' hook (alert jobid data pattern trigger)
 --    [ ] 'on finished' hook (alert jobid ok trigger)
 --    [ ] 'on failed' hook (alert jobid errc trigger)
@@ -16,11 +13,13 @@
 --  CLI help:
 --    [ ] command- information message display on completion
 --    [ ] lastmsg queue rather than one-slot
---    [ ] visibility/focus state into loop
+--    [ ] visibility/focus state into loop for prompt
 --    [ ] alert / notifications
+--    [ ] .desktop like support for open, scanner for bin folders etc.
 --
 --  Data Processing:
 --    [ ] Pipelined  |   implementation
+--    [ ] Pipeline with MiM
 --    [ ] Copy command (job to clip, to file, to ..)
 --    [ ] Paste / drag and drop (add as 'job')
 --        -> but mark it as something without data if bchunk (and just hold descriptor)
@@ -35,15 +34,21 @@
 --    [ ] explicit exec (!! e.g. sh -c soft-expand rest)
 --    [ ] controlling env per job
 --    [ ] pattern expand from file glob
+--    [ ] nbio- import into popen arg+env
 --
 --  [ ] data dependent expand print:
 --      [ ] hex
 --      [ ] simplified 'in house' vt100
 --
---  [ ] expanded scroll
---  [ ] job history scroll
---  [ ] alias
---  [ ] history / alias persistence
+--  Ui:
+--    [ ] expanded scroll
+--    [ ] job history scroll
+--    [ ] alias
+--    [ ] history / alias persistence
+--
+--  Refactor:
+--    [ ] split out builtins/cat9/helpers/... (lash.scriptdir / cat9 / ... )
+--    [ ] separate out token parser and make it less ugly
 --
 local builtins   = {}   -- commands that we handle here
 local suggest    = {}   -- resolve / helper functions for completion based on first command
@@ -81,14 +86,78 @@ local config =
 	autoclear_empty = true, -- forget jobs without output
 }
 
-local cat9 = {} -- vtable for local support functions
+local cat9 =  -- vtable for local support functions
+{
+	scanner = {} -- state for asynch completion scanning
+}
 local root = lash.root
 local alive = true
 
 function builtins.cd(step)
 	root:chdir(step)
 	cat9.update_lastdir()
--- queue asynch cd / ls (and possibly thereafter inotify for new files)
+end
+
+function suggest.cd(args, raw)
+	if #args > 2 then
+		lastmsg = "cd - too many arguments"
+		return
+
+	elseif #args < 1 then
+		return
+	end
+
+-- the rules for generating / filtering a file/directory completion set is
+-- rather nuanced and shareable so that is abstracted here.
+--
+-- returned 'path' is what we actually pass to find
+-- prefix is what we actually need to add to the command for the value to be right
+-- flt is what we need to strip from the returned results to show in the completion box
+-- and offset is where to start in each result string to just present what's necessary
+--
+-- so a dance to get:
+--
+--    cd ../fo<tab>
+--          lder1
+--          lder2
+--
+-- instead of:
+--   cd ../fo<tab>
+--          ../folder1
+--          ../folder2
+--
+-- and still comleting to:
+--  cd ../folder1
+--
+-- for both / ../ ./ and implicit 'current directory'
+--
+	local path, prefix, flt, offset = cat9.file_completion(args[2])
+	if cat9.scanner.active and cat9.scanner.active ~= path then
+		cat9.stop_scanner()
+	end
+
+	if not cat9.scanner.active then
+		cat9.set_scanner(
+			{"/usr/bin/find", "find", path, "-maxdepth", "1", "-type", "d"},
+			function(res)
+				if res then
+					cat9.scanner.last = res
+					cat9.readline:suggest(
+						cat9.prefix_filter(res, flt, offset),
+						"substitute", "cd " .. prefix
+					)
+				end
+			end
+		)
+	end
+
+	if cat9.scanner.last then
+		local suffix = args[2] and args[2] or ""
+		cat9.readline:suggest(
+			cat9.prefix_filter(cat9.scanner.last, flt, offset),
+			"substitute", "cd " .. prefix
+		)
+	end
 end
 
 local sigmsg = "[default:kill,hup,user1,user2,stop,quit,continue]"
@@ -104,14 +173,35 @@ local oksig = {
 
 -- alias for handover into vt100
 builtins["!"] =
-function(a, ...)
-	root:new_window("handover",
-	function(wnd, new)
-		if not new then
-			return
-		end
-		wnd:phandover("/usr/bin/afsrv_terminal", "", {}, {})
-	end)
+function(...)
+	cat9.term_handover("join-r", ...)
+end
+
+builtins["v!"] =
+function(...)
+	cat9.term_handover("join-d", ...)
+end
+
+function builtins.config(key, val)
+	if not key or not config[key] then
+		lastmsg = "missing / unknown config key"
+		return
+	end
+
+	if not val then
+		lastmsg = "missing value to set for key " .. key
+		return
+	end
+
+	if type(val) ~= type(config[key]) then
+		lastmsg = string.format(
+			"type mismatch for %s : expected %s, got %s",
+			key, type(config[key]), type(val)
+		)
+		return
+	end
+
+	config[key] = val
 end
 
 function builtins.forget(...)
@@ -238,7 +328,7 @@ function builtins.open(file, ...)
 	local opts = {...}
 	local spawn = false
 
-	if type(file) == "table" then
+	if type(file) == "table" and file.data then
 		trigger =
 		function(wnd)
 			local arg = {read_only = true}
@@ -261,12 +351,16 @@ function builtins.open(file, ...)
 				)
 			end
 		end
+-- this can only be done through handover,
+-- some special sources: #.clip
 	else
-		lastmsg = "missing handover-exec-open"
+		trigger =
+		function(wnd)
+		end
+		spawn = "new"
 		return
 	end
 
-	local spawn = false
 	for _,v in ipairs(opts) do
 		local opt = cat9.vl_to_dir(v)
 		if opt then
@@ -278,7 +372,7 @@ function builtins.open(file, ...)
 		root:new_window("tui",
 			function(par, wnd)
 				if not wnd then
-					lastmsg  = "window request rejected"
+					lastmsg = "window request rejected"
 					return
 				end
 				trigger(wnd)
@@ -341,7 +435,7 @@ function cat9.vl_to_dir(v)
 		spawn = "split-t"
 	elseif v == "lnew" then
 		spawn = "split-l"
-	elseif v == "dnew" then
+	elseif v == "dnew" or v == "vnew" then
 		spawn = "split-d"
 	elseif v == "rnew" then
 		spawn = "split-r"
@@ -501,7 +595,6 @@ function cat9.xy_to_hdr(x, y)
 		id = i
 	end
 
-	print(id, job)
 	return id, job
 end
 
@@ -782,39 +875,17 @@ table.sort(builtin_completion)
 --  take a stream of tokens from the lexer and use to build a command table
 --  or a completion set helper where applicable (e.g. #<tab> job IDs)
 --
--- Special token handling:
---
---  |  ->  set new destination table that grabs input from previous output
---  ;  ->  set new 'post job swap', when job is finished, take the next one
---  #  ->  set execution mode (vt100 by default, or next sym)
---  $  ->  set source address (next sym)
---
-
--- ptable
--- [OP_POUND, {SYMBOL, STRING}]
--- [SYMBOL,
--- [STRING,
--- [NUMBER]
-
 local ptable, ttable
-
-function cat9.lookup_job(s, v)
-	local job = cat9.idtojob(s[2][2])
-	if job then
-		table.insert(v, job)
-	else
-		return "no job matching ID " .. s[2][2]
-	end
-end
 
 local function build_ptable(t)
 	ptable = {}
-	ptable[t.OP_POUND] = {{t.SYMBOL, t.STRING, t.NUMBER}, cat9.lookup_job} -- #sym -> [job]
-	ptable[t.SYMBOL  ] = {function(s, v) table.insert(v, s[1][2]); end}
-	ptable[t.STRING  ] = {function(s, v) table.insert(v, s[1][2]); end}
-	ptable[t.NUMBER  ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
-	ptable[t.OP_NOT  ] = {function(s, v) table.insert(v, "!"); end}
-
+	ptable[t.OP_POUND  ] = {{t.NUMBER, t.STRING}, cat9.lookup_job} -- #sym -> [job]
+	ptable[t.OP_RELADDR] = {t.STRING, cat9.lookup_res}
+	ptable[t.SYMBOL    ] = {function(s, v) table.insert(v, s[1][2]); end}
+	ptable[t.STRING    ] = {function(s, v) table.insert(v, s[1][2]); end}
+	ptable[t.NUMBER    ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
+	ptable[t.OP_NOT    ] = {function(s, v) table.insert(v, "!"); end}
+	ptable[t.OP_MUL    ] = {function(s, v) table.insert(v, "*"); end}
 	ttable = {}
 	for k,v in pairs(t) do
 		ttable[v] = k
@@ -843,7 +914,7 @@ local function tokens_to_commands(tokens, types, suggest)
 		if not suggest then
 			lastmsg = msg
 		end
-		return
+		return _, msg
 	end
 
 -- deferred building the product table as the type mapping isn't
@@ -859,7 +930,6 @@ local function tokens_to_commands(tokens, types, suggest)
 
 	for _,v in ipairs(tokens) do
 		local ttype = v[1] == types.OPERATOR and v[2] or v[1]
-		local tdata = v[2]
 		if not ent then
 			ent = ptable[ttype]
 			if not ent then
@@ -905,32 +975,54 @@ local function tokens_to_commands(tokens, types, suggest)
 		end
 	end
 
+-- if there is a scanner running from completion, stop it
+	if not suggest then
+		cat9.stop_scanner()
+	end
+
 	return res
 end
 
-local function suggest_for_context(tok, types)
+local last_count = 0
+local function suggest_for_context(prefix, tok, types)
+-- empty? just add builtins
 	if #tok == 0 then
 		cat9.readline:suggest(builtin_completion)
 		return
 	end
 
+-- still in suggesting the initial command, use prefix to filter builtin
+-- a better support script for this would be handy, i.e. prefix tree and
+-- a cache on prefix string itself.
+	if #tok == 1 and tok[1][1] == types.STRING then
+		local set = cat9.prefix_filter(builtin_completion, prefix)
+		if #set > 1 or (#set == 1 and #prefix < #set[1]) then
+			cat9.readline:suggest(set)
+			return
+		end
+	end
+
+-- clear suggestion by default first
 	cat9.readline:suggest({})
-	local res = tokens_to_commands(tok, types, true)
+	local res, err = tokens_to_commands(tok, types, true)
 	if not res then
 		return
 	end
 
 -- these can be delivered asynchronously, entirely based on the command
 -- also need to prefix filter the first part of the token ..
-	if res[1] and suggest[res[1][1]] then
-		suggest[res[1][1]]()
+	if res[1] and suggest[res[1]] then
+		suggest[res[1]](res, prefix)
+	else
+-- generic fallback? smosh whatever we find walking ., filter by taking
+-- the prefix and step back to whitespace
 	end
 end
 
 local function rl_verify(self, prefix, msg, suggest)
 	if suggest then
 		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true)
-		suggest_for_context(tokens, types)
+		suggest_for_context(prefix, tokens, types)
 	end
 
 	laststr = msg
@@ -938,6 +1030,18 @@ local function rl_verify(self, prefix, msg, suggest)
 	if msg then
 		return ofs
 	end
+end
+
+function cat9.lookup_job(s, v)
+	local job = cat9.idtojob(s[2][2])
+	if job then
+		table.insert(v, job)
+	else
+		return "no job matching ID " .. s[2][2]
+	end
+end
+
+function cat9.lookup_res(s, v)
 end
 
 function cat9.idtojob(id)
@@ -1067,8 +1171,8 @@ local function process_jobs()
 -- avoid polluting output history with simple commands that succeeded and did
 -- not return anything
 			if config.autoclear_empty and job.data.bytecount == 0 then
-				if job.exit ~= 0 then
-					lastmsg = string.format("#%d failed, code: %d (%s)", job.id, job.exit, job.raw)
+				if job.exit ~= 0 and not job.hidden then
+					lastmsg = string.format("#%d failed, code: %d (%s)", job.id and job.id or 0, job.exit, job.raw)
 				end
 				for i, v in ipairs(lash.jobs) do
 					if v == job then
@@ -1149,16 +1253,17 @@ function cat9.import_job(v)
 	elseif not v.code then
 		v.code = 0
 	end
-	if not v.id then
+
+	if not v.id and not v.hidden then
 		v.id = idcounter
 	end
 
-	if idcounter <= v.id then
+	if v.id and idcounter <= v.id then
 		idcounter = v.id + 1
 	end
 
 -- mark latest one as expanded, and the previously 'latest' back to collapsed
-	if config.autoexpand_latest then
+	if config.autoexpand_latest and not v.hidden then
 		if latestjob then
 			latestjob.expanded = nil
 			latestjob = v
@@ -1177,11 +1282,176 @@ function cat9.import_job(v)
 	table.insert(lash.jobs, v)
 end
 
+function cat9.term_handover(cmode, ...)
+	local argtbl = {...}
+	local argv = {}
+	local env = {}
+	env["ARCAN_ARG"] = "exec=vim"
+	root:new_window("handover",
+	function(wnd, new)
+		if not new then
+			return
+		end
+		wnd:phandover("/usr/bin/afsrv_terminal", "", argv, env)
+	end, cmode)
+end
+
 function cat9.flag_dirty()
 	if cat9.readline then
 		cat9.readline:set_prompt(cat9.get_prompt())
 	end
 	cat9.dirty = true
+end
+
+function cat9.prefix_filter(intbl, prefix, offset)
+	local res = {}
+	for _,v in ipairs(intbl) do
+		if string.sub(v, 1, #prefix) == prefix then
+			local str = v
+			if offset then
+				str = string.sub(v, offset)
+			end
+			if #str > 0 then
+				table.insert(res, str)
+			end
+		end
+	end
+
+-- special case, we already have what we suggest, set to empty so the readline
+-- implementation can autocommit on linefeed
+	if #res == 1 then
+		local sub = offset and string.sub(prefix, offset) or prefix
+		if sub and sub == res[1] then
+			return {}
+		end
+	end
+	return res
+end
+
+-- This can be called either when invalidating an ongoing scanner by setting a
+-- new, or cancelling ongoing scanning due to the results not being interesting
+-- anymore. It does not actually stop immediately, but rather kill the related
+-- process (if still alive) so the normal job management will flush it out.
+function cat9.stop_scanner()
+	if not cat9.scanner.active then
+		return
+	end
+
+	if cat9.scanner.pid then
+		root:psignal(cat9.scanner.pid, "kill")
+		cat9.scanner.pid = nil
+	end
+
+	if cat9.scanner.closure then
+		cat9.scanner.closure()
+		cat9.scanner.closure = nil
+	end
+
+	cat9.scanner.active = nil
+end
+
+--
+-- run [path (str | argtbl) and trigger closure with the dataset when completed.
+-- should only be used for singleton short-lived, line-separated fast commands
+-- used for tab completion
+--
+function cat9.set_scanner(path, closure)
+	cat9.stop_scanner()
+
+	local _, out, _, pid = root:popen(path, "r")
+
+	if not pid then
+		if config.debug then
+			print("failed to spawn scanner job:", path)
+		end
+		return
+	end
+
+-- the pid will be wait():ed / killed as part of job control
+	cat9.scanner.pid = pid
+	cat9.scanner.closure = closure
+	cat9.scanner.active = path
+
+-- mark as hidden so it doesn't clutter the UI or consume job IDs but can still
+-- re-use event triggers an asynch processing
+	local job =
+	{
+		out = out,
+		pid = pid,
+		hidden = true,
+	}
+
+-- checking
+	function job.closure()
+		cat9.scanner.pid = nil
+		if cat9.scanner.closure then
+			cat9.scanner.closure(job.data)
+		end
+	end
+
+	cat9.import_job(job)
+	out:lf_strip(true)
+end
+
+-- calculate the suggestion- set parameters to account for absolute/relative/...
+function cat9.file_completion(fn)
+	local path   -- actual path to search
+	local prefix -- prefix to filter from last path when applying completion
+	local flt    -- prefix to filter away from result-set
+	local offset -- add item to suggestion starting at offset after prefix match
+
+-- args are #1 (cd) or #2 (cd <path>)
+	if not fn or #fn == 0 then
+		path = "./"
+		prefix = ""
+		flt = "./"
+		offset = 3
+		return path, prefix, flt, offset
+	end
+
+-- $env expansion not considered, neither is ~ at the moment
+	local elements = string.split(fn, "/")
+	local nelem = #elements
+
+	path = table.concat(elements, "/", 1, nelem - 1)
+	local ch = string.sub(fn, 1, 1)
+
+-- explicit absolute
+	if ch == '/' then
+		offset = #path + 2
+		if #elements == 2 then
+			path = "/" .. path
+		end
+		prefix = path .. (#path > 1 and "/" or "")
+
+		if nelem == 2 then
+			flt = path .. elements[nelem]
+		else
+			flt = path .. "/" .. elements[nelem]
+		end
+		return path, prefix, flt, offset
+	end
+
+-- explicit relative
+	if string.sub(fn, 1, 2) == "./" then
+		offset = #path + 2
+		prefix = path .. "/"
+		flt = path .. "/" .. elements[nelem]
+		return path, prefix, flt, offset
+	end
+
+	if string.sub(fn, 1, 3) == "../" then
+		offset = #path + 2
+		prefix = path .. "/"
+		flt = path .. "/" .. elements[nelem]
+		return path, prefix, flt, offset
+	end
+
+	path = "./" .. path
+	flt = path .. elements[nelem]
+	prefix = path
+	offset = 3
+	return path, prefix, flt, offset
 end
 
 function cat9.parse_string(rl, line)
@@ -1207,8 +1477,8 @@ function cat9.parse_string(rl, line)
 		return
 	end
 
--- this prevents the builtins from being part of a pipeline
--- is there a strong case for mixing the two?
+-- this prevents the builtins from being part of a pipeline which might
+-- not be desired - like cat something | process something | open @in vnew
 	if builtins[commands[1]] then
 		return builtins[commands[1]](unpack(commands, 2))
 	end
@@ -1261,6 +1531,7 @@ for _, v in ipairs(old) do
 	cat9.import_job(v)
 end
 
+cat9.dirty = true
 while root:process() and alive do
 	if (process_jobs()) then
 -- updating the current prompt will also cause the contents to redraw
