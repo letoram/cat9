@@ -11,10 +11,8 @@
 --    [ ] 'on failed' hook (alert jobid errc trigger)
 --
 --  CLI help:
---    [ ] command- information message display on completion
---    [ ] lastmsg queue rather than one-slot
+--    [ ] lastmsg queue rather than one-slot for important bits
 --    [ ] visibility/focus state into loop for prompt
---    [ ] alert / notifications
 --    [ ] .desktop like support for open, scanner for bin folders etc.
 --
 --  Data Processing:
@@ -23,16 +21,16 @@
 --    [ ] Copy command (job to clip, to file, to ..)
 --    [ ] Paste / drag and drop (add as 'job')
 --        -> but mark it as something without data if bchunk (and just hold descriptor)
---
 --  Exec:
 --    [ ] exec with embed
---    [ ] handover exec with split
---    [ ] handover exec to vt100 (afsrv_terminal)
 --    [ ] Open (media, handover exec to afsrv_decode)
---    [ ]   -> autodetect arcan appl (lwa)
+--        [ ]   -> autodetect arcan appl (lwa)
+--        [ ]   -> state scratch folder (tar for state store/restore) +
+--                 use with browser
+--    [ ] arcan-net integration (scan, ...)
 --    [ ] pty- exec (!...)
 --    [ ] explicit exec (!! e.g. sh -c soft-expand rest)
---    [ ] controlling env per job
+--    [ ] controlling env per job env name key=val key=val, ...
 --    [ ] pattern expand from file glob
 --    [ ] nbio- import into popen arg+env
 --
@@ -44,7 +42,7 @@
 --    [ ] expanded scroll
 --    [ ] job history scroll
 --    [ ] alias
---    [ ] history / alias persistence
+--    [ ] history / alias / config persistence
 --
 --  Refactor:
 --    [ ] split out builtins/cat9/helpers/... (lash.scriptdir / cat9 / ... )
@@ -70,6 +68,7 @@ local config =
 {
 	autoexpand_latest = true,
 	autoexpand_ratio  = 0.5,
+	autosuggest = true, -- start readline with tab completion enabled
 	debug = true,
 
 -- all clicks can also be bound as m1_header_index_click where index is the item group,
@@ -193,15 +192,64 @@ function builtins.config(key, val)
 		return
 	end
 
-	if type(val) ~= type(config[key]) then
-		lastmsg = string.format(
-			"type mismatch for %s : expected %s, got %s",
-			key, type(config[key]), type(val)
-		)
+	local t = type(config[key])
+
+	if t == "boolean" then
+		if val == "true" or val == "1" then
+			config[key] = true
+		elseif val == "false" or val == "0" then
+			config[key] = false
+		else
+			lastmsg = key .. " expects boolean (true | false)"
+		end
+	elseif t == "number" then
+		local num = tonumber(val)
+		if not num then
+			lastmsg = " invalid number value"
+		else
+			config[key] = num
+		end
+	elseif t == "string" then
+		config[key] = val
+	end
+end
+
+function suggest.config(args, raw)
+	if not cat9.config_cache then
+		cat9.config_cache = {}
+		for k,_ in pairs(config) do
+			table.insert(cat9.config_cache, k)
+		end
+		table.sort(cat9.config_cache)
+	end
+
+	local set = cat9.config_cache
+
+	if #args == 2 then
+-- actually finished with the argument but hasn't begun on the next
+		if string.sub(raw, #raw) == " " then
+			local cfg = config[args[2]]
+			lastmsg = cfg ~= nil and tostring(cfg) .. " (" .. type(cfg) .. ")" or ""
+			set = {}
+		else
+			set = cat9.prefix_filter(cat9.config_cache, args[2])
+		end
+		cat9.readline:suggest(set, "word")
+		return
+
+	elseif #args == 1 then
+		cat9.readline:suggest(set, "insert")
 		return
 	end
 
-	config[key] = val
+-- entering the value, just set the message to current/type
+	if not config[args[2]] then
+		lastmsg = "unknown key"
+		return
+	end
+
+	local last = config[args[2]]
+	lastmsg = tostring(last) .. " (" .. type(last) .. ")"
 end
 
 function builtins.forget(...)
@@ -283,6 +331,18 @@ function(job, cmd)
 	end
 
 	job["repeat"](job)
+end
+
+suggest["repeat"] =
+function(arg, raw)
+	local set = {}
+	for _,v in ipairs(lash.jobs) do
+		if not v.pid then
+			table.insert(set, tostring(v.id))
+		end
+	end
+
+	cat9.readline:suggest(set, "word")
 end
 
 function builtins.signal(job, sig)
@@ -557,7 +617,7 @@ end
 
 function cat9.get_prompt()
 -- context sensitive information? (e.g. git check on cd, ...)
-	local wdstr = "[ " .. lastdir .. " ]"
+	local wdstr = "[ " .. (#lastdir == 0 and "/" or lastdir) .. " ]"
 	local res = {}
 
 -- only show if we have jobs going
@@ -1099,6 +1159,7 @@ function cat9.reset()
 	cat9.readline:set(laststr);
 	cat9.readline:set_prompt(cat9.get_prompt())
 	cat9.readline:set_history(lash.history)
+	cat9.readline:suggest(config.autosuggest)
 end
 
 local function flush_job(job, finish, limit)
@@ -1282,18 +1343,77 @@ function cat9.import_job(v)
 	table.insert(lash.jobs, v)
 end
 
+-- nop right now, the value later is to allow certain symbols to expand with
+-- data from job or other variable references, glob patterns being a typical
+-- one. Returns 'false' if there is an error with the expansion
+--
+-- do that by just adding the 'on-complete' function into dst
+function cat9.expand_arg(dst, str)
+	return str
+end
+
 function cat9.term_handover(cmode, ...)
 	local argtbl = {...}
 	local argv = {}
 	local env = {}
-	env["ARCAN_ARG"] = "exec=vim"
-	root:new_window("handover",
-	function(wnd, new)
-		if not new then
+
+	local dynamic = false
+	local runners = {}
+
+	for _,v in ipairs(argtbl) do
+		ok, msg = cat9.expand_arg(argv, v)
+		if not ok then
+			lastmsg = msg
+			return
+		elseif type(ok) == "function" then
+			dynamic = true
+		end
+		table.insert(runners, ok)
+	end
+
+-- Dispatched when the queue of runners is empty - argv is passed in env
+-- due to afsrv_terminal being used to implement the vt100 machine. This
+-- is a fair point to migrate to another vt100 implementation.
+	local run =
+	function()
+		env["ARCAN_TERMINAL_EXEC"] = table.concat(argv, "")
+		root:new_window("handover",
+		function(wnd, new)
+			if not new then
+				return
+			end
+			wnd:phandover("/usr/bin/afsrv_terminal", "", {}, env)
+		end, cmode)
+	end
+
+-- Asynch-serialise - each runner is a function (or string) that, on finish,
+-- appends arguments to argv and when there are no runners left - hands over
+-- and executes. Even if the job can be resolved immediately (static) the same
+-- code is reused to avoid further branching.
+	local step_job
+	step_job =
+	function()
+		if #runners == 0 then
+			run()
 			return
 		end
-		wnd:phandover("/usr/bin/afsrv_terminal", "", argv, env)
-	end, cmode)
+
+		local job = table.remove(runners, 1)
+		if type(job) == "string" then
+			local res = string.gsub(job, "\"", "\\\"")
+			table.insert(argv, res)
+			step_job()
+		else
+			local ret, err = job()
+			if not ret then
+				lastmsg = err
+			else
+				ret.closure = step_job
+			end
+		end
+	end
+
+	step_job()
 end
 
 function cat9.flag_dirty()
@@ -1447,10 +1567,16 @@ function cat9.file_completion(fn)
 		return path, prefix, flt, offset
 	end
 
-	path = "./" .. path
-	flt = path .. elements[nelem]
 	prefix = path
-	offset = 3
+	path = "./" .. path
+	if nelem == 1 then
+		flt = path .. elements[nelem]
+		offset = #path + 1
+	else
+		flt = path .. "/" .. elements[nelem]
+		prefix = prefix .. "/"
+		offset = #path + 2
+	end
 	return path, prefix, flt, offset
 end
 
