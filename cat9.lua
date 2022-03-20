@@ -5,18 +5,23 @@
 
 -- TODO
 --
+--  Bugs:
+--    [ ] STDIO leaks on popen for closed slots(!) see with ssh.
+--
 --  Job Control:
---    [ ] 'on data' hook (alert jobid data pattern trigger)
---    [ ] 'on finished' hook (alert jobid ok trigger)
---    [ ] 'on failed' hook (alert jobid errc trigger)
+--    [ ] 'on data' hook (trigger jobid data pattern trigger)
+--    [ ] 'on finished' hook (trigger jobid ok trigger)
+--    [ ] 'on failed' hook (trigger jobid errc trigger)
 --
 --  CLI help:
 --    [ ] lastmsg queue rather than one-slot for important bits
 --    [ ] visibility/focus state into loop for prompt
 --    [ ] .desktop like support for open, scanner for bin folders etc.
+--    [ ] track most used directories for execution and expose to cd h [set]
 --
 --  Data Processing:
 --    [ ] Pipelined  |   implementation
+--    [ ] Sequenced (a ; b ; c)
 --    [ ] Pipeline with MiM
 --    [ ] Copy command (job to clip, to file, to ..)
 --    [ ] Paste / drag and drop (add as 'job')
@@ -28,9 +33,8 @@
 --        [ ]   -> state scratch folder (tar for state store/restore) +
 --                 use with browser
 --    [ ] arcan-net integration (scan, ...)
---    [ ] pty- exec (!...)
---    [ ] explicit exec (!! e.g. sh -c soft-expand rest)
---    [ ] controlling env per job env name key=val key=val, ...
+--    [ ] env control (env=bla in=#4) action_a | (env=bla2) action_b
+--        should translate to "take the contents from job 4, map as input and run action_a)"
 --    [ ] pattern expand from file glob
 --    [ ] nbio- import into popen arg+env
 --
@@ -39,10 +43,15 @@
 --      [ ] simplified 'in house' vt100
 --
 --  Ui:
---    [ ] expanded scroll
+--    [ ] view #jobid scroll n-step
+--    [ ] view #jobid wrap
+--    [ ] view #jobid unwrap
+--    [ ] histogram viewing mode
 --    [ ] job history scroll
 --    [ ] alias
 --    [ ] history / alias / config persistence
+--    [ ] format string to prompt
+--    [ ] format string to jobbar
 --
 --  Refactor:
 --    [ ] split out builtins/cat9/helpers/... (lash.scriptdir / cat9 / ... )
@@ -74,7 +83,7 @@ local config =
 -- all clicks can also be bound as m1_header_index_click where index is the item group,
 -- and the binding value will be handled just as typed (with csel substituted for cursor
 -- position)
-	m1_click = "view #csel out toggle",
+	m1_click = "view #csel toggle",
 	m2_click = "open #csel",
 	m3_click = "open #csel hex",
 
@@ -136,18 +145,21 @@ function suggest.cd(args, raw)
 	end
 
 	if not cat9.scanner.active then
-		cat9.set_scanner(
-			{"/usr/bin/find", "find", path, "-maxdepth", "1", "-type", "d"},
-			function(res)
-				if res then
-					cat9.scanner.last = res
-					cat9.readline:suggest(
-						cat9.prefix_filter(res, flt, offset),
-						"substitute", "cd " .. prefix
-					)
+		if not cat9.scanner_path or (cat9.scanner_path and cat9.scanner_path ~= path) then
+			cat9.scanner_path = path
+			cat9.set_scanner(
+				{"/usr/bin/find", "find", path, "-maxdepth", "1", "-type", "d"},
+				function(res)
+					if res then
+						cat9.scanner.last = res
+						cat9.readline:suggest(
+							cat9.prefix_filter(res, flt, offset),
+							"substitute", "cd " .. prefix
+						)
+					end
 				end
-			end
-		)
+			)
+		end
 	end
 
 	if cat9.scanner.last then
@@ -173,7 +185,44 @@ local oksig = {
 -- alias for handover into vt100
 builtins["!"] =
 function(...)
+-- check first argument here for (arcan) (x11) (wayland) and setup
+-- the other proper handover
 	cat9.term_handover("join-r", ...)
+end
+
+local function shc_helper(mode, ...)
+	local args = {...}
+	local argv = {"/bin/sh", "sh", "-c"}
+	local str  = ""
+
+-- check processing directive
+	lastarg = args[1]
+
+	argv[4] = table.concat(args, " ")
+	local job = cat9.setup_shell_job(argv, mode)
+	if job then
+		job.short = "subshell"
+		job.raw = argv[4]
+	end
+	return job
+end
+
+builtins["!!"] =
+function(...)
+	shc_helper("rwe", ...)
+end
+
+builtins["p!"] =
+function(...)
+--
+-- note: we can't just run pty line-buffered like normal, there is timing
+-- behaviour and hold/wait like scenarios that will bite immediately, e.g. ssh
+-- asking for prompt.
+--
+-- this is also where we should have an attachable vt100 parser as well as
+-- being able to setwinch.
+--
+	shc_helper("pty", ...)
 end
 
 builtins["v!"] =
@@ -266,7 +315,7 @@ function builtins.forget(...)
 		end
 -- kill the thing, can't remove it yet but mark it as hidden
 		if found and job.pid then
-			root:pkill(job.pid, sig)
+			root:psignal(job.pid, sig)
 			job.hidden = true
 		end
 	end
@@ -296,7 +345,7 @@ function builtins.forget(...)
 				while #lash.jobs > 0 do
 					local item = table.remove(lash.jobs, 1)
 					if item.pid then
-						root:pkill(item.pid, signal)
+						root:psignal(item.pid, signal)
 						item.hidden = true
 					end
 				end
@@ -315,7 +364,7 @@ function(job, cmd)
 	end
 
 	if job.pid then
-		lastmsg = "job still running, terminate/stop first (signal #jobid kill)"
+		lastmsg = "job still running, terminate first (signal #jobid kill)"
 		return
 	end
 
@@ -422,9 +471,8 @@ function builtins.open(file, ...)
 	end
 
 	for _,v in ipairs(opts) do
-		local opt = cat9.vl_to_dir(v)
-		if opt then
-			spawn = opt
+		if cat9.dir_lut[v] then
+			spawn = cat9.dir_lut[v]
 		end
 	end
 
@@ -446,64 +494,88 @@ function builtins.open(file, ...)
 	end
 end
 
-local view_hlp_str = "view #job output(out|err) [form=expand|collapse|toggle]"
-function builtins.view(job, output, form)
-	if type(job) ~= "table" then
-		lastmsg = view_hlP_str
-		return
+-- use a shared lookup table so we can re-use it for completion helper
+function cat9.build_viewlut()
+	local lut = {}
+	function lut.out(set, i, job)
+		job.view = job.data
+		return i + 1
 	end
+	lut.stdout = lut.out
 
-	if type(output) ~= "string" then
-		lastmsg = view_hlp_str
-		return
+	function lut.err(set, i, job)
+		job.view = job.errbuffer
+		return i + 1
 	end
+	lut.stderr = lut.err
 
--- draw_job when it creates the wrap buffer will take care of details
-	if output == "out" or output == "stdout" then
-		job.view = "out"
-	elseif output == "err" or output == "stderr" then
-		job.view = "err"
--- if not histogram tracking is enabled, we first need to build it
--- and the presentation is special
-	elseif output == "histogram" then
+	function lut.exp(set, i, job)
+		job.expanded = -1
+		return i + 1
 	end
+	lut.expand = lut.exp
 
-	if form and type(form) == "string" then
-		if form == "expand" then
-			job.expanded = -1
-		elseif form == "collapse" then
+	function lut.tog(set, i, job)
+		if job.expanded ~= nil then
 			job.expanded = nil
-		elseif form == "toggle" then
-			if job.expanded then
-				job.expanded = nil
-			else
-				job.expanded = -1
-			end
+		else
+			job.expanded = -1
 		end
 	end
+	lut.toggle = lut.tog
 
+	function lut.col(set, i, job)
+		job.expanded = nil
+	end
+	lut.collapse = lut.col
+	cat9.viewlut = lut
+
+-- also need scroll, filter, ...
+end
+
+cat9.build_viewlut()
+
+function cat9.run_lut(cmd, tgt, lut, set)
+	local i = 1
+	while i and i <= #set do
+		local opt = set[i]
+		print(opt, type(opt))
+
+		if type(opt) ~= "string" then
+			lastmsg = string.format("view #job >...< %d argument invalid", i)
+			return
+		end
+
+-- ignore invalid
+		if not lut[opt] then
+			i = i + 1
+		else
+			i = lut[opt](set, i, tgt)
+		end
+	end
+end
+
+function builtins.view(job, ...)
+	if type(job) ~= "table" then
+		lastmsg = "view >jobid< - invalid job reference"
+		return
+	end
+
+	cat9.run_lut("view", job, cat9.viewlut, {...})
 	cat9.flag_dirty()
 end
 
 -- new window requests can add window hints on tabbing, sizing and positions,
 -- those are rather annoying to write so have this alias table
-function cat9.vl_to_dir(v)
-	local spawn
-	if v == "new" then
-		spawn = "split"
-	elseif v == "tnew" then
-		spawn = "split-t"
-	elseif v == "lnew" then
-		spawn = "split-l"
-	elseif v == "dnew" or v == "vnew" then
-		spawn = "split-d"
-	elseif v == "rnew" then
-		spawn = "split-r"
-	elseif v == "tab" then
-		spawn = "tab"
-	end
-	return spawn
-end
+cat9.dir_lut =
+{
+	new = "split",
+	tnew = "split-t",
+	lnew = "split-l",
+	dnew = "split-d",
+	vnew = "split-d",
+	tab = "tab"
+}
 
 function builtins.copy(src, dst)
 -- #job(l1,l2..l5) [clipboard, #jobid, ./file]
@@ -678,23 +750,26 @@ local function get_wrapped_job(job, rows, col)
 
 	local cols, rows = root:dimensions()
 	if job.data_cache then
-		if job.data_cache.rows == rows and job.data_cache.cols == cols and job.data_cache.view == job.view then
+		if
+			job.data_cache.rows == rows and
+			job.data_cache.cols == cols and
+			job.data_cache.view == job.view then
 			return job.data_cache
 		end
 	end
 
-	if job.view == "err" then
-		return job.err_buffer
-	end
-
-	return job.data
+	return job.view
 end
 
 --
 -- Draw the [metadata][command(short | raw)] interactable one-line 'titlebar'
 --
 local function draw_job_header(x, y, cols, rows, job)
-	local hdrattr  = {fc = tui.colors.ui, bc = tui.colors.ui}
+	local hdrattr =
+	{
+		fc = job.bar_color,
+		bc = job.bar_color
+	}
 
 	if job.selected then
 		hdrattr.fc = tui.colors.highlight
@@ -933,7 +1008,6 @@ table.sort(builtin_completion)
 -- Higher level parsing
 --
 --  take a stream of tokens from the lexer and use to build a command table
---  or a completion set helper where applicable (e.g. #<tab> job IDs)
 --
 local ptable, ttable
 
@@ -944,8 +1018,43 @@ local function build_ptable(t)
 	ptable[t.SYMBOL    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.STRING    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.NUMBER    ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
-	ptable[t.OP_NOT    ] = {function(s, v) table.insert(v, "!"); end}
+
+-- ! can append to the token that comes before it or be its own thing
+	ptable[t.OP_NOT    ] = {
+	function(s, v)
+		if #v > 0 and type(v[#v]) == "string" then
+			v[#v] = v[#v] .. "!"
+		else
+			table.insert(v, "!");
+		end
+	end
+	}
 	ptable[t.OP_MUL    ] = {function(s, v) table.insert(v, "*"); end}
+
+-- ( ... ) <- context properties (env, ...)
+	ptable[t.OP_LPAR   ] = {
+		function(s, v)
+			if v.in_lpar then
+				return "nesting ( prohibited"
+			else
+				v.in_lpar = #v
+			end
+		end
+	}
+	ptable[t.OP_RPAR  ] = {
+		function(s, v)
+			if not v.in_lpar then
+				return "missing opening ("
+			end
+			local stop = #v
+			for i=v.in_lpar+1,stop do
+				print(i, v[i])
+			end
+-- now we can build eenv table from the contents between the ()
+			v.in_lpar = nil
+		end
+	}
+
 	ttable = {}
 	for k,v in pairs(t) do
 		ttable[v] = k
@@ -1209,43 +1318,55 @@ local function flush_job(job, finish, limit)
 	return upd
 end
 
+local function finish_job(job, code)
+	job.exit = code
+
+	if job.out then
+		flush_job(job, true, 1)
+		job.out:close()
+		job.out = nil
+		job.pid = nil
+	end
+
+-- allow whatever 'on completion' handler one might attach to trigger
+	local set = job.closure
+	job.closure = {}
+	for _,v in ipairs(set) do
+		v(job.id, code)
+	end
+
+-- avoid polluting output history with simple commands that succeeded or failed
+-- without producing any output / explanation
+	if config.autoclear_empty and job.data.bytecount == 0 then
+		if #job.err_buffer == 0 then
+			if job.exit ~= 0 and not job.hidden then
+				lastmsg = string.format(
+				"#%d failed, code: %d (%s)", job.id and job.id or 0, job.exit, job.raw)
+			end
+			for i, v in ipairs(lash.jobs) do
+				if v == job then
+					table.remove(lash.jobs, i)
+					break
+				end
+			end
+		end
+
+-- otherwise switch to error output
+		job.view = job.err_buffer
+		job.bar_color = tui.colors.alert
+	end
+
+	table.remove(activejobs, i)
+	upd = true
+end
+
 local function process_jobs()
 	local upd = false
 	for i=#activejobs,1,-1 do
 		local job = activejobs[i]
 		local running, code = root:pwait(job.pid)
 		if not running then
-			job.exit = code
-
-			if job.out then
-				flush_job(job, true, 1)
-				job.out:close()
-				job.out = nil
-				job.pid = nil
-			end
-
--- allow whatever 'on completion' handler one might attach to trigger
-			if job.closure then
-				job:closure()
-			end
-
--- avoid polluting output history with simple commands that succeeded and did
--- not return anything
-			if config.autoclear_empty and job.data.bytecount == 0 then
-				if job.exit ~= 0 and not job.hidden then
-					lastmsg = string.format("#%d failed, code: %d (%s)", job.id and job.id or 0, job.exit, job.raw)
-				end
-				for i, v in ipairs(lash.jobs) do
-					if v == job then
-						table.remove(lash.jobs, i)
-						break
-					end
-				end
-			end
-
-			table.remove(activejobs, i)
-			upd = true
-
+			finish_job(job, code)
 -- the '10' here should really be balanced against time and not a set amount of
 -- reads / lines but the actual buffer sizes are up for question to balance
 -- responsiveness of the shell vs throughput. If it is visible and in focus we
@@ -1269,14 +1390,15 @@ function cat9.update_lastdir()
 	end
 end
 
--- make sure the expected fields are in a job, used both when importing
--- from an outer context and when one has been created by parsing through
+-- make sure the expected fields are in a job, used both when importing from an
+-- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
 function cat9.import_job(v)
 	if not v.collapsed_rows then
 		v.collapsed_rows = config.collapsed_rows
 	end
-	v.view = "out"
+	v.bar_color = tui.colors.ui
+	v.view = v.data
 	v.reset =
 	function(v)
 		v.data = {
@@ -1287,8 +1409,15 @@ function cat9.import_job(v)
 		for i=0,255 do
 			v.data.histogram[i] = 0
 		end
+		local oe = v.err_buffer
 		v.err_buffer = {}
+		if v.view == oe then
+			v.view = v.err_buffer
+		else
+			v.view = v.data
+		end
 	end
+	v.closure = {}
 	if not v.data then
 		v:reset()
 	end
@@ -1390,6 +1519,9 @@ function cat9.term_handover(cmode, ...)
 -- appends arguments to argv and when there are no runners left - hands over
 -- and executes. Even if the job can be resolved immediately (static) the same
 -- code is reused to avoid further branching.
+--
+-- This method should probably be generalised / moved in order to provide
+-- sequenced jobs [ a ; b ; c ]
 	local step_job
 	step_job =
 	function()
@@ -1408,7 +1540,7 @@ function cat9.term_handover(cmode, ...)
 			if not ret then
 				lastmsg = err
 			else
-				ret.closure = step_job
+				ret.closure = {step_job}
 			end
 		end
 	end
@@ -1462,11 +1594,12 @@ function cat9.stop_scanner()
 		cat9.scanner.pid = nil
 	end
 
+-- not to be confused with the job closure table
 	if cat9.scanner.closure then
 		cat9.scanner.closure()
-		cat9.scanner.closure = nil
 	end
 
+	cat9.scanner.closure = nil
 	cat9.scanner.active = nil
 end
 
@@ -1501,16 +1634,18 @@ function cat9.set_scanner(path, closure)
 		hidden = true,
 	}
 
--- checking
-	function job.closure()
+	cat9.import_job(job)
+	out:lf_strip(true)
+
+-- append as closure so it'll be triggers just like any other job completion
+	table.insert(job.closure,
+	function(id, code)
 		cat9.scanner.pid = nil
 		if cat9.scanner.closure then
 			cat9.scanner.closure(job.data)
 		end
-	end
+	end)
 
-	cat9.import_job(job)
-	out:lf_strip(true)
 end
 
 -- calculate the suggestion- set parameters to account for absolute/relative/...
@@ -1580,6 +1715,43 @@ function cat9.file_completion(fn)
 	return path, prefix, flt, offset
 end
 
+function cat9.setup_shell_job(args, mode, envv)
+-- could pick some other 'input' here, e.g.
+-- .in:stdin .env:key1=env;key2=env mycmd $2 arg ..
+	local inf, outf, errf, pid = root:popen(args, mode)
+	if not pid then
+		lastmsg = args[1] .. " failed in " .. line
+		return
+	end
+
+-- insert/spawn
+	local job =
+	{
+		pid = pid,
+		inp = inf,
+		out = outf,
+		err = errf,
+		raw = line,
+		err_buffer = {},
+		dir = root:chdir(),
+		short = args[2],
+	}
+
+	job["repeat"] =
+	function()
+		if job.pid then
+			return
+		end
+		job.inp, job.out, job.err, job.pid = root:popen(args, mode)
+		if job.pid then
+			table.insert(activejobs, job)
+		end
+	end
+
+	cat9.import_job(job)
+	return job
+end
+
 function cat9.parse_string(rl, line)
 	if rl then
 		cat9.readline = nil
@@ -1609,40 +1781,14 @@ function cat9.parse_string(rl, line)
 		return builtins[commands[1]](unpack(commands, 2))
 	end
 
--- could pick some other 'input' here, e.g.
--- .in:stdin .env:key1=env;key2=env mycmd $2 arg ..
+-- throw in that awkward and uncivilised unixy 'application name' in argv
 	local lst = string.split(commands[1], "/")
 	table.insert(commands, 2, lst[#lst])
-	local _, outf, errf, pid = root:popen(commands, "re")
-	if not pid then
-		lastmsg = commands[1] .. " failed in " .. line
-		return
+
+	local job = cat9.setup_shell_job(commands, "re")
+	if job then
+		job.raw = line
 	end
-
--- insert/spawn
-	local job =
-	{
-		pid = pid,
-		out = outf,
-		err = errf,
-		raw = line,
-		err_buffer = {},
-		dir = root:chdir(),
-		short = lst[#lst],
-	}
-
-	job["repeat"] =
-	function()
-		if job.pid then
-			return
-		end
-		_, job.out, job.err, job.pid = root:popen(commands, "re")
-		if job.pid then
-			table.insert(activejobs, job)
-		end
-	end
-
-	cat9.import_job(job)
 end
 
 -- use mouse-forward mode, implement our own selection / picking
