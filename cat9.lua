@@ -219,10 +219,15 @@ function(...)
 -- behaviour and hold/wait like scenarios that will bite immediately, e.g. ssh
 -- asking for prompt.
 --
--- this is also where we should have an attachable vt100 parser as well as
--- being able to setwinch.
+-- This is also where we should have an attachable vt100 parser in multiple
+-- stages, from just 'cursor + motion' to full on terminal. This helper
+-- should probably be part of proper (lash.tty_setup(wnd) -> function(data))
 --
-	shc_helper("pty", ...)
+	local job = shc_helper("pty", ...)
+	if job then
+		job.isatty = true
+		job.unbuffered = true
+	end
 end
 
 builtins["v!"] =
@@ -261,6 +266,10 @@ function builtins.config(key, val)
 	elseif t == "string" then
 		config[key] = val
 	end
+end
+
+function suggest.signal(args, raw)
+
 end
 
 function suggest.config(args, raw)
@@ -447,8 +456,7 @@ function builtins.open(file, ...)
 				end
 			end
 			wnd:revert()
-			local buf = file.view == "out" and file.data or file.err_buffer
-			buf = table.concat(buf, "")
+			buf = table.concat(file.view, "")
 
 			if not spawn then
 				wnd:bufferview(buf, cat9.reset, arg)
@@ -539,7 +547,6 @@ function cat9.run_lut(cmd, tgt, lut, set)
 	local i = 1
 	while i and i <= #set do
 		local opt = set[i]
-		print(opt, type(opt))
 
 		if type(opt) ~= "string" then
 			lastmsg = string.format("view #job >...< %d argument invalid", i)
@@ -1018,8 +1025,6 @@ local function build_ptable(t)
 	ptable[t.SYMBOL    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.STRING    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.NUMBER    ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
-
--- ! can append to the token that comes before it or be its own thing
 	ptable[t.OP_NOT    ] = {
 	function(s, v)
 		if #v > 0 and type(v[#v]) == "string" then
@@ -1029,7 +1034,15 @@ local function build_ptable(t)
 		end
 	end
 	}
-	ptable[t.OP_MUL    ] = {function(s, v) table.insert(v, "*"); end}
+	ptable[t.OP_MUL    ] = {
+	function(s, v)
+		if #v > 0 and type(v[#v]) == "string" then
+			v[#v] = v[#v] .. "*"
+		else
+			table.insert(v, "*");
+		end
+	end
+	}
 
 -- ( ... ) <- context properties (env, ...)
 	ptable[t.OP_LPAR   ] = {
@@ -1050,7 +1063,7 @@ local function build_ptable(t)
 			for i=v.in_lpar+1,stop do
 				print(i, v[i])
 			end
--- now we can build eenv table from the contents between the ()
+-- now we can build env table from the contents between the ()
 			v.in_lpar = nil
 		end
 	}
@@ -1271,42 +1284,79 @@ function cat9.reset()
 	cat9.readline:suggest(config.autosuggest)
 end
 
+local function update_histogram(job, data)
+	for i=1,#data do
+		local bv = string.byte(data, i)
+		local vl = job.data.histogram[bv]
+		job.data.histogram[bv] = vl + 1
+	end
+end
+
+local function data_buffered(job, line, eof)
+	if config.histogram then
+		update_histogram(job, line)
+	end
+
+	job.data.linecount = job.data.linecount + 1
+	if #line > 0 then
+		job.data.bytecount = job.data.bytecount + #line
+		table.insert(job.data, line)
+	end
+end
+
+local function data_unbuffered(job, line, eof)
+	if config.histogram then
+		update_histogram(job, line)
+	end
+
+	local lst = line.split(line, "\n")
+
+	if #lst == 1 then
+		if #job.data == 0 then
+			job.data[1] = ""
+			job.data.linecount = 1
+		end
+
+		job.data.bytecount = job.data.bytecount + #lst
+		job.data[#job.data] = job.data[#job.data] .. lst[1]
+	else
+		for _,v in ipairs(lst) do
+			table.insert(job.data, v)
+			job.data.linecount = job.data.linecount + 1
+		end
+	end
+end
+
 local function flush_job(job, finish, limit)
 	local upd = false
-
--- stdout, slightly more involved to build histogram
 	local outlim = limit
 	local falive = true
 
+-- cap to outlim number of read-calls (at most) or until feof
 	while outlim > 0 and (finish or falive) do
-		outlim = outlim - 1
-		_, falive = job.out:read(false,
-		function(line, eof)
-				if eof then
-					outlim = 0
-				end
-
-				if config.histogram then
-					for i=1,#line do
-						local bv = string.byte(msg, i)
-						local vl = job.data.histogram[bv]
-						job.data.histogram[bv] = vl + 1
+		if job.unbuffered then
+			line, falive = job.out:read(true)
+			if line then
+				data_unbuffered(job, line)
+				upd = true
+			end
+		else
+			_, falive =
+			job.out:read(job.unbuffered,
+				function(line, eof)
+					upd = true
+					if eof then
+						outlim = 0
 					end
+					data_buffered(job, line, eof)
 				end
-
-				job.data.linecount = job.data.linecount + 1
-				if #line > 0 then
-					job.data.bytecount = job.data.bytecount + #line
-					table.insert(job.data, line)
-				end
-		end)
-
-		if outlim > 0 then
-			outlim = outlim - 1
+				)
 		end
+
+		outlim = outlim - 1
 	end
 
--- stderr
+-- stderr, always linebuffered
 	falive = true
 	while job.err and falive do
 		_, falive = job.err:read(false, job.err_buffer)
@@ -1357,7 +1407,6 @@ local function finish_job(job, code)
 	end
 
 	table.remove(activejobs, i)
-	upd = true
 end
 
 local function process_jobs()
@@ -1366,6 +1415,7 @@ local function process_jobs()
 		local job = activejobs[i]
 		local running, code = root:pwait(job.pid)
 		if not running then
+			upd = true
 			finish_job(job, code)
 -- the '10' here should really be balanced against time and not a set amount of
 -- reads / lines but the actual buffer sizes are up for question to balance
@@ -1399,8 +1449,16 @@ function cat9.import_job(v)
 	end
 	v.bar_color = tui.colors.ui
 	v.view = v.data
+	v.line_offset = 0
+
+	if v.unbuffered == nil then
+		v.unbuffered = false
+	end
+
 	v.reset =
 	function(v)
+		v.wrap = true
+		v.line_offset = 0
 		v.data = {
 			bytecount = 0,
 			linecount = 0,
@@ -1417,6 +1475,7 @@ function cat9.import_job(v)
 			v.view = v.data
 		end
 	end
+
 	v.closure = {}
 	if not v.data then
 		v:reset()
