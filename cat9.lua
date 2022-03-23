@@ -22,6 +22,7 @@
 --  Data Processing:
 --    [ ] Pipelined  |   implementation
 --    [ ] Sequenced (a ; b ; c)
+--    [ ] Conditionally sequenced (a && b && c)
 --    [ ] Pipeline with MiM
 --    [ ] Copy command (job to clip, to file, to ..)
 --    [ ] Paste / drag and drop (add as 'job')
@@ -103,6 +104,7 @@ local alive = true
 
 function builtins.cd(step)
 	root:chdir(step)
+	cat9.scanner_path = nil
 	cat9.update_lastdir()
 end
 
@@ -152,10 +154,12 @@ function suggest.cd(args, raw)
 				function(res)
 					if res then
 						cat9.scanner.last = res
-						cat9.readline:suggest(
-							cat9.prefix_filter(res, flt, offset),
-							"substitute", "cd " .. prefix
-						)
+						local set = cat9.prefix_filter(res, flt, offset)
+						if #raw == 3 then
+							table.insert(set, 1, "..")
+							table.insert(set, 1, ".")
+						end
+						cat9.readline:suggest(set, "substitute", "cd " .. prefix, "/")
 					end
 				end
 			)
@@ -163,11 +167,12 @@ function suggest.cd(args, raw)
 	end
 
 	if cat9.scanner.last then
-		local suffix = args[2] and args[2] or ""
-		cat9.readline:suggest(
-			cat9.prefix_filter(cat9.scanner.last, flt, offset),
-			"substitute", "cd " .. prefix
-		)
+		local set = cat9.prefix_filter(cat9.scanner.last, flt, offset)
+		if #raw == 3 then
+			table.insert(set, 1, "..")
+			table.insert(set, 1, ".")
+		end
+		cat9.readline:suggest(set, "substitute", "cd " .. prefix, "/")
 	end
 end
 
@@ -585,6 +590,33 @@ cat9.dir_lut =
 }
 
 function builtins.copy(src, dst)
+-- src addressing modes to consider:
+-- #job(lineno,row,out,err)
+-- $clipboard
+-- $pick("str")
+
+	if type(src) == "table" then
+
+	elseif type(src) == "string" then
+
+-- any sort of incoming file stream
+	elseif type(src) == "userdata" then
+
+	else
+		lastmsg = "copy >src< dst : unknown source type"
+	end
+
+-- dst addressing modes to consider:
+-- #job(in)
+	if type(dst) == "table" then
+
+-- this is only ever resolved to file
+	elseif type(src) == "userdata" then
+
+	else
+		lastmsg = "copy src >dst. : unknown destination type"
+	end
+
 -- #job(l1,l2..l5) [clipboard, #jobid, ./file]
 end
 
@@ -601,6 +633,25 @@ end
 
 function handlers.recolor()
 	cat9.redraw()
+end
+
+-- these are accessible to the copy command via $res
+function handlers.paste(self, str)
+	table.insert(cat9.resources.clipboard, str)
+end
+
+function handlers.bchunk_in(self, blob, id)
+	cat9.resources.bin = {id, blob}
+end
+
+function handlers.bchunk_out(self, blob, id)
+	cat9.resources.bout = {id, blob}
+end
+
+function handlers.state_in(self, blob)
+end
+
+function handlers.state_out(self, blob)
 end
 
 function handlers.resized()
@@ -1034,15 +1085,7 @@ local function build_ptable(t)
 		end
 	end
 	}
-	ptable[t.OP_MUL    ] = {
-	function(s, v)
-		if #v > 0 and type(v[#v]) == "string" then
-			v[#v] = v[#v] .. "*"
-		else
-			table.insert(v, "*");
-		end
-	end
-	}
+	ptable[t.OP_MUL    ] = {function(s, v) table.insert(v, "*"); end}
 
 -- ( ... ) <- context properties (env, ...)
 	ptable[t.OP_LPAR   ] = {
@@ -1616,6 +1659,7 @@ end
 
 function cat9.prefix_filter(intbl, prefix, offset)
 	local res = {}
+
 	for _,v in ipairs(intbl) do
 		if string.sub(v, 1, #prefix) == prefix then
 			local str = v
@@ -1636,6 +1680,8 @@ function cat9.prefix_filter(intbl, prefix, offset)
 			return {}
 		end
 	end
+
+	table.sort(res)
 	return res
 end
 
@@ -1828,10 +1874,16 @@ function cat9.parse_string(rl, line)
 	end
 	lastmsg = nil
 
--- build job
-	local commands = tokens_to_commands(tokens, types)
-	if not commands or #commands == 0 then
-		return
+-- build job, special case !! as prefix for 'verbatim string'
+	local commands
+	if string.sub(line, 1, 2) == "!!" then
+		commands = {"!!"}
+		commands[2] = string.sub(line, 3)
+	else
+		commands = tokens_to_commands(tokens, types)
+		if not commands or #commands == 0 then
+			return
+		end
 	end
 
 -- this prevents the builtins from being part of a pipeline which might
