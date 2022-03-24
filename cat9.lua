@@ -55,8 +55,10 @@
 --    [ ] format string to jobbar
 --
 --  Refactor:
---    [ ] split out builtins/cat9/helpers/... (lash.scriptdir / cat9 / ... )
---    [ ] separate out token parser and make it less ugly
+--    [ ] split out parser/dispatch
+--    [ ] split out wm-management
+--    [ ] split out input handlers
+--    [ ] split out job control
 --
 local builtins   = {}   -- commands that we handle here
 local suggest    = {}   -- resolve / helper functions for completion based on first command
@@ -97,456 +99,25 @@ local config =
 
 local cat9 =  -- vtable for local support functions
 {
-	scanner = {} -- state for asynch completion scanning
+	scanner = {}, -- state for asynch completion scanning
+	config = config
 }
+
 local root = lash.root
 local alive = true
 
-function builtins.cd(step)
-	root:chdir(step)
-	cat9.scanner_path = nil
-	cat9.update_lastdir()
+-- all builtin commands are split out into a separate 'command-set' dir
+-- in order to have interchangeable sets for
+local function load_builtins(base)
+	builtins = {}
+	suggest = {}
+	local fptr, msg = loadfile(lash.scriptdir .. "./cat9/" .. base)
+	if not fptr then
+		return false, msg
+	end
+	local init = fptr()
+	init(cat9, root, builtins, suggest)
 end
-
-function suggest.cd(args, raw)
-	if #args > 2 then
-		lastmsg = "cd - too many arguments"
-		return
-
-	elseif #args < 1 then
-		return
-	end
-
--- the rules for generating / filtering a file/directory completion set is
--- rather nuanced and shareable so that is abstracted here.
---
--- returned 'path' is what we actually pass to find
--- prefix is what we actually need to add to the command for the value to be right
--- flt is what we need to strip from the returned results to show in the completion box
--- and offset is where to start in each result string to just present what's necessary
---
--- so a dance to get:
---
---    cd ../fo<tab>
---          lder1
---          lder2
---
--- instead of:
---   cd ../fo<tab>
---          ../folder1
---          ../folder2
---
--- and still comleting to:
---  cd ../folder1
---
--- for both / ../ ./ and implicit 'current directory'
---
-	local path, prefix, flt, offset = cat9.file_completion(args[2])
-	if cat9.scanner.active and cat9.scanner.active ~= path then
-		cat9.stop_scanner()
-	end
-
-	if not cat9.scanner.active then
-		if not cat9.scanner_path or (cat9.scanner_path and cat9.scanner_path ~= path) then
-			cat9.scanner_path = path
-			cat9.set_scanner(
-				{"/usr/bin/find", "find", path, "-maxdepth", "1", "-type", "d"},
-				function(res)
-					if res then
-						cat9.scanner.last = res
-						local set = cat9.prefix_filter(res, flt, offset)
-						if #raw == 3 then
-							table.insert(set, 1, "..")
-							table.insert(set, 1, ".")
-						end
-						cat9.readline:suggest(set, "substitute", "cd " .. prefix, "/")
-					end
-				end
-			)
-		end
-	end
-
-	if cat9.scanner.last then
-		local set = cat9.prefix_filter(cat9.scanner.last, flt, offset)
-		if #raw == 3 then
-			table.insert(set, 1, "..")
-			table.insert(set, 1, ".")
-		end
-		cat9.readline:suggest(set, "substitute", "cd " .. prefix, "/")
-	end
-end
-
-local sigmsg = "[default:kill,hup,user1,user2,stop,quit,continue]"
-local oksig = {
-	kill = true,
-	hup = true,
-	user1 = true,
-	user2 = true,
-	stop  = true,
-	quit = true,
-	continue = true
-}
-
--- alias for handover into vt100
-builtins["!"] =
-function(...)
--- check first argument here for (arcan) (x11) (wayland) and setup
--- the other proper handover
-	cat9.term_handover("join-r", ...)
-end
-
-local function shc_helper(mode, ...)
-	local args = {...}
-	local argv = {"/bin/sh", "sh", "-c"}
-	local str  = ""
-
--- check processing directive
-	lastarg = args[1]
-
-	argv[4] = table.concat(args, " ")
-	local job = cat9.setup_shell_job(argv, mode)
-	if job then
-		job.short = "subshell"
-		job.raw = argv[4]
-	end
-	return job
-end
-
-builtins["!!"] =
-function(...)
-	shc_helper("rwe", ...)
-end
-
-builtins["p!"] =
-function(...)
---
--- note: we can't just run pty line-buffered like normal, there is timing
--- behaviour and hold/wait like scenarios that will bite immediately, e.g. ssh
--- asking for prompt.
---
--- This is also where we should have an attachable vt100 parser in multiple
--- stages, from just 'cursor + motion' to full on terminal. This helper
--- should probably be part of proper (lash.tty_setup(wnd) -> function(data))
---
-	local job = shc_helper("pty", ...)
-	if job then
-		job.isatty = true
-		job.unbuffered = true
-	end
-end
-
-builtins["v!"] =
-function(...)
-	cat9.term_handover("join-d", ...)
-end
-
-function builtins.config(key, val)
-	if not key or not config[key] then
-		lastmsg = "missing / unknown config key"
-		return
-	end
-
-	if not val then
-		lastmsg = "missing value to set for key " .. key
-		return
-	end
-
-	local t = type(config[key])
-
-	if t == "boolean" then
-		if val == "true" or val == "1" then
-			config[key] = true
-		elseif val == "false" or val == "0" then
-			config[key] = false
-		else
-			lastmsg = key .. " expects boolean (true | false)"
-		end
-	elseif t == "number" then
-		local num = tonumber(val)
-		if not num then
-			lastmsg = " invalid number value"
-		else
-			config[key] = num
-		end
-	elseif t == "string" then
-		config[key] = val
-	end
-end
-
-function suggest.signal(args, raw)
-
-end
-
-function suggest.config(args, raw)
-	if not cat9.config_cache then
-		cat9.config_cache = {}
-		for k,_ in pairs(config) do
-			table.insert(cat9.config_cache, k)
-		end
-		table.sort(cat9.config_cache)
-	end
-
-	local set = cat9.config_cache
-
-	if #args == 2 then
--- actually finished with the argument but hasn't begun on the next
-		if string.sub(raw, #raw) == " " then
-			local cfg = config[args[2]]
-			lastmsg = cfg ~= nil and tostring(cfg) .. " (" .. type(cfg) .. ")" or ""
-			set = {}
-		else
-			set = cat9.prefix_filter(cat9.config_cache, args[2])
-		end
-		cat9.readline:suggest(set, "word")
-		return
-
-	elseif #args == 1 then
-		cat9.readline:suggest(set, "insert")
-		return
-	end
-
--- entering the value, just set the message to current/type
-	if not config[args[2]] then
-		lastmsg = "unknown key"
-		return
-	end
-
-	local last = config[args[2]]
-	lastmsg = tostring(last) .. " (" .. type(last) .. ")"
-end
-
-function builtins.forget(...)
-	local forget =
-	function(job, sig)
-		local found
-		for i,v in ipairs(lash.jobs) do
-			if (type(job) == "number" and v.id == job) or v == job then
-				job = v
-				found = true
-				table.remove(lash.jobs, i)
-				break
-			end
-		end
--- kill the thing, can't remove it yet but mark it as hidden
-		if found and job.pid then
-			root:psignal(job.pid, sig)
-			job.hidden = true
-		end
-	end
-
-	local set = {...}
-	local signal = "hup"
-	local lastid
-	local in_range = false
-
-	for _, v in ipairs(set) do
-		if type(v) == "table" then
-			if in_range then
-				in_range = false
-				if lastid then
-					local start = lastid+1
-					for i=lastid,v.id do
-						forget(i, signal)
-					end
-				end
-			end
-			lastid = v.id
-			forget(v, signal)
-		elseif type(v) == "string" then
-			if v == ".." then
-				in_range = true
-			elseif v == "all" then
-				while #lash.jobs > 0 do
-					local item = table.remove(lash.jobs, 1)
-					if item.pid then
-						root:psignal(item.pid, signal)
-						item.hidden = true
-					end
-				end
-			else
-				signal = v
-			end
-		end
-	end
-end
-
-builtins["repeat"] =
-function(job, cmd)
-	if type(job) ~= "table" then
-		lastmsg = "repeat >#jobid< [flush] missing job reference"
-		return
-	end
-
-	if job.pid then
-		lastmsg = "job still running, terminate first (signal #jobid kill)"
-		return
-	end
-
-	if not job["repeat"] then
-		lastmsg = "job not repeatable"
-		return
-	end
-
-	if cmd and type(cmd) == "string" then
-		if cmd == "flush" then
-			job:reset()
-		end
-	end
-
-	job["repeat"](job)
-end
-
-suggest["repeat"] =
-function(arg, raw)
-	local set = {}
-	for _,v in ipairs(lash.jobs) do
-		if not v.pid then
-			table.insert(set, tostring(v.id))
-		end
-	end
-
-	cat9.readline:suggest(set, "word")
-end
-
-function builtins.signal(job, sig)
-	if not sig then
-		lastmsg = string.format("signal (#jobid or pid) >signal< missing: %s", sigmsg)
-		return
-	end
-
-	if type(sig) == "string" then
-		if not oksig[sig] then
-			lastmsg = string.format(
-				"signal (#jobid or pid) >signal< unknown signal (%s) %s", sig, sigmsg)
-			return
-		end
-	elseif type(sig) == "number" then
-	else
-		lastmsg = "signal (#jobid or pid) >signal< unexpected type (string or number)"
-		return
-	end
-
-	local pid
-	if type(job) == "table" then
-		if not job.pid then
-			lastmsg = "signal #jobid - job is not tied to a process"
-			return
-		end
-		pid = job.pid
-	elseif type(job) == "number" then
-		pid = job
-	else
-		pid = tonumber(job)
-		if not pid then
-			lastmsg = "signal (#jobid or pid) - unexpected type (" .. type(job) .. ")"
-			return
-		end
-	end
-
-	root:psignal(pid, sig)
-end
-
-function builtins.open(file, ...)
-	local trigger
-	local opts = {...}
-	local spawn = false
-
-	if type(file) == "table" and file.data then
-		trigger =
-		function(wnd)
-			local arg = {read_only = true}
-			for _,v in ipairs(opts) do
-				if v == "hex" then
-					arg[config.hex_mode] = true
-				end
-			end
-			wnd:revert()
-			buf = table.concat(file.view, "")
-
-			if not spawn then
-				wnd:bufferview(buf, cat9.reset, arg)
-			else
-				wnd:bufferview(buf,
-					function()
-						wnd:close()
-					end, arg
-				)
-			end
-		end
--- this can only be done through handover,
--- some special sources: #.clip
-	else
-		trigger =
-		function(wnd)
-		end
-		spawn = "new"
-		return
-	end
-
-	for _,v in ipairs(opts) do
-		if cat9.dir_lut[v] then
-			spawn = cat9.dir_lut[v]
-		end
-	end
-
-	if spawn then
-		root:new_window("tui",
-			function(par, wnd)
-				if not wnd then
-					lastmsg = "window request rejected"
-					return
-				end
-				trigger(wnd)
-			end, spawn
-		)
-		return false
-	else
-		cat9.readline = nil
-		trigger(root)
-		return true
-	end
-end
-
--- use a shared lookup table so we can re-use it for completion helper
-function cat9.build_viewlut()
-	local lut = {}
-	function lut.out(set, i, job)
-		job.view = job.data
-		return i + 1
-	end
-	lut.stdout = lut.out
-
-	function lut.err(set, i, job)
-		job.view = job.errbuffer
-		return i + 1
-	end
-	lut.stderr = lut.err
-
-	function lut.exp(set, i, job)
-		job.expanded = -1
-		return i + 1
-	end
-	lut.expand = lut.exp
-
-	function lut.tog(set, i, job)
-		if job.expanded ~= nil then
-			job.expanded = nil
-		else
-			job.expanded = -1
-		end
-	end
-	lut.toggle = lut.tog
-
-	function lut.col(set, i, job)
-		job.expanded = nil
-	end
-	lut.collapse = lut.col
-	cat9.viewlut = lut
-
--- also need scroll, filter, ...
-end
-
-cat9.build_viewlut()
 
 function cat9.run_lut(cmd, tgt, lut, set)
 	local i = 1
@@ -565,59 +136,6 @@ function cat9.run_lut(cmd, tgt, lut, set)
 			i = lut[opt](set, i, tgt)
 		end
 	end
-end
-
-function builtins.view(job, ...)
-	if type(job) ~= "table" then
-		lastmsg = "view >jobid< - invalid job reference"
-		return
-	end
-
-	cat9.run_lut("view", job, cat9.viewlut, {...})
-	cat9.flag_dirty()
-end
-
--- new window requests can add window hints on tabbing, sizing and positions,
--- those are rather annoying to write so have this alias table
-cat9.dir_lut =
-{
-	new = "split",
-	tnew = "split-t",
-	lnew = "split-l",
-	dnew = "split-d",
-	vnew = "split-d",
-	tab = "tab"
-}
-
-function builtins.copy(src, dst)
--- src addressing modes to consider:
--- #job(lineno,row,out,err)
--- $clipboard
--- $pick("str")
-
-	if type(src) == "table" then
-
-	elseif type(src) == "string" then
-
--- any sort of incoming file stream
-	elseif type(src) == "userdata" then
-
-	else
-		lastmsg = "copy >src< dst : unknown source type"
-	end
-
--- dst addressing modes to consider:
--- #job(in)
-	if type(dst) == "table" then
-
--- this is only ever resolved to file
-	elseif type(src) == "userdata" then
-
-	else
-		lastmsg = "copy src >dst. : unknown destination type"
-	end
-
--- #job(l1,l2..l5) [clipboard, #jobid, ./file]
 end
 
 -- use for monotonic scrolling (drag+select on expanded?) and dynamic prompt
@@ -1472,6 +990,11 @@ local function process_jobs()
 	return upd
 end
 
+-- expected to return nil (block_reset) to fit in with expectations of builtins
+function cat9.add_message(msg)
+	lastmsg = msg
+end
+
 function cat9.update_lastdir()
 	local wd = root:chdir()
 	local path_limit = 8
@@ -1607,7 +1130,7 @@ function cat9.term_handover(cmode, ...)
 -- is a fair point to migrate to another vt100 implementation.
 	local run =
 	function()
-		env["ARCAN_TERMINAL_EXEC"] = table.concat(argv, "")
+		env["ARCAN_TERMINAL_EXEC"] = table.concat(argv, " ")
 		root:new_window("handover",
 		function(wnd, new)
 			if not new then
@@ -1892,6 +1415,16 @@ function cat9.parse_string(rl, line)
 		return builtins[commands[1]](unpack(commands, 2))
 	end
 
+-- validation, all entries in commands should be strings now - otherwise the
+-- data needs to be extracted as argument (with certain constraints on length,
+-- ...)
+	for _,v in ipairs(commands) do
+		if type(v) ~= "string" then
+			lastmsg = "parsing error in commands, non-string in argument list"
+			return
+		end
+	end
+
 -- throw in that awkward and uncivilised unixy 'application name' in argv
 	local lst = string.split(commands[1], "/")
 	table.insert(commands, 2, lst[#lst])
@@ -1903,6 +1436,7 @@ function cat9.parse_string(rl, line)
 end
 
 -- use mouse-forward mode, implement our own selection / picking
+load_builtins("default.lua")
 root:set_handlers(handlers)
 cat9.reset()
 cat9.update_lastdir()

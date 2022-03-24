@@ -78,7 +78,10 @@ shell that then runs the textual command-line shell in lash. Alas the shell
 will be kindof useless. This is where Cat9 comes in.
 
 copy or link cat9.lua to $HOME/.arcan/lash/default.lua (make the directory
-should it not exist. Next time you start the arcan console like above, it
+should it not exist) as well as the cat9 subdirectory so that there is a
+$HOME/.arcan/lash/cat9.
+
+Next time you start the arcan console like above, it
 should switch to cat9s ruleset. You can also run it immediately with the
 shell command:
 
@@ -93,27 +96,121 @@ beginning of the cat9 script file.
 Use
 ===
 
-The capabilities and use of Cat9 is still very much in flux, most default
-inputs and behaviour should be similar to that of any other readline based cli
-shell.
+Most strings entered will be executed as non-tty jobs. To run something
+specifically as a tty (ncurses or other 'terminal-tui' like application), mark
+it with a ! to spawn a new window.
 
-Some special controls apply:
+    !vim
 
- ( builtins )
+Window creation and process environment can be controlled (e.g. vertical
+split):
+
+    v!vim
+
+To forego any parsing or internal pipelineing and run the entire line verbatim
+(forwarded to sh -c) use !!:
+
+		!!find /usr |grep share
+
+Certain clients really want a pty, though there is no high-level vt100+ decoder
+yet.
+
+    p!vim
+
+# Builtins
+
+There are a number of builtin commands. These are defined by a basedir, filled
+with separate files per builtin command along with a chainloader that match
+the name of the basedir:
+
+    cat9/default.lua
+		cat9/default/cd.lua
+		...
+
+The reason for this structure is to allow lash to be reused for building CLI
+frontends to other tools and maintain a unified look and feel. You can also
+modify/extend this to mimic the behaviour of other common shells. The ones
+included by default are as follows:
+
+## Signal
+
+    signal #jobid or pid [signal: kill, hup, user1, user2, stop, quit, continue]
+
+The signal commands send a signal to an active running job or a process based
+on a process identifier (number).
+
+## Config
+
+    config key value
+
+The config options changes the runtime shell behavior configuration.
+
+## Open
+
+    open file or #job [hex] [new | vnew | tab]
+
+This tries to open the contents of [file] through a designated handler. For the
+job mode specifically, it either switches the window to a text or hex buffer.
+It is also possible to pop it out as a new window or tab.
+
+## Forget
+
+    forget #job1 #job2
+		forget #job1  .. #job3
+		forget all
+
+This will remove the contents and tracking of previous jobs, either by
+specifying one or several distinct jobs, or a range. If any marked job is still
+active and tied to a running process, that process will be killed.
+
+## Repeat
+
+    repeat #job [flush]
+
+This will re-execute a previously job that has completed. If the flush argument
+is specified, any collected data from its previous run will be discarded.
+
+## Cd
+
+    cd directory
+
+## View
+
+    view #job stream [opt1] [opt2] .. [optn]
+
+Changes job presentation based on the provided set of options.
+The possible options are:
+
+* scroll n - move the starting presentation offset from the last line read
+             to n lines or bytes backwards.
+
+* out or stdout - set the presentation buffer to be what is read from the
+                  standard output of the job.
+
+* err or stderr - set the presentation buffer to be twhat is read from the
+                  standard error output of the job.
+
+* col or collapse - only present a small number of lines.
+
+* exp or expand - present as much of the buffer as possible.
+
+* tog or toggle - switch between col and exp mode
+
+* filter ptn - present lines that match the lua pattern defined by 'ptn'
 
 Backstory
 =========
 
 Arcan is what some would call an ambitious project that takes more than a few
-minutes to wrap your head around. Among its many subprojects is that of SHMIF
-and TUI. SHMIF is an IPC system -- initially to compartment and sandbox media
-parsing that quickly evolved to encompass all process communication needed for
+minutes to wrap your head around. Among its many subprojects are SHMIF and TUI.
+SHMIF is an IPC system -- initially to compartment and sandbox media parsing
+that quickly evolved to encompass all inter-process communication needed for
 something of the scale of a desktop.
 
 TUI is an API layered on top of SHMIF client side, along with a text packing
 format (TPACK). It was first used to write a terminal emulator that came
-bundled with arcan, and then evolved towards replacing all uses of ECMA-48 and
-related escape codes, as well as pty kvrnel and userspace layers. The end goal
+bundled with Arcan, and then evolved towards replacing all uses of ECMA-48 and
+related escape codes, as well as kernel-tty and userspace layers. The end goal
 being completely replacing all traces of ncurses, readline, in-band signalling
 and so on -- to get much needed improved CLIs and TUIs that cooperate with an
 outer graphical desktop shell rather than obliviously combat it.
