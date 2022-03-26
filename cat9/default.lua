@@ -7,7 +7,8 @@ local commands =
 	'open.lua',
 	'term.lua',
 	'signal.lua',
-	'view.lua'
+	'view.lua',
+	'repeat.lua'
 }
 
 return
