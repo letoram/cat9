@@ -8,7 +8,7 @@ local function build_lut()
 	lut.stdout = lut.out
 
 	function lut.err(set, i, job)
-		job.view = job.errbuffer
+		job.view = job.err_buffer
 		return i + 1
 	end
 	lut.stderr = lut.err

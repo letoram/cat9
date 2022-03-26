@@ -5,9 +5,6 @@
 
 -- TODO
 --
---  Bugs:
---    [ ] STDIO leaks on popen for closed slots(!) see with ssh.
---
 --  Job Control:
 --    [ ] 'on data' hook (trigger jobid data pattern trigger)
 --    [ ] 'on finished' hook (trigger jobid ok trigger)
@@ -28,8 +25,7 @@
 --    [ ] Paste / drag and drop (add as 'job')
 --        -> but mark it as something without data if bchunk (and just hold descriptor)
 --  Exec:
---    [ ] exec with embed
---    [ ] Open (media, handover exec to afsrv_decode)
+--    [p] Open (media, handover exec to afsrv_decode)
 --        [ ]   -> autodetect arcan appl (lwa)
 --        [ ]   -> state scratch folder (tar for state store/restore) +
 --                 use with browser
@@ -53,6 +49,7 @@
 --    [ ] history / alias / config persistence
 --    [ ] format string to prompt
 --    [ ] format string to jobbar
+--    [ ] keyboard job selected / stepping
 --
 --  Refactor:
 --    [ ] split out parser/dispatch
@@ -95,6 +92,9 @@ local config =
 	job_pad        = 1, -- space after job data and next job header
 	collapsed_rows = 1, -- number of rows of contents to show when collapsed
 	autoclear_empty = true, -- forget jobs without output
+
+	open_spawn_default = "embed", -- split, tab, ...
+	open_embed_collapsed_rows = 4
 }
 
 local cat9 =  -- vtable for local support functions
@@ -453,7 +453,7 @@ local function draw_job(x, y, cols, rows, job)
 -- presentation so no vertical space is wasted.
 --
 	if job.expanded then
-		local limit = job.expanded > 0 and job.expanded or (rows - y)
+		local limit = (job.expanded > 0) and job.expanded or (rows - y - 2)
 
 -- draw as much as we can to fill screen, the wrapped_job is supposed to return
 -- 'the right data' (multiple possible streams) wrapped based on contents and
@@ -468,11 +468,28 @@ local function draw_job(x, y, cols, rows, job)
 			limit = lc - 1
 		end
 
-	-- drawing from the most recent to the least recent (within the window)
-	-- adjusting for possible data-offset ('index')
+-- drawing from the most recent to the least recent (within the window)
+-- adjusting for possible data-offset ('index')
 		for i=limit,0,-1 do
 			root:write_to(config.content_offset, y+i+1, lst[lc - (limit - i)], dataattr)
 			rowtojob[y+i+1] = job
+		end
+
+-- some cache event to block the event+resize propagation might be useful,
+-- another detail here is that wrapping at smaller than width and offsetting
+-- col anchor if the job has stdio tracked (to show both graphical and text
+-- output which is kindof useful for testing / developing graphical apps)
+		if job.wnd then
+			limit = rows - y - 4
+			job.wnd:hint(root,
+			{
+				anchor_row = y+1,
+				anchor_col = x,
+				max_rows = limit,
+				max_cols = cols,
+				hidden = false -- set if the job is actually out of view
+			}
+			)
 		end
 
 		return y + limit + 2
@@ -481,6 +498,17 @@ local function draw_job(x, y, cols, rows, job)
 -- save the currently drawn rows for a reverse mapping (mouse action)
 	local ey = y + job.collapsed_rows
 	local line = #job.data
+
+	if job.wnd then
+		job.wnd:hint(root,
+		{
+			anchor_row = y+1,
+			max_rows = job.collapsed_rows,
+			max_cols = cols,
+			hidden = false -- set if the job is actually out of view
+		}
+		)
+	end
 
 	for i=y,ey do
 		rowtojob[i] = job
@@ -931,6 +959,11 @@ end
 
 local function finish_job(job, code)
 	job.exit = code
+
+	if job.wnd then
+		job.wnd:close()
+		job.wnd = nil
+	end
 
 	if job.out then
 		flush_job(job, true, 1)
