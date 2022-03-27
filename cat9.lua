@@ -100,7 +100,8 @@ local config =
 local cat9 =  -- vtable for local support functions
 {
 	scanner = {}, -- state for asynch completion scanning
-	config = config
+	config = config,
+	env = {}
 }
 
 local root = lash.root
@@ -532,7 +533,7 @@ function cat9.redraw()
 	draw_cookie = draw_cookie + 1
 	root:erase()
 
--- prority:
+-- priority:
 -- alerts > active jobs > job history + scrolling offset
 	local left = rows
 
@@ -813,6 +814,7 @@ function cat9.lookup_job(s, v)
 end
 
 function cat9.lookup_res(s, v)
+	print("lookup", s[2][2])
 end
 
 function cat9.idtojob(id)
@@ -861,7 +863,7 @@ function cat9.reset()
 					end
 				end
 			end
-			table.insert(lash.history, 1, line)
+			table.insert(lash.history, line) -- 1, line)
 			if not block_reset then
 				cat9.reset()
 			end
@@ -1143,6 +1145,10 @@ function cat9.term_handover(cmode, ...)
 	local argtbl = {...}
 	local argv = {}
 	local env = {}
+
+	for k,v in pairs(cat9.env) do
+		env[k] = v
+	end
 
 	local dynamic = false
 	local runners = {}

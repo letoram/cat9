@@ -11,6 +11,21 @@ local dir_lut =
 	embed = "embed"
 }
 
+-- can't (yet) launch shmif- clients directly so start with hard-coded proto
+-- since the proto=list to mask out dependencies won't work, compromise might
+-- be having this in decode
+local mime_direct =
+{
+	["application/pdf"] = "proto=pdf",
+}
+
+local mime_prefix =
+{
+	video = "proto=media",
+	image = "proto=image",
+	text  = "proto=text"
+}
+
 local function fname_to_decode(cat9, dstenv, fn, closure)
 	if cat9.scanner_active then
 		cat9.stop_scanner()
@@ -19,12 +34,26 @@ local function fname_to_decode(cat9, dstenv, fn, closure)
 	cat9.set_scanner(
 		{"/usr/bin/file", "file", "-b", "--mime-type", fn},
 		function(res)
+			local proto
 			if res and res[1] then
-				if string.sub(res[1], 1, 5) == "video" then
-					dstenv["ARCAN_ARG"] = "file=" .. fn
+				if mime_direct[res[1]] then
+					proto = mime_direct[res[1]]
+					print("mime-direct", res[1])
+				else
+					for k,v in pairs(mime_prefix) do
+						if string.sub(res[1], 1, #k) == k then
+							proto = v
+							break
+						end
+					end
+				end
+
+				if proto then
+					dstenv["ARCAN_ARG"] = proto .. ":file=" .. fn
+					print(dstenv["ARCAN_ARG"])
 					closure()
 				else
-					cat9.add_message("open(" .. fn .. ") - unknown type: " .. res)
+					cat9.add_message("open(" .. fn .. ") - unknown type: " .. res[1])
 				end
 			end
 		end
@@ -41,7 +70,6 @@ local function spawn_trigger(cat9, root, wndtype, spawn, trigger)
 					cat9.add_message("window request rejected")
 					return
 				end
-				print("in new window", wnd, trigger)
 				return trigger(par, wnd)
 			end, spawn
 		)

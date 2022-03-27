@@ -4,12 +4,17 @@ local function shc_helper(mode, ...)
 	local args = {...}
 	local argv = {"/bin/sh", "sh", "-c"}
 	local str  = ""
+	local env = root:getenv()
+
+	for k,v in pairs(cat9) do
+		env[k] = v
+	end
 
 -- check processing directive
 	lastarg = args[1]
 
 	argv[4] = table.concat(args, " ")
-	local job = cat9.setup_shell_job(argv, mode)
+	local job = cat9.setup_shell_job(argv, mode, env)
 	if job then
 		job.short = "subshell"
 		job.raw = argv[4]
