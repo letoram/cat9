@@ -814,7 +814,24 @@ function cat9.lookup_job(s, v)
 end
 
 function cat9.lookup_res(s, v)
-	print("lookup", s[2][2])
+-- first major use: $env
+	local base = s[2][2]
+	local split_i = string.find(base, "/")
+	local split = ""
+
+	if split_i then
+		split = string.sub(base, split_i)
+		base = string.sub(base, 1, split_i-1)
+	end
+
+	local env = root:getenv(base)
+	if not env then
+		env = cat9.env[base]
+	end
+
+	if env then
+		table.insert(v, env .. split)
+	end
 end
 
 function cat9.idtojob(id)
