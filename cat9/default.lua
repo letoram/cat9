@@ -8,7 +8,8 @@ local commands =
 	'term.lua',
 	'signal.lua',
 	'view.lua',
-	'repeat.lua'
+	'repeat.lua',
+	'env.lua'
 }
 
 return
