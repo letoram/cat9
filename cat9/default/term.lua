@@ -46,6 +46,10 @@ function(...)
 -- stages, from just 'cursor + motion' to full on terminal. This helper
 -- should probably be part of proper (lash.tty_setup(wnd) -> function(data))
 --
+-- the terminal option would probably be best solved with running through an
+-- afsrv_terminal that unpacks inputs from stdin, runs into its state machine
+-- and the tpacks the results back.
+--
 	local job = shc_helper("pty", ...)
 	if job then
 		job.isatty = true

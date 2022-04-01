@@ -5,18 +5,27 @@ function builtins.forget(...)
 	local forget =
 	function(job, sig)
 		local found
+
 		for i,v in ipairs(lash.jobs) do
 			if (type(job) == "number" and v.id == job) or v == job then
 				job = v
 				found = true
-				table.remove(lash.jobs, i)
 				break
 			end
 		end
--- kill the thing, can't remove it yet but mark it as hidden
-		if found and job.pid then
+
+		if not found then
+			return
+		end
+
+-- kill the thing, can't remove it yet but mark it as hidden - main
+-- loop will discovered the signalled process and then clean/remove
+-- that way
+		if job.pid then
 			root:psignal(job.pid, sig)
 			job.hidden = true
+		else
+			cat9.remove_job(job)
 		end
 	end
 
@@ -43,11 +52,8 @@ function builtins.forget(...)
 				in_range = true
 			elseif v == "all" then
 				while #lash.jobs > 0 do
-					local item = table.remove(lash.jobs, 1)
-					if item.pid then
-						root:psignal(item.pid, signal)
-						item.hidden = true
-					end
+					local job = lash.jobs[1]
+					forget(job, signal)
 				end
 			else
 				signal = v
