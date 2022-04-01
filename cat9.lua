@@ -76,7 +76,6 @@ local idcounter = 0     -- for referencing old outputs as part of pipeline/expan
 local config =
 {
 	autoexpand_latest = true,
-	autoexpand_ratio  = 0.5,
 	autosuggest = true, -- start readline with tab completion enabled
 	debug = true,
 
@@ -100,8 +99,17 @@ local config =
 local cat9 =  -- vtable for local support functions
 {
 	scanner = {}, -- state for asynch completion scanning
+	env = {},
+
+-- properties exposed for other commands
 	config = config,
-	env = {}
+	activejobs = activejobs,
+	jobs = lash.jobs,
+
+	resources = {}, -- used for clipboard and bchunk ops
+
+	visible = true,
+	focused = true
 }
 
 local root = lash.root
@@ -154,17 +162,36 @@ function handlers.recolor()
 	cat9.redraw()
 end
 
+function handlers.visibility(self, visible, focus)
+	cat9.visible = visible
+	cat9.focused = focus
+	cat9.redraw()
+	cat9.flag_dirty()
+end
+
 -- these are accessible to the copy command via $res
 function handlers.paste(self, str)
 	table.insert(cat9.resources.clipboard, str)
 end
 
-function handlers.bchunk_in(self, blob, id)
-	cat9.resources.bin = {id, blob}
+--
+-- two options for this, one is a prefill copy [$blobin] >test.id
+-- and move cursor in there and prepare prompt (possibly save last / current line)
+--
+function handlers.bchunk_out(self, blob, id)
+	if type(cat9.resources.bout) == "function" then
+		cat9.resources.bout(id, blob)
+	else
+		cat9.resources.bout = {id, blob}
+	end
 end
 
-function handlers.bchunk_out(self, blob, id)
-	cat9.resources.bout = {id, blob}
+function handlers.bchunk_in(self, blob, id)
+	if type(cat9.resources.bin) == "function" then
+		cat9.resources.bin(id, blob)
+	else
+		cat9.resources.bin = {id, blob}
+	end
 end
 
 function handlers.state_in(self, blob)
@@ -273,6 +300,11 @@ function cat9.get_prompt()
 	table.insert(res, tui.attr({bold = false, fc = tui.colors.label}))
 	table.insert(res, "[" .. tostring(#activejobs) .. "]")
 
+	if not cat9.focused then
+		table.insert(res, wdstr)
+		return res
+	end
+
 -- decent spot for some more analytics - is there a .git directory etc.
 	table.insert(res, tui.attr({bold = false, fc = tui.colors.passive}))
 	table.insert(res, os.date("[%H:%M:%S]"))
@@ -379,22 +411,7 @@ local function draw_job_header(x, y, cols, rows, job)
 	end
 
 	local memory_use = function()
-		if job.data.bytecount > 0 then
-			local kb = job.data.bytecount / 1024
-			if kb > 1024 then
-				local mb = kb / 1024
-				if mb > 1024 then
-					local gb = mb / 1024
-					return string.format("[%.2f GiB]", gb)
-				else
-					return string.format("[%.2f MiB]", mb)
-				end
-			else
-				return string.format("[%.2f KiB]", kb)
-			end
-		else
-			return "[No Data]"
-		end
+		return "[" .. cat9.bytestr(job.data.bytecount) .. "]"
 	end
 
 	local hdr_data = function()
@@ -603,16 +620,12 @@ function cat9.redraw()
 -- update content-hint for scrollbars
 end
 
-local builtin_completion = {}
-for k, _ in pairs(builtins) do
-	table.insert(builtin_completion, k)
-end
-table.sort(builtin_completion)
-
 --
 -- Higher level parsing
 --
 --  take a stream of tokens from the lexer and use to build a command table
+--  this is a fair place to add other forms of expansion, e.g. why[1..5].jpg or
+--  why*.jpg.
 --
 local ptable, ttable
 
@@ -650,10 +663,21 @@ local function build_ptable(t)
 				return "missing opening ("
 			end
 			local stop = #v
-			for i=v.in_lpar+1,stop do
-				print(i, v[i])
+			local pargs =
+			{
+				parg = true
+			}
+
+			local start = v.in_lpar+1
+			local ntc = (stop + 1) - start
+
+			while ntc > 0 do
+				local rem = table.remove(v, start)
+				table.insert(pargs, rem)
+				ntc = ntc - 1
 			end
--- now we can build env table from the contents between the ()
+			table.insert(v, pargs)
+
 			v.in_lpar = nil
 		end
 	}
@@ -804,6 +828,28 @@ local function rl_verify(self, prefix, msg, suggest)
 	end
 end
 
+-- rough estimate for bars / log output etc.
+function cat9.bytestr(count)
+	if count <= 0 then
+		return "No Data"
+	end
+
+	local kb = count / 1024
+	if kb < 1024 then
+		return "< 1 KiB"
+	end
+
+	local mb = kb / 1024
+	if mb > 1024 then
+		local gb = mb / 1024
+		return string.format("[%.2f GiB]", gb)
+	else
+		return string.format("[%.2f MiB]", mb)
+	end
+
+	return string.format("[%.2f KiB]", kb)
+end
+
 function cat9.lookup_job(s, v)
 	local job = cat9.idtojob(s[2][2])
 	if job then
@@ -880,7 +926,7 @@ function cat9.reset()
 					end
 				end
 			end
-			table.insert(lash.history, line) -- 1, line)
+			table.insert(lash.history, 1, line)
 			if not block_reset then
 				cat9.reset()
 			end
@@ -1006,36 +1052,42 @@ local function finish_job(job, code)
 				lastmsg = string.format(
 				"#%d failed, code: %d (%s)", job.id and job.id or 0, job.exit, job.raw)
 			end
-			for i, v in ipairs(lash.jobs) do
-				if v == job then
-					table.remove(lash.jobs, i)
-					break
-				end
-			end
+			cat9.remove_job(job)
 		end
 
 -- otherwise switch to error output
 		job.view = job.err_buffer
 		job.bar_color = tui.colors.alert
 	end
-
-	table.remove(activejobs, i)
 end
 
 local function process_jobs()
 	local upd = false
+
 	for i=#activejobs,1,-1 do
 		local job = activejobs[i]
-		local running, code = root:pwait(job.pid)
-		if not running then
-			upd = true
-			finish_job(job, code)
+
+-- other jobs are tracked through separate timers/event handlers, only ext.
+-- processes are intended to be polled right now
+		if job.pid then
+			local running, code = root:pwait(job.pid)
+			if not running then
+				upd = true
+
+-- finish might remove the job, but that is if we autoclear, if not the entry
+-- should be removed manually or jobs will 'ghost' away
+				finish_job(job, code)
+				if activejobs[i] == job then
+					table.remove(activejobs, i)
+				end
+
 -- the '10' here should really be balanced against time and not a set amount of
 -- reads / lines but the actual buffer sizes are up for question to balance
 -- responsiveness of the shell vs throughput. If it is visible and in focus we
 -- should perhaps allow more.
-		elseif job.out then
-			upd = flush_job(job, false, 10) or upd
+			elseif job.out then
+				upd = flush_job(job, false, 10) or upd
+			end
 		end
 	end
 
@@ -1115,7 +1167,7 @@ function cat9.import_job(v)
 	end
 -- track both as active (for processing) and part of the tracked
 -- jobs (for reset and UI layouting)
-	if v.pid then
+	if v.pid or v.check_status then
 		table.insert(activejobs, v)
 	elseif not v.code then
 		v.code = 0
@@ -1131,15 +1183,12 @@ function cat9.import_job(v)
 
 -- mark latest one as expanded, and the previously 'latest' back to collapsed
 	if config.autoexpand_latest and not v.hidden then
-		if latestjob then
-			latestjob.expanded = nil
-			latestjob = v
+		if cat9.latestjob then
+			cat9.latestjob.expanded = nil
+			cat9.latestjob = v
 		end
-		latestjob = v
-
--- don't let latest 'fill' screen though, allocate a ratio
-		local _, rows = root:dimensions()
-		v.expanded = math.ceil(rows * config.autoexpand_ratio)
+		cat9.latestjob = v
+		v.expanded = -1
 	end
 
 	if v.out then
@@ -1147,6 +1196,35 @@ function cat9.import_job(v)
 	end
 
 	table.insert(lash.jobs, v)
+end
+
+function cat9.remove_job(job)
+	local jc = #cat9.jobs
+
+	cat9.remove_match(cat9.jobs, job)
+	cat9.remove_match(cat9.activejobs, job)
+
+	local found = jc ~= #cat9.jobs
+
+	if cat9.latestjob ~= job then
+		return found
+	end
+
+	cat9.latestjob = nil
+
+	if not config.autoexpand_latest then
+		return found
+	end
+
+	for i=#lash.jobs,1,-1 do
+		if not lash.jobs[i].hidden then
+			cat9.latestjob = lash.jobs[i]
+			cat9.latestjob.expanded = -1
+			break
+		end
+	end
+
+	return found
 end
 
 -- nop right now, the value later is to allow certain symbols to expand with
@@ -1163,8 +1241,17 @@ function cat9.term_handover(cmode, ...)
 	local argv = {}
 	local env = {}
 
+-- copy in global env
 	for k,v in pairs(cat9.env) do
 		env[k] = v
+	end
+
+-- any special !(a,b,c) options go here
+	if type(argtbl[1]) == "table" then
+		local penv = table.remove(argtbl, 1)
+		for _,v in ipairs(penv) do
+			print(penv)
+		end
 	end
 
 	local dynamic = false
@@ -1436,6 +1523,15 @@ function cat9.setup_shell_job(args, mode, envv)
 	return job
 end
 
+function cat9.remove_match(tbl, ent)
+	for i, v in ipairs(tbl) do
+		if v == ent then
+			table.remove(tbl, i)
+			return
+		end
+	end
+end
+
 function cat9.parse_string(rl, line)
 	if rl then
 		cat9.readline = nil
@@ -1493,6 +1589,12 @@ end
 
 -- use mouse-forward mode, implement our own selection / picking
 load_builtins("default.lua")
+local builtin_completion = {}
+for k, _ in pairs(builtins) do
+	table.insert(builtin_completion, k)
+end
+table.sort(builtin_completion)
+
 root:set_handlers(handlers)
 cat9.reset()
 cat9.update_lastdir()
@@ -1500,6 +1602,7 @@ cat9.update_lastdir()
 -- import job-table and add whatever metadata we want to track
 local old = lash.jobs
 lash.jobs = {}
+cat9.jobs = lash.jobs
 for _, v in ipairs(old) do
 	cat9.import_job(v)
 end
