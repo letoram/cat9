@@ -78,7 +78,7 @@ local function spawn_trigger(cat9, root, wndtype, spawn, trigger)
 -- it is now in the hand of the display server
 	else
 		cat9.readline = nil
-		trigger(root)
+		trigger(root, root)
 		return true
 	end
 end

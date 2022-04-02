@@ -3,7 +3,7 @@
 -- Reference:   https://github.com/letoram/cat9
 -- See also:    HACKING.md
 
--- TODO
+-- TODO (for first release)
 --
 --  Job Control:
 --    [ ] 'on data' hook (trigger jobid data pattern trigger)
@@ -12,8 +12,6 @@
 --
 --  CLI help:
 --    [ ] lastmsg queue rather than one-slot for important bits
---    [ ] visibility/focus state into loop for prompt
---    [ ] .desktop like support for open, scanner for bin folders etc.
 --    [ ] track most used directories for execution and expose to cd h [set]
 --
 --  Data Processing:
@@ -21,19 +19,17 @@
 --    [ ] Sequenced (a ; b ; c)
 --    [ ] Conditionally sequenced (a && b && c)
 --    [ ] Pipeline with MiM
---    [ ] Copy command (job to clip, to file, to ..)
---    [ ] Paste / drag and drop (add as 'job')
---        -> but mark it as something without data if bchunk (and just hold descriptor)
+--    [p] Copy command (job to clip, to file, to ..)
+--
 --  Exec:
 --    [p] Open (media, handover exec to afsrv_decode)
+--        [ ] .desktop like support for open, scanner for bin folders etc.
 --        [ ]   -> autodetect arcan appl (lwa)
---        [ ]   -> state scratch folder (tar for state store/restore) +
---                 use with browser
+--        [ ]   -> state scratch folder (tar for state store/restore) + use with browser
 --    [ ] arcan-net integration (scan, ...)
 --    [ ] env control (env=bla in=#4) action_a | (env=bla2) action_b
 --        should translate to "take the contents from job 4, map as input and run action_a)"
 --    [ ] pattern expand from file glob
---    [ ] nbio- import into popen arg+env
 --
 --  [ ] data dependent expand print:
 --      [ ] hex
@@ -48,8 +44,8 @@
 --    [ ] alias
 --    [ ] history / alias / config persistence
 --    [ ] format string to prompt
---    [ ] format string to jobbar
---    [ ] keyboard job selected / stepping
+--    [ ] format string to job-bar
+--    [ ] keyboard job selected / stepping (escape out of readline)
 --
 --  Refactor:
 --    [ ] split out parser/dispatch
@@ -83,7 +79,7 @@ local config =
 -- and the binding value will be handled just as typed (with csel substituted for cursor
 -- position)
 	m1_click = "view #csel toggle",
-	m2_click = "open #csel",
+	m2_click = "open #csel tab hex",
 	m3_click = "open #csel hex",
 
 	hex_mode = "hex_detail_meta", -- hex, hex_detail hex_detail_meta
@@ -93,7 +89,17 @@ local config =
 	autoclear_empty = true, -- forget jobs without output
 
 	open_spawn_default = "embed", -- split, tab, ...
-	open_embed_collapsed_rows = 4
+	open_embed_collapsed_rows = 4,
+
+	clipboard_job = true,     -- create a new job that absorbs all paste action
+
+	readline =
+	{
+		cancellable   = true,   -- cancel removes readline until we starts typing
+		forward_meta  = false,  -- don't need meta-keys, use default rl behaviour
+		forward_paste = true,   -- ignore builtin paste behaviour
+		forward_mouse = true,   -- needed for clicking outside the readline area
+	}
 }
 
 local cat9 =  -- vtable for local support functions
@@ -114,9 +120,10 @@ local cat9 =  -- vtable for local support functions
 
 local root = lash.root
 local alive = true
+local builtin_completions
 
 -- all builtin commands are split out into a separate 'command-set' dir
--- in order to have interchangeable sets for
+-- in order to have interchangeable sets for expanding cli/argv of others
 local function load_builtins(base)
 	builtins = {}
 	suggest = {}
@@ -126,6 +133,12 @@ local function load_builtins(base)
 	end
 	local init = fptr()
 	init(cat9, root, builtins, suggest)
+
+	builtin_completion = {}
+	for k, _ in pairs(builtins) do
+		table.insert(builtin_completion, k)
+	end
+	table.sort(builtin_completion)
 end
 
 function cat9.run_lut(cmd, tgt, lut, set)
@@ -171,7 +184,26 @@ end
 
 -- these are accessible to the copy command via $res
 function handlers.paste(self, str)
-	table.insert(cat9.resources.clipboard, str)
+	if config.clipboard_job then
+		if not cat9.clipboard_job then
+			cat9.clipboard_job = cat9.import_job({short = "clipboard", raw = "clipboard [paste]"})
+		end
+		local job = cat9.clipboard_job
+
+-- have the paste behave as line-buffered input
+		if #str > 0 then
+			for _,v in ipairs(string.split(str, "\n")) do
+				job.data.bytecount = job.data.bytecount + #str
+				job.data.linecount = job.data.linecount + 1
+				table.insert(job.data, v .. "\n")
+			end
+		end
+
+		cat9.redraw()
+		cat9.flag_dirty()
+	else
+		cat9.readline:suggest({str}, "insert")
+	end
 end
 
 --
@@ -182,6 +214,7 @@ function handlers.bchunk_out(self, blob, id)
 	if type(cat9.resources.bout) == "function" then
 		cat9.resources.bout(id, blob)
 	else
+		cat9.add_message("request for outbound binary blob")
 		cat9.resources.bout = {id, blob}
 	end
 end
@@ -190,6 +223,7 @@ function handlers.bchunk_in(self, blob, id)
 	if type(cat9.resources.bin) == "function" then
 		cat9.resources.bin(id, blob)
 	else
+		cat9.add_message("got incoming binary blob")
 		cat9.resources.bin = {id, blob}
 	end
 end
@@ -367,7 +401,7 @@ local function get_wrapped_job(job, rows, col)
 		end
 	end
 
-	return job.view
+	return job.view and job.view or {}
 end
 
 --
@@ -665,9 +699,11 @@ local function build_ptable(t)
 			local stop = #v
 			local pargs =
 			{
+				types = t,
 				parg = true
 			}
 
+-- slice out the arguments within (
 			local start = v.in_lpar+1
 			local ntc = (stop + 1) - start
 
@@ -815,7 +851,7 @@ local function suggest_for_context(prefix, tok, types)
 	end
 end
 
-local function rl_verify(self, prefix, msg, suggest)
+function cat9.readline_verify(self, prefix, msg, suggest)
 	if suggest then
 		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true)
 		suggest_for_context(prefix, tokens, types)
@@ -899,14 +935,6 @@ function cat9.idtojob(id)
 	end
 end
 
-local readline_opts =
-{
-	forward_mouse = true,
-	cancellable = true, -- cancel removes readline until we starts typing
-	forward_meta = false,
-	verify = rl_verify
-}
-
 function cat9.reset()
 	root:revert()
 	root:set_flags(tui.flags.mouse_full)
@@ -930,7 +958,7 @@ function cat9.reset()
 			if not block_reset then
 				cat9.reset()
 			end
-		end, readline_opts)
+		end, config.readline)
 
 	cat9.readline:set(laststr);
 	cat9.readline:set_prompt(cat9.get_prompt())
@@ -987,16 +1015,20 @@ local function flush_job(job, finish, limit)
 	local falive = true
 
 -- cap to outlim number of read-calls (at most) or until feof
-	while outlim > 0 and (finish or falive) do
+	while job.out and (outlim > 0 and (finish or falive)) do
 		if job.unbuffered then
 			line, falive = job.out:read(true)
 			if line then
 				data_unbuffered(job, line)
 				upd = true
+				outlim = outlim - 1
+			else
+				outlim = 0
 			end
+-- this form will just flush all buffered in once so no reason for limit
 		else
 			_, falive =
-			job.out:read(job.unbuffered,
+			job.out:read(false,
 				function(line, eof)
 					upd = true
 					if eof then
@@ -1005,18 +1037,22 @@ local function flush_job(job, finish, limit)
 					data_buffered(job, line, eof)
 				end
 				)
+			outlim = 0
 		end
-
-		outlim = outlim - 1
 	end
 
--- stderr, always linebuffered
+-- stderr, always linebuffered and direct flush into - the outlim is to make
+-- sure a dangling lock on the err-pipe won't have us spin forever
+	outlim = finish and 1 or limit
 	falive = true
-	while job.err and falive do
+	local count = #job.err_buffer
+	while job.err and falive and outlim > 0 do
 		_, falive = job.err:read(false, job.err_buffer)
-		if not finish then
+		if #job.err_buffer == count then
 			break
 		end
+		count = #job.err_buffer
+		outlim = outlim - 1
 	end
 
 	return upd
@@ -1030,11 +1066,25 @@ local function finish_job(job, code)
 		job.wnd = nil
 	end
 
-	if job.out then
+	if job.out or job.err then
 		flush_job(job, true, 1)
-		job.out:close()
-		job.out = nil
+
+		if job.out then
+			job.out:close()
+			job.out = nil
+		end
+
+		if job.err then
+			job.err:close()
+			job.err = nil
+		end
+
 		job.pid = nil
+	end
+
+	if job.inp then
+		job.inp:close()
+		job.inp = nil
 	end
 
 -- allow whatever 'on completion' handler one might attach to trigger
@@ -1085,7 +1135,7 @@ local function process_jobs()
 -- reads / lines but the actual buffer sizes are up for question to balance
 -- responsiveness of the shell vs throughput. If it is visible and in focus we
 -- should perhaps allow more.
-			elseif job.out then
+			elseif job.out or job.err then
 				upd = flush_job(job, false, 10) or upd
 			end
 		end
@@ -1118,7 +1168,6 @@ function cat9.import_job(v)
 		v.collapsed_rows = config.collapsed_rows
 	end
 	v.bar_color = tui.colors.ui
-	v.view = v.data
 	v.line_offset = 0
 
 	if v.unbuffered == nil then
@@ -1138,6 +1187,7 @@ function cat9.import_job(v)
 			v.data.histogram[i] = 0
 		end
 		local oe = v.err_buffer
+
 		v.err_buffer = {}
 		if v.view == oe then
 			v.view = v.err_buffer
@@ -1150,6 +1200,7 @@ function cat9.import_job(v)
 	if not v.data then
 		v:reset()
 	end
+	v.view = v.data
 	if not v.cookie then
 		v.cookie = 0
 	end
@@ -1191,11 +1242,18 @@ function cat9.import_job(v)
 		v.expanded = -1
 	end
 
+-- keep linefeeds, we strip ourselves
 	if v.out then
 		v.out:lf_strip(false)
 	end
 
+-- if no stdout was provided, but stderr was, set that as the default view
+	if not v.out and v.err then
+		v.view = v.err_buffer
+	end
+
 	table.insert(lash.jobs, v)
+	return v
 end
 
 function cat9.remove_job(job)
@@ -1224,6 +1282,10 @@ function cat9.remove_job(job)
 		end
 	end
 
+	if cat9.clipboard_job == job then
+		cat9.clipboard_job = nil
+	end
+
 	return found
 end
 
@@ -1240,18 +1302,28 @@ function cat9.term_handover(cmode, ...)
 	local argtbl = {...}
 	local argv = {}
 	local env = {}
+	local open_mode = ""
 
 -- copy in global env
 	for k,v in pairs(cat9.env) do
 		env[k] = v
 	end
 
--- any special !(a,b,c) options go here
+-- any special !(a,b,c) options go here, this is tied to each | group,
 	if type(argtbl[1]) == "table" then
-		local penv = table.remove(argtbl, 1)
-		for _,v in ipairs(penv) do
-			print(penv)
+		local t = table.remove(argtbl, 1)
+		if not t.parg then
+			cat9.add_message("spurious #job argument in subshell command")
+			return
 		end
+
+		for _,v in ipairs(t) do
+			if v == "err" then
+				open_mode = "e"
+			end
+		end
+
+-- more unpacking to be done here, especially overriding env
 	end
 
 	local dynamic = false
@@ -1268,18 +1340,37 @@ function cat9.term_handover(cmode, ...)
 		table.insert(runners, ok)
 	end
 
--- Dispatched when the queue of runners is empty - argv is passed in env
--- due to afsrv_terminal being used to implement the vt100 machine. This
--- is a fair point to migrate to another vt100 implementation.
+-- Dispatched when the queue of runners is empty - argv is passed in env due to
+-- afsrv_terminal being used to implement the vt100 machine. This is a fair
+-- place to migrate to another vt100 implementation.
 	local run =
 	function()
 		env["ARCAN_TERMINAL_EXEC"] = table.concat(argv, " ")
+		if string.find(open_mode, "e") then
+			env["ARCAN_ARG"] =
+				env["ARCAN_ARG"] and (env["ARCAN_ARG"] .. ":keep_stderr") or "keep_stderr"
+		end
+
 		root:new_window("handover",
 		function(wnd, new)
 			if not new then
 				return
 			end
-			wnd:phandover("/usr/bin/afsrv_terminal", "", {}, env)
+
+			local inp, out, err, pid =
+				wnd:phandover("/usr/bin/afsrv_terminal", open_mode, {}, env)
+
+			if #open_mode > 0 then
+				local job =
+				{
+					pid = pid,
+					inp = inp,
+					err = err,
+					out = out
+				}
+				cat9.import_job(job)
+			end
+
 		end, cmode)
 	end
 
@@ -1589,11 +1680,7 @@ end
 
 -- use mouse-forward mode, implement our own selection / picking
 load_builtins("default.lua")
-local builtin_completion = {}
-for k, _ in pairs(builtins) do
-	table.insert(builtin_completion, k)
-end
-table.sort(builtin_completion)
+config.readline.verify = cat9.readline_verify
 
 root:set_handlers(handlers)
 cat9.reset()
