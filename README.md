@@ -222,7 +222,7 @@ Arcan is what some would call an ambitious project that takes more than a few
 minutes to wrap your head around. Among its many subprojects are SHMIF and TUI.
 SHMIF is an IPC system -- initially to compartment and sandbox media parsing
 that quickly evolved to encompass all inter-process communication needed for
-something of the scale of a desktop.
+something on the scale of a full desktop.
 
 TUI is an API layered on top of SHMIF client side, along with a text packing
 format (TPACK). It was first used to write a terminal emulator that came

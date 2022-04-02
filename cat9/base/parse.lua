@@ -6,9 +6,10 @@
 --  why*.jpg.
 --
 --  exports: .parse_string(rl, line)
+--  lookup_res
 --
 return
-function(cat9, root)
+function(cat9, root, config)
 
 local ptable, ttable
 local function build_ptable(t)
@@ -199,13 +200,34 @@ local function suggest_for_context(prefix, tok, types)
 	end
 end
 
+function cat9.lookup_res(s, v)
+-- first major use: $env
+	local base = s[2][2]
+	local split_i = string.find(base, "/")
+	local split = ""
+
+	if split_i then
+		split = string.sub(base, split_i)
+		base = string.sub(base, 1, split_i-1)
+	end
+
+	local env = root:getenv(base)
+	if not env then
+		env = cat9.env[base]
+	end
+
+	if env then
+		table.insert(v, env .. split)
+	end
+end
+
 function cat9.readline_verify(self, prefix, msg, suggest)
 	if suggest then
 		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true)
 		suggest_for_context(prefix, tokens, types)
 	end
 
-	laststr = msg
+	cat9.laststr = msg
 	local tokens, msg, ofs, types = lash.tokenize_command(msg, true)
 	if msg then
 		return ofs
@@ -230,7 +252,7 @@ function cat9.parse_string(rl, line)
 		return
 	end
 
-	laststr = ""
+	cat9.laststr = ""
 	local tokens, msg, ofs, types = lash.tokenize_command(line, true)
 	if msg then
 		lastmsg = msg

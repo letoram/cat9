@@ -22,7 +22,7 @@
 --
 
 return
-function(cat9, root)
+function(cat9, root, config)
 --
 -- run [path (str | argtbl) and trigger closure with the dataset when completed.
 -- should only be used for singleton short-lived, line-separated fast commands
