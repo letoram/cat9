@@ -31,6 +31,7 @@
 return
 function(cat9, root)
 
+local idcounter = 0 -- for referencing old outputs as part of pipeline/expansion
 local activejobs = {}
 local config = cat9.config
 cat9.activejobs = activejobs
