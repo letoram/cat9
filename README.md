@@ -81,9 +81,8 @@ copy or link cat9.lua to $HOME/.arcan/lash/default.lua (make the directory
 should it not exist) as well as the cat9 subdirectory so that there is a
 $HOME/.arcan/lash/cat9.
 
-Next time you start the arcan console like above, it
-should switch to cat9s ruleset. You can also run it immediately with the
-shell command:
+Next time you start the arcan console like above, it should switch to cat9s
+ruleset. You can also run it immediately with the shell command:
 
     shell cat9
 
@@ -197,6 +196,24 @@ The possible options are:
 * tog or toggle - switch between col and exp mode
 
 * filter ptn - present lines that match the lua pattern defined by 'ptn'
+
+## Copy
+
+    copy src dst
+
+The copy command is used to copy data in and out of Cat9 itself, such as taking
+the output of a previous job and storing it in a file or into another running
+job.
+
+By default, src and dst are treated as just names with normal semantics for
+absolute or relative paths. Depending on a prefix used, the role can change:
+
+Using # will treat it as a job reference.
+
+Using pick: will treat it as a request to an outer graphical shell (i.e. your
+wm) to provide a file, optionally with an extension hint:
+
+    copy pick:iso test.iso
 
 Backstory
 =========
