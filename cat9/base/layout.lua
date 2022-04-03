@@ -1,16 +1,20 @@
+--
+-- this sets the window event handler for:
+--  recolor, visibility, resized
+--
 -- exposes:
+--   flag_dirty()    - contents have been updated (new data on jobs, ...)
+--   redraw()        - clear grid and redraw contents
+--   get_prompt()    - return a table of attributes/strings for the current prompt
+--   id_to_job(id)   - resolve a numeric id (#1) to the corresponding job table
+--   xy_to_job(x, y) - resolve the job at a specific coordinate
+--   xy_to_hdr       - test if the specific xy hits a job on the job header bar
+--   xy_to_data      - test if the specific xy hits a job in its data region
 --
--- idtojob
--- lookup_job
--- xy_to_hdr
--- xy_to_data
---
-
 return function(cat9, root, config)
 
 -- for mouse selection, when a job is rendered its rows are registered
 local rowtojob   = {}
-local selectedjob = nil -- used for mouse-motion and cursor-selection
 local handlers = cat9.handlers
 
 function handlers.recolor()
@@ -38,19 +42,13 @@ function handlers.resized()
 	cat9.redraw()
 end
 
-
-function cat9.lookup_job(s, v)
-	local job = cat9.idtojob(s[2][2])
-	if job then
-		table.insert(v, job)
-	else
-		return "no job matching ID " .. s[2][2]
-	end
+function cat9.xy_to_job(x, y)
+	return rowtojob[y]
 end
 
-function cat9.idtojob(id)
+function cat9.id_to_job(id)
 	if string.lower(id) == "csel" then
-		return selectedjob
+		return cat9.selectedjob
 	end
 
 	local num = tonumber(id)
@@ -354,7 +352,7 @@ function cat9.redraw()
 
 -- walk active jobs and then jobs (not covered this frame) to figure out how many we fit
 	local lst = {}
-	local counter = (lastmsg ~= nil and 1 or 0)
+	local counter = (cat9.get_message(false) ~= nil and 1 or 0)
 	if cat9.readline then
 		counter = counter + 1
 	end
@@ -386,7 +384,7 @@ function cat9.redraw()
 
 -- reserve space for possible readline prompt and alert message
 	local last_row = 0
-	local reserved = (cat9.readline and 1 or 0) + (lastmsg and 1 or 0)
+	local reserved = (cat9.readline and 1 or 0) + (cat9.get_message(false) and 1 or 0)
 
 -- draw the jobs from bottom to top, this goes against the 'regular' prompt
 -- starts top until filled then always stays bottom.
@@ -406,8 +404,8 @@ function cat9.redraw()
 	end
 
 -- add the last notification / warning
-	if lastmsg then
-		root:write_to(0, last_row, lastmsg)
+	if cat9.get_message(false) then
+		root:write_to(0, last_row, cat9.get_message(false))
 		last_row = last_row + 1
 	end
 

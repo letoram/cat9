@@ -62,4 +62,20 @@ function builtins.forget(...)
 	end
 end
 
+function suggest.forget(args, raw)
+	local set = {}
+
+	if #args > 2 or #args == 2 and string.sub(raw, -1) == " "  then
+		cat9.readline:suggest({"flush"}, "word")
+		return
+	end
+
+	for _,v in ipairs(lash.jobs) do
+		if not v.pid and not v.hidden then
+			table.insert(set, "#" .. tostring(v.id))
+		end
+	end
+
+	cat9.readline:suggest(set, "word")
+end
 end

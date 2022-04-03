@@ -2,20 +2,64 @@
 -- Higher level parsing
 --
 --  take a stream of tokens from the lexer and use to build a command table
---  this is a fair place to add other forms of expansion, e.g. why[1..5].jpg or
---  why*.jpg.
 --
---  exports: .parse_string(rl, line)
---  lookup_res
+--  exposes:
+--       parse_string(rl, line) - will both parse and trigger builtins/shell jobs
+--
+--       readline_verify(rl, prefix, msg, suggest) - run parse_string but
+--       just for providing parsing state feedback on input error, or emit
+--       completion suggestions.
+--
+--       expand_arg(dst, str, closure) - each argument in a command-line (as
+--       part of term- handover) can be passed through this before being
+--       forwarded, allowing each [str] to expand into something more by
+--       inserting into [dst].
+--
+--       The main use being something like test[0..9].jpg or `find /usr` that
+--       need to attach to a hidden job before it can be turned into a proper
+--       one.
+--
+--       If this happens, expand_arg is expected to invoke closure() when done
+--       and return a function that cancels the job if it fails. (incomplete).
 --
 return
 function(cat9, root, config)
 
+local function lookup_res(s, v)
+-- first major use: $env
+	local base = s[2][2]
+	local split_i = string.find(base, "/")
+	local split = ""
+
+	if split_i then
+		split = string.sub(base, split_i)
+		base = string.sub(base, 1, split_i-1)
+	end
+
+	local env = root:getenv(base)
+	if not env then
+		env = cat9.env[base]
+	end
+
+	if env then
+		table.insert(v, env .. split)
+	end
+end
+
+local function lookup_job(s, v)
+	local job = cat9.id_to_job(s[2][2])
+	if job then
+		table.insert(v, job)
+	else
+		return "no job matching ID " .. s[2][2]
+	end
+end
+
 local ptable, ttable
 local function build_ptable(t)
 	ptable = {}
-	ptable[t.OP_POUND  ] = {{t.NUMBER, t.STRING}, cat9.lookup_job} -- #sym -> [job]
-	ptable[t.OP_RELADDR] = {t.STRING, cat9.lookup_res}
+	ptable[t.OP_POUND  ] = {{t.NUMBER, t.STRING}, lookup_job} -- #sym -> [job]
+	ptable[t.OP_RELADDR] = {t.STRING, lookup_res}
 	ptable[t.SYMBOL    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.STRING    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.NUMBER    ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
@@ -93,7 +137,7 @@ local function tokens_to_commands(tokens, types, suggest)
 		end
 
 		if not suggest then
-			lastmsg = msg
+			cat9.add_message(msg)
 		end
 		return _, msg
 	end
@@ -191,33 +235,17 @@ local function suggest_for_context(prefix, tok, types)
 	end
 
 -- these can be delivered asynchronously, entirely based on the command
--- also need to prefix filter the first part of the token ..
+-- also need to prefix filter the first part of the token .. Force-inject
+-- an empty argument if we have added a space but not yet started on the
+-- first character.
 	if res[1] and cat9.suggest[res[1]] then
+		if string.sub(prefix, -1) == " " then
+			res[#res+1] = ""
+		end
 		cat9.suggest[res[1]](res, prefix)
 	else
 -- generic fallback? smosh whatever we find walking ., filter by taking
 -- the prefix and step back to whitespace
-	end
-end
-
-function cat9.lookup_res(s, v)
--- first major use: $env
-	local base = s[2][2]
-	local split_i = string.find(base, "/")
-	local split = ""
-
-	if split_i then
-		split = string.sub(base, split_i)
-		base = string.sub(base, 1, split_i-1)
-	end
-
-	local env = root:getenv(base)
-	if not env then
-		env = cat9.env[base]
-	end
-
-	if env then
-		table.insert(v, env .. split)
 	end
 end
 
@@ -255,10 +283,11 @@ function cat9.parse_string(rl, line)
 	cat9.laststr = ""
 	local tokens, msg, ofs, types = lash.tokenize_command(line, true)
 	if msg then
-		lastmsg = msg
+		cat9.add_message(msg)
 		return
 	end
-	lastmsg = nil
+-- dequeue
+	cat9.get_message(true)
 
 -- build job, special case !! as prefix for 'verbatim string'
 	local commands
@@ -283,7 +312,7 @@ function cat9.parse_string(rl, line)
 -- ...)
 	for _,v in ipairs(commands) do
 		if type(v) ~= "string" then
-			lastmsg = "parsing error in commands, non-string in argument list"
+			cat9.add_message("parsing error in commands, non-string in argument list")
 			return
 		end
 	end

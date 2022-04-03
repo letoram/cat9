@@ -170,8 +170,11 @@ local function finish_job(job, code)
 	if config.autoclear_empty and job.data.bytecount == 0 then
 		if #job.err_buffer == 0 then
 			if job.exit ~= 0 and not job.hidden then
-				lastmsg = string.format(
-				"#%d failed, code: %d (%s)", job.id and job.id or 0, job.exit, job.raw)
+				cat9.add_message(
+					string.format(
+						"#%d failed, code: %d (%s)", job.id and job.id or 0, job.exit, job.raw
+					)
+				)
 			end
 			cat9.remove_job(job)
 		end
@@ -220,7 +223,7 @@ function cat9.setup_shell_job(args, mode, envv)
 -- .in:stdin .env:key1=env;key2=env mycmd $2 arg ..
 	local inf, outf, errf, pid = root:popen(args, mode)
 	if not pid then
-		lastmsg = args[1] .. " failed in " .. line
+		cat9.add_message(args[1] .. " failed in " .. line)
 		return
 	end
 
@@ -286,10 +289,8 @@ function cat9.term_handover(cmode, ...)
 	for _,v in ipairs(argtbl) do
 		ok, msg = cat9.expand_arg(argv, v)
 		if not ok then
-			lastmsg = msg
+			cat9.add_message(msg)
 			return
-		elseif type(ok) == "function" then
-			dynamic = true
 		end
 		table.insert(runners, ok)
 	end
@@ -351,7 +352,7 @@ function cat9.term_handover(cmode, ...)
 		else
 			local ret, err = job()
 			if not ret then
-				lastmsg = err
+				cat9.add_message(err)
 			else
 				ret.closure = {step_job}
 			end
