@@ -34,9 +34,10 @@ redirect results to files just for reuse.
 (embed video)
 
 It is also designed with the intention of being able to frontend- legacy cli
-tools without much effort - the set of builtins that the shell provides can be
-contextually swapped; famously unfriendly tools can be worked around and
-integrated into your workflow as seemless as possible.
+tools with little effort - the set of builtins that the shell provides can be
+contextually swapped for something specific to working with some domain or tool
+specific context. In this way, famously unfriendly tools can be worked around
+and integrated into your workflow as seemless as possible.
 
 (embed video)
 
@@ -73,7 +74,8 @@ There are several to chose from, notable ones being:
 
 Then there is the much more humble 'console' that mimics the BSD/Linux console
 with just fullscreen and invisible tabs. Since it comes included with Arcan
-itself, we will go for that one:
+itself, we will go for that one. The way to actually start lash from within
+these vary, for console it is easy:
 
     arcan console lash
 
@@ -81,9 +83,17 @@ This should not only convince Arcan to setup a simple fullscreen graphical
 shell that then runs the textual command-line shell in lash. Alas the shell
 will be kindof useless. This is where Cat9 comes in.
 
+Underneath the surface it actually runs:
+
+    ARCAN_ARG=cli=lua afsrv_terminal
+
 copy or link cat9.lua to $HOME/.arcan/lash/default.lua (make the directory
 should it not exist) as well as the cat9 subdirectory so that there is a
 $HOME/.arcan/lash/cat9.
+
+Similarly, in durden it would be global/open/terminal=cli=lua and for
+safespaces, tack on cli=lua to the terminal spawn line, e.g.
+layers/current/terminal=cli=lua
 
 Next time you start the arcan console like above, it should switch to cat9s
 ruleset. You can also run it immediately with the shell command:
@@ -100,8 +110,8 @@ Use
 ===
 
 Most strings entered will be executed as non-tty jobs. To run something
-specifically as a tty (ncurses or other 'terminal-tui' like application),
-mark it with a ! to spawn a new window.
+specifically as a tty (ncurses or other 'terminal-tui' like application), mark
+it with a ! to spawn a new window.
 
     !vim
 
