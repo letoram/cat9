@@ -1,4 +1,5 @@
 local sigmsg = "[default:kill,hup,user1,user2,stop,quit,continue]"
+local signame = {"kill", "hup", "user1", "user2", "stop", "quit", "continue"}
 local oksig = {
 	kill = true,
 	hup = true,
@@ -46,6 +47,25 @@ function builtins.signal(job, sig)
 	end
 
 	root:psignal(pid, sig)
+end
+
+function suggest.signal(args, raw)
+	local set = {}
+	if #args > 3 then
+		cat9.add_message("signal #jobid signal : too many arguments")
+		return
+	end
+
+	if #args > 2 then
+		cat9.readline:suggest(cat9.prefix_filter(signame, args[3]), "word")
+		return
+	end
+
+	for _,v in ipairs(lash.jobs) do
+		if v.pid and not v.hidden then
+			table.insert(set, "#" .. tostring(v.id))
+		end
+	end
 end
 
 end

@@ -8,7 +8,7 @@ local config =
 {
 	autoexpand_latest = true,
 	autosuggest = true, -- start readline with tab completion enabled
-	debug = true,
+	debug = true, -- dump parsing output / data to the command-line
 
 -- all clicks can also be bound as m1_header_index_click where index is the item group,
 -- and the binding value will be handled just as typed (with csel substituted for cursor
@@ -16,8 +16,8 @@ local config =
 	m1_click = "view #csel toggle",
 	m2_click = "open #csel tab hex",
 	m3_click = "open #csel hex",
-
 	hex_mode = "hex_detail_meta", -- hex, hex_detail hex_detail_meta
+
 	content_offset = 1, -- columns to skip when drawing contents
 	job_pad        = 1, -- space after job data and next job header
 	collapsed_rows = 1, -- number of rows of contents to show when collapsed
@@ -27,6 +27,8 @@ local config =
 	open_embed_collapsed_rows = 4,
 
 	clipboard_job = true,     -- create a new job that absorbs all paste action
+
+	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
 
 	readline =
 	{
@@ -98,6 +100,7 @@ load_builtins("default.lua")
 
 config.readline.verify = cat9.readline_verify
 
+lash.root:set_flags(tui.flags.mouse)
 lash.root:set_handlers(cat9.handlers)
 cat9.reset()
 cat9.update_lastdir()

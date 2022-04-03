@@ -6,8 +6,13 @@ Job Control:
 - [ ] 'on failed' hook (trigger jobid errc trigger)
 
 CLI help:
-- [ ] lastmsg queue rather than one-slot for important bits
+- [p] lastmsg queue rather than one-slot for important bits
 - [ ] track most used directories for execution and expose to cd h [set]
+- [ ] r for search in word
+- [ ] actual helper for keybindings:
+      c+l = reset, d = cancel or delete word, t = swap prev.
+			b - left, f = right, k = cut to eol, u = cut to sol, p step hist b
+			n - step hist f, a home, e eol, w delete last word, tab completion,
 
 Data Processing:
 - [ ] Pipelined  |   implementation
@@ -37,7 +42,10 @@ Ui:
 - [ ] histogram viewing mode
 - [ ] job history scroll
 - [ ] alias
+- [ ] multicolumn mode (hmm, rowtoid need something)
 - [ ] history / alias / config persistence
 - [ ] format string to prompt
 - [ ] format string to job-bar
 - [ ] keyboard job selected / stepping (escape out of readline)
+- [ ] mouse select in buffer
+- [ ] powerline look (U+E0b0)

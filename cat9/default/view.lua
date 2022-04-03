@@ -47,8 +47,7 @@ function builtins.view(job, ...)
 		return
 	end
 
-	cat9.run_lut("view", job, viewlut, {...})
+	cat9.run_lut("view #job", job, viewlut, {...})
 	cat9.flag_dirty()
 end
-
 end

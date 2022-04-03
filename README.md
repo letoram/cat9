@@ -1,5 +1,8 @@
-About
-=====
+Cat9
+====
+
+What is it?
+===========
 
 Cat9 is a user shell script for LASH - a command-line shell that discriminates
 against terminal emulators, written in Lua. You probably have not heard of LASH
@@ -10,41 +13,41 @@ then runs a user provided script that actually provides most of the rules for
 how the command line is supposed to look and behave.
 
 That brings us back to Cat9, which is my such script. You can use it as is or
-remix it into something different that fits you. Think of it as a .bashrc that
-has much more to say about how things work.
+remix it into something different that fits you - see HACKING.md for more tips.
 
-On a cloudy day, it can look something like this:
+What can it do?
+===============
 
-![Cat9 Example](demo.gif)
+One of the bigger convenience, on top of being quite snappy, is being able to
+run and cleanly separate multiple concurrent jobs asynchronously, with the
+results from 'out' and 'err' being kept until you decide to forget it. At the
+same time, traditionally noisy tasks like changing directories are kept from
+polluting your view with irrelevant information.
 
- - 1. cd to folder.
- - 2. ls.
- - 3. cd to other folder.
- - 4. ls.
- - 5. expand / collapse.
- - 2. cat /dev/random.
- - 3. pause it.
- - 4. open in hexview (with completion popup).
+(embed video)
 
-Note that the command-line prompt live updates, and navigation history does not
-pollute the rest of the window. Jobs are asynchronous, capped to a 'short' view
-but can be expanded at will.
+This allows for neat visuals like changing layouts, reordering presentation,
+folding and unfolding. It also allows for reusing results of a previous job
+without thinking much about it - caching is the default and you don't need to
+redirect results to files just for reuse.
 
-When the desktop WM so permits, there are ways to cooperate and integrate:
+(embed video)
 
- - 1. set size.
- - 2. split out new terminal emulator horizontal.
- - 3. split out new terminal emulator vertical.
- - 4. drag job out to new window.
- - 5. copy job to clipboard.
+It is also designed with the intention of being able to frontend- legacy cli
+tools without much effort - the set of builtins that the shell provides can be
+contextually swapped; famously unfriendly tools can be worked around and
+integrated into your workflow as seemless as possible.
 
-![Cat9 WM Example](demo_wm.gif)
+(embed video)
 
-There is a lot more going on and more coming, but hopefully the above got you a
-little bit interested.
+It cooperates with your desktop window manager (should you have one), letting
+it take care of splitting out things into new windows or even embeddnig media
+or graphical application output into clipped regions of its own window.
+
+(embed video)
 
 Installation
-==================
+============
 
 Building and setting this up is currently not for the faint of heart. It might
 look simple at first glance, but going against the grain of decades of
@@ -57,9 +60,10 @@ source and, if you want it to replace your entire display server, also a pain
 to setup. Twice the fun.
 
 For our ends here, it works just fine as a window that looks strangely much
-like a terminal emulator would look, but its innards are entirely different. If
-you managed to build Arcan- you then need to start Arcan with a suitable window
-manager.
+like a terminal emulator would look, but its innards are entirely different.
+
+If you managed to build Arcan- to your liking, you then need to start Arcan
+with a suitable window manager.
 
 There are several to chose from, notable ones being:
 
@@ -96,8 +100,8 @@ Use
 ===
 
 Most strings entered will be executed as non-tty jobs. To run something
-specifically as a tty (ncurses or other 'terminal-tui' like application), mark
-it with a ! to spawn a new window.
+specifically as a tty (ncurses or other 'terminal-tui' like application),
+mark it with a ! to spawn a new window.
 
     !vim
 
@@ -116,7 +120,7 @@ yet.
 
     p!vim
 
-# Builtins
+## Builtins
 
 There are a number of builtin commands. These are defined by a basedir, filled
 with separate files per builtin command along with a chainloader that match
@@ -131,20 +135,20 @@ frontends to other tools and maintain a unified look and feel. You can also
 modify/extend this to mimic the behaviour of other common shells. The ones
 included by default are as follows:
 
-## Signal
+### Signal
 
     signal #jobid or pid [signal: kill, hup, user1, user2, stop, quit, continue]
 
 The signal commands send a signal to an active running job or a process based
 on a process identifier (number).
 
-## Config
+### Config
 
     config key value
 
 The config options changes the runtime shell behavior configuration.
 
-## Open
+### Open
 
     open file or #job [hex] [new | vnew | tab]
 
@@ -152,7 +156,7 @@ This tries to open the contents of [file] through a designated handler. For the
 job mode specifically, it either switches the window to a text or hex buffer.
 It is also possible to pop it out as a new window or tab.
 
-## Forget
+### Forget
 
     forget #job1 #job2
 		forget #job1  .. #job3
@@ -162,18 +166,18 @@ This will remove the contents and tracking of previous jobs, either by
 specifying one or several distinct jobs, or a range. If any marked job is still
 active and tied to a running process, that process will be killed.
 
-## Repeat
+### Repeat
 
     repeat #job [flush]
 
 This will re-execute a previously job that has completed. If the flush argument
 is specified, any collected data from its previous run will be discarded.
 
-## Cd
+### Cd
 
     cd directory
 
-## View
+### View
 
     view #job stream [opt1] [opt2] .. [optn]
 
@@ -197,7 +201,7 @@ The possible options are:
 
 * filter ptn - present lines that match the lua pattern defined by 'ptn'
 
-## Copy
+### Copy
 
     copy src dst
 

@@ -1,3 +1,6 @@
+-- defines the subset of window event handlers that implement the
+-- reactive user-input logic for keypresses, mouse actions as well
+-- as more abstract paste/binary drop.
 return
 
 function(cat9, root, config)
@@ -9,7 +12,7 @@ function handlers.mouse_motion(self, rel, x, y)
 		return
 	end
 
-	local job = cat9.rowtojob[y]
+	local job = cat9.xy_to_job(x, y)
 	local cols, rows = root:dimensions()
 
 -- deselect current unless the same
@@ -109,7 +112,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		function(...)
 			local str = string.format(...)
 			if config[str] then
-				parse_string(nil, config[str])
+				cat9.parse_string(nil, config[str])
 				return true
 			end
 		end
@@ -131,7 +134,7 @@ end
 
 function cat9.reset()
 	root:revert()
-	root:set_flags(tui.flags.mouse_full)
+	root:set_flags(config.mouse_mode)
 	cat9.setup_readline(root)
 end
 

@@ -1,5 +1,20 @@
+--
+-- misc convenience functions that do not for elsewhere:
+--
+--  exposes:
+--   update_lastdir(): grab the current dir from rootwnd -> cat9.lastdir
+--   add_message(msg): queue a message to be shown close to the readline
+--   get_message(deq) -> str: return the most important message queued, clear if deq is set
+--
+--   run_lut(cmd, tgt, lut, set):
+--    take a set of unordered options (n-indexed, like 'err', 'tog')
+--    match to a lut of [key = fptr(set, i, job)] and invoke all entries with
+--    a match.
+--
 return
 function(cat9, root, config)
+	local lastmsg
+
 	function cat9.remove_match(tbl, ent)
 	for i, v in ipairs(tbl) do
 		if v == ent then
@@ -25,8 +40,12 @@ function cat9.add_message(msg)
 	lastmsg = msg
 end
 
-function cat9.get_message()
-	return lastmsg
+function cat9.get_message(dequeue)
+	local old = lastmsg
+	if dequeue then
+		lastmsg = nil
+	end
+	return old
 end
 
 function cat9.run_lut(cmd, tgt, lut, set)
@@ -35,7 +54,7 @@ function cat9.run_lut(cmd, tgt, lut, set)
 		local opt = set[i]
 
 		if type(opt) ~= "string" then
-			lastmsg = string.format("view #job >...< %d argument invalid", i)
+			lastmsg = string.format("%s >...< %d argument invalid", cmd, i)
 			return
 		end
 
