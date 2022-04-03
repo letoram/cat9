@@ -61,22 +61,52 @@ local cat9 =  -- vtable for local support functions
 
 -- all builtin commands are split out into a separate 'command-set' dir
 -- in order to have interchangeable sets for expanding cli/argv of others
+local safe_builtins
+local safe_suggest
 local function load_builtins(base)
 	cat9.builtins = {}
 	cat9.suggest = {}
-	local fptr, msg = loadfile(lash.scriptdir .. "./cat9/" .. base)
+
+	local fptr, msg = loadfile(string.format("%s/cat9/%s.lua", lash.scriptdir, base))
 	if not fptr then
-		return false, msg
+		cat9.add_message(string.format("builtin: [" .. base .. "] failed to load: %s", msg))
+		return false
 	end
-	local init = fptr()
-	init(cat9, lash.root, cat9.builtins, cat9.suggest)
+	local set = fptr()
+
+	for _,v in ipairs(set) do
+		local fptr, msg = loadfile(string.format("%s/cat9/%s/%s", lash.scriptdir, base, v))
+		if fptr then
+			pcall(fptr(), cat9, lash.root, cat9.builtins, cat9.suggest)
+		else
+			cat9.add_message(string.format("builtin{%s:%s} failed to load: %s", base, v, msg))
+			return false
+		end
+	end
 
 	builtin_completion = {}
 	for k, _ in pairs(cat9.builtins) do
 		table.insert(builtin_completion, k)
 	end
 
+-- force-inject loading builtin set so swapping works ok
+	cat9.builtins["builtin"] =
+	function(a)
+		if not a or #a == 0 then
+			cat9.add_message("builtin - missing set name")
+			return
+		end
+
+		if not load_builtins(a) then
+			cat9.add_message(string.format(
+				"missing requested builtin set [%s] - revert to default.", a))
+			cat9.builtins = safe_builtins
+			cat9.suggest = safe_suggest
+		end
+	end
+
 	table.sort(builtin_completion)
+	return true
 end
 
 local function load_feature(name)
@@ -96,7 +126,9 @@ load_feature("misc.lua")    -- support functions that doesn't fit anywhere else
 load_feature("ioh.lua")     -- event handlers for display server device/state io
 
 -- use mouse-forward mode, implement our own selection / picking
-load_builtins("default.lua")
+load_builtins("default")
+safe_builtins = cat9.builtins
+safe_suggest = cat9.suggest
 
 config.readline.verify = cat9.readline_verify
 
