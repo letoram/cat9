@@ -186,6 +186,11 @@ is specified, any collected data from its previous run will be discarded.
 ### Cd
 
     cd directory
+		cd #job
+
+Change the current directory to the specified one, with regular absolute or
+relative syntax. It is also possible to cd back into the directory that was
+current when a specific job was created.
 
 ### View
 

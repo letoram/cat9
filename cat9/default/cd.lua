@@ -2,6 +2,15 @@ return
 function(cat9, root, builtins, suggest)
 
 function builtins.cd(step)
+	if type(step) == "table" then
+		if step.dir then
+			step = step.dir
+		else
+			cat9.add_message("job #" .. tostring(step.id) .. " doesn't have a working directory")
+			return
+		end
+	end
+
 	root:chdir(step)
 	cat9.scanner_path = nil
 	cat9.update_lastdir()
@@ -13,6 +22,18 @@ function suggest.cd(args, raw)
 		return
 
 	elseif #args < 1 then
+		return
+	end
+
+-- special case, job references
+	if string.sub(raw, 4, 4) == "#" then
+		local set = {}
+		for _,v in ipairs(lash.jobs) do
+			if v.dir and v.id then
+				table.insert(set, "#" .. tostring(v.id))
+			end
+		end
+		cat9.readline:suggest(set, "word")
 		return
 	end
 
