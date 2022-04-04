@@ -28,7 +28,7 @@ function(cat9, root, config)
 -- should only be used for singleton short-lived, line-separated fast commands
 -- used for tab completion
 --
-function cat9.set_scanner(path, closure)
+function cat9.set_scanner(path, cookie, closure)
 	cat9.stop_scanner()
 
 	local _, out, _, pid = root:popen(path, "r")
@@ -44,6 +44,7 @@ function cat9.set_scanner(path, closure)
 	cat9.scanner.pid = pid
 	cat9.scanner.closure = closure
 	cat9.scanner.active = path
+	cat9.scanner.pathcookie = cookie
 
 -- mark as hidden so it doesn't clutter the UI or consume job IDs but can still
 -- re-use event triggers an asynch processing
@@ -87,8 +88,58 @@ function cat9.stop_scanner()
 		cat9.scanner.closure()
 	end
 
+	cat9.scanner.cookie = nil
 	cat9.scanner.closure = nil
 	cat9.scanner.active = nil
+end
+
+-- the rules for generating / filtering a file/directory completion set is
+-- rather nuanced and shareable so that is abstracted here.
+--
+-- returned 'path' is what we actually pass to find
+-- prefix is what we actually need to add to the command for the value to be right
+-- flt is what we need to strip from the returned results to show in the completion box
+-- and offset is where to start in each result string to just present what's necessary
+--
+-- so a dance to get:
+--
+--    cd ../fo<tab>
+--          lder1
+--          lder2
+--
+-- instead of:
+--   cd ../fo<tab>
+--          ../folder1
+--          ../folder2
+--
+-- and still comleting to:
+--  cd ../folder1
+--
+-- for both / ../ ./ and implicit 'current directory'
+--
+function cat9.filedir_oracle(path, prefix, flt, offset, cookie, closure)
+-- cancel anything ongoing unless it is for the same path from the same source
+	if cat9.scanner.active and cat9.scanner.cookie ~= cookie then
+		cat9.stop_scanner()
+	end
+
+-- if the path is new it is time to rescan
+	if not cat9.scanner.active then
+		if not cat9.scanner.cookie or cat9.scanner.cookie ~= cookie then
+			cat9.set_scanner(path, cookie,
+			function(res)
+				if res then
+					cat9.scanner.last = res
+					closure(res)
+				end
+			end
+		)
+		end
+	end
+
+	if cat9.scanner.last then
+		closure(cat9.scanner.last)
+	end
 end
 
 -- calculate the suggestion- set parameters to account for absolute/relative/...
