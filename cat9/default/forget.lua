@@ -29,6 +29,19 @@ function builtins.forget(...)
 		end
 	end
 
+	local forget_filter =
+	function(sig, eval)
+		local set = {}
+		for _,v in ipairs(lash.jobs) do
+			if not v.hidden and eval(v) then
+				table.insert(set, v)
+			end
+		end
+		for _,v in ipairs(set) do
+			forget(v, sig)
+		end
+	end
+
 	local set = {...}
 	local signal = "hup"
 	local lastid
@@ -50,11 +63,29 @@ function builtins.forget(...)
 		elseif type(v) == "string" then
 			if v == ".." then
 				in_range = true
-			elseif v == "all" then
-				while #lash.jobs > 0 do
-					local job = lash.jobs[1]
-					forget(job, signal)
-				end
+	-- this one is dangerous as it just murders everything, maybe the highlight
+	-- suggestion should indicate it in alert (or the prompt) by setting prompt
+	-- to some alert state
+			elseif v == "all-hard" then
+				forget_filter(signal, function() return true end)
+			elseif v == "all-passive" then
+				forget_filter(signal,
+						function(a)
+							if a.pid then
+								return false
+							elseif a.check_status then
+								return not a.check_status()
+							else
+								return true
+							end
+						end
+				)
+			elseif v == "all-bad" then
+				forget_filter(signal,
+					function(a)
+						return a.exit ~= nil and a.exit ~= 0;
+					end
+				)
 			else
 				signal = v
 			end
@@ -64,11 +95,7 @@ end
 
 function suggest.forget(args, raw)
 	local set = {}
-
-	if #args > 2 or #args == 2 and string.sub(raw, -1) == " "  then
-		cat9.readline:suggest({"flush"}, "word")
-		return
-	end
+	local cmd = args[#args]
 
 	for _,v in ipairs(lash.jobs) do
 		if not v.pid and not v.hidden then
@@ -76,6 +103,31 @@ function suggest.forget(args, raw)
 		end
 	end
 
+	if #args == 2 then
+		table.insert(set, "all-passive")
+		table.insert(set, "all-bad")
+		table.insert(set, "all-hard")
+	end
+
+-- this is messier than other job- targetting suggestions due to the
+-- whole 'previous argument might be a range and would then resolve to table
+-- but if we are just starting on a new argument it will be zero-length str
+	local lastarg = args[#args]
+	if #args > 2 and type(lastarg) == "string" and #lastarg == 0 then
+		lastarg = args[#args - 1]
+	end
+
+	if #args > 2 and type(lastarg) == "table" then
+		table.insert(set, "..")
+	end
+
+-- and to understand #num without getting the to-table conversion the raw
+-- string needs to be processed and extract out the actual value or #1 will
+-- mask #11
+	local pref = string.match(raw, "[^%s]+$")
+	if pref then
+		set = cat9.prefix_filter(set, pref)
+	end
 	cat9.readline:suggest(set, "word")
 end
 end
