@@ -24,14 +24,12 @@ results from 'out' and 'err' being kept until you decide to forget it. At the
 same time, traditionally noisy tasks like changing directories are kept from
 polluting your view with irrelevant information.
 
-(embed video)
+https://user-images.githubusercontent.com/5888792/161494772-2abccac4-bb92-4a12-9a69-987e66201719.mp4
 
 This allows for neat visuals like changing layouts, reordering presentation,
 folding and unfolding. It also allows for reusing results of a previous job
 without thinking much about it - caching is the default and you don't need to
 redirect results to files just for reuse.
-
-(embed video)
 
 It is also designed with the intention of being able to frontend- legacy cli
 tools with little effort - the set of builtins that the shell provides can be
@@ -39,13 +37,11 @@ contextually swapped for something specific to working with some domain or tool
 specific context. In this way, famously unfriendly tools can be worked around
 and integrated into your workflow as seemless as possible.
 
-(embed video)
-
 It cooperates with your desktop window manager (should you have one), letting
 it take care of splitting out things into new windows or even embeddnig media
 or graphical application output into clipped regions of its own window.
 
-(embed video)
+https://user-images.githubusercontent.com/5888792/161494402-9e5636e3-dd78-4fcf-bff0-fe5c3dd0a369.mp4
 
 Installation
 ============
@@ -55,7 +51,7 @@ look simple at first glance, but going against the grain of decades of
 accumulated legacy comes with some friction.
 
 For starters you need an Arcan build that comes straight from the source. The
-things needed here are really new, not covered by any release and is actively
+things needed here are really new, not covered by any release, and is actively
 worked on. [Arcan](https://github.com/letoram/arcan) is a pain to build from
 source and, if you want it to replace your entire display server, also a pain
 to setup. Twice the fun.
