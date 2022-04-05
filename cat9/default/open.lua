@@ -32,13 +32,12 @@ local function fname_to_decode(cat9, dstenv, fn, closure)
 	end
 
 	cat9.set_scanner(
-		{"/usr/bin/file", "file", "-b", "--mime-type", fn},
+		{"/usr/bin/file", "file", "-b", "--mime-type", fn}, "open" .. fn,
 		function(res)
 			local proto
 			if res and res[1] then
 				if mime_direct[res[1]] then
 					proto = mime_direct[res[1]]
-					print("mime-direct", res[1])
 				else
 					for k,v in pairs(mime_prefix) do
 						if string.sub(res[1], 1, #k) == k then
@@ -50,7 +49,6 @@ local function fname_to_decode(cat9, dstenv, fn, closure)
 
 				if proto then
 					dstenv["ARCAN_ARG"] = proto .. ":file=" .. fn
-					print(dstenv["ARCAN_ARG"])
 					closure()
 				else
 					cat9.add_message("open(" .. fn .. ") - unknown type: " .. res[1])
