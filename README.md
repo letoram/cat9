@@ -166,11 +166,16 @@ It is also possible to pop it out as a new window or tab.
 
     forget #job1 #job2
 		forget #job1  .. #job3
-		forget all
+		forget all-bad
+		forget all-passive
+		forget all-hard
 
 This will remove the contents and tracking of previous jobs, either by
 specifying one or several distinct jobs, or a range. If any marked job is still
-active and tied to a running process, that process will be killed.
+active and tied to a running process, that process will be killed. There are
+also special presets: all-bad, all-hard and all-passive; all-bad forgets the
+completed jobs with !0 return status code; all-hard removes all jobs, passive
+and running; all-passive removes all jobs that have completed running.
 
 ### Repeat
 
