@@ -11,9 +11,7 @@ function builtins.cd(step)
 		end
 	end
 
-	root:chdir(step)
-	cat9.scanner_path = nil
-	cat9.update_lastdir()
+	cat9.chdir(step)
 end
 
 function suggest.cd(args, raw)
