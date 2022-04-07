@@ -36,17 +36,13 @@ local activejobs = {}
 local config = cat9.config
 cat9.activejobs = activejobs
 
-local function update_histogram(job, data)
-	for i=1,#data do
-		local bv = string.byte(data, i)
-		local vl = job.data.histogram[bv]
-		job.data.histogram[bv] = vl + 1
-	end
-end
-
 local function data_buffered(job, line, eof)
-	if config.histogram then
-		update_histogram(job, line)
+	for _,v in ipairs(job.hooks.on_data) do
+		v(line, true, eof)
+	end
+
+	if job.block_buffer then
+		return
 	end
 
 	job.data.linecount = job.data.linecount + 1
@@ -57,12 +53,15 @@ local function data_buffered(job, line, eof)
 end
 
 local function data_unbuffered(job, line, eof)
-	if config.histogram then
-		update_histogram(job, line)
+	for _,v in ipairs(job.hooks.on_data) do
+		v(line, false, eof)
+	end
+
+	if job.block_buffer then
+		return
 	end
 
 	local lst = line.split(line, "\n")
-
 	if #lst == 1 then
 		if #job.data == 0 then
 			job.data[1] = ""
@@ -369,15 +368,22 @@ function cat9.remove_job(job)
 	cat9.remove_match(cat9.activejobs, job)
 
 	local found = jc ~= #cat9.jobs
-
-	if cat9.latestjob ~= job then
-		return found
+	if not found then
+		return false
 	end
 
 	cat9.latestjob = nil
 
-	if not config.autoexpand_latest then
-		return found
+	if cat9.clipboard_job == job then
+		cat9.clipboard_job = nil
+	end
+
+	for _,v in ipairs(job.hooks.on_destroy) do
+		v()
+	end
+
+	if cat9.latestjob ~= job or not config.autoexpand_latest then
+		return true
 	end
 
 	for i=#lash.jobs,1,-1 do
@@ -386,10 +392,6 @@ function cat9.remove_job(job)
 			cat9.latestjob.expanded = -1
 			break
 		end
-	end
-
-	if cat9.clipboard_job == job then
-		cat9.clipboard_job = nil
 	end
 
 	return found
@@ -409,6 +411,13 @@ function cat9.import_job(v)
 		v.unbuffered = false
 	end
 
+	v.hooks =
+	{
+		on_destroy = {},
+		on_finish = {},
+		on_data = {}
+	}
+
 	v.reset =
 	function(v)
 		v.wrap = true
@@ -416,11 +425,7 @@ function cat9.import_job(v)
 		v.data = {
 			bytecount = 0,
 			linecount = 0,
-			histogram = {}
 		}
-		for i=0,255 do
-			v.data.histogram[i] = 0
-		end
 		local oe = v.err_buffer
 
 		v.err_buffer = {}

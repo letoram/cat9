@@ -24,9 +24,14 @@ function(cat9, root, config)
 	end
 end
 
+function cat9.chdir(step)
+	root:chdir(step)
+	cat9.scanner_path = nil
+	cat9.update_lastdir()
+end
+
 function cat9.update_lastdir()
 	local wd = root:chdir()
-	local path_limit = 8
 
 	local dirs = string.split(wd, "/")
 	local dir = "/"
@@ -37,7 +42,11 @@ end
 
 -- expected to return nil (block_reset) to fit in with expectations of builtins
 function cat9.add_message(msg)
-	lastmsg = msg
+	if type(msg) ~= "string" then
+		print("add_message(" .. type(msg) .. ")" .. debug.traceback())
+	else
+		lastmsg = msg
+	end
 end
 
 function cat9.get_message(dequeue)

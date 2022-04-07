@@ -42,7 +42,55 @@ return
 function(cat9, root, builtins, suggest)
 
 function builtins.view(job, ...)
+
+-- special case, assign messages and 'print' calls into a job
 	if type(job) ~= "table" then
+		if type(job) == "string" and job == "monitor" then
+			for _,v in ipairs(lash.jobs) do
+				if v.monitor then
+					print("view >monitor< : output job already exists")
+					return
+				end
+			end
+
+			local job =
+			{
+				monitor = true,
+				short = "Monitor: messages",
+				raw = "Monitor: messages",
+				check_status = function() return true; end
+			}
+			local job = cat9.import_job(job)
+			local oldam = cat9.add_message
+			local oldprint = print
+			job.expanded = -1
+
+			print =
+			function(...)
+				local tbl = {...}
+				local fmtstr = string.rep("%s\t", #tbl)
+				local msg = string.format(fmtstr, ...)
+				table.insert(job.data, msg)
+				cat9.flag_dirty()
+			end
+			cat9.add_message =
+			function(msg)
+				if type(msg) == "string" then
+					local list = string.split(msg, "\n")
+					for _v in ipairs(list) do
+						table.insert(job.data, v)
+					end
+				end
+				cat9.flag_dirty()
+				oldam(msg)
+			end
+			table.insert(job.hooks.on_destroy,
+			function()
+				print = oldprint
+				cat9.add_message = oldam
+			end)
+			return
+		end
 		cat9:add_message("view >jobid< - invalid job reference")
 		return
 	end
@@ -50,4 +98,10 @@ function builtins.view(job, ...)
 	cat9.run_lut("view #job", job, viewlut, {...})
 	cat9.flag_dirty()
 end
+
+function suggest.view(args, raw)
+-- view [job] +mode (out, err, tog, exp, scroll, wrap)
+-- view monitor
+end
+
 end
