@@ -1,5 +1,9 @@
 TODO (for first release)
 
+-- interesting:
+   realtime feedback for job open $realtime
+	 when inputting to window, each | triggers a subcommand ( grep #0 hi | grep #1 )
+
 Job Control:
 - [ ] 'on data' hook (trigger jobid data pattern trigger)
 - [ ] 'on finished' hook (trigger jobid ok trigger)
@@ -9,7 +13,7 @@ CLI help:
 - [p] lastmsg queue rather than one-slot for important bits
 - [ ] track most used directories for execution and expose to cd h [set]
 - [ ] r for search in word
-- [ ] actual helper for keybindings:
+- [ ] actual helper for keybindings (longpress on ctrl..):
       c+l = reset, d = cancel or delete word, t = swap prev.
 			b - left, f = right, k = cut to eol, u = cut to sol, p step hist b
 			n - step hist f, a home, e eol, w delete last word, tab completion,
@@ -20,6 +24,8 @@ Data Processing:
 - [ ] Conditionally sequenced (a && b && c)
 - [ ] Pipeline with MiM
 - [p] Copy command (job to clip, to file, to ..)
+- [ ] descriptor-to-pseudofile substitution for jobs
+      eg. diff #0 #1
 
 Exec:
 - [p] Open (media, handover exec to afsrv_decode)
@@ -51,4 +57,4 @@ Ui:
 
 - [ ] keyboard job selected / stepping (escape out of readline)
 - [ ] mouse select in buffer
-- [ ] powerline look (U+E0b0)
+- [ ] line# column in view, click line# marks it for selection

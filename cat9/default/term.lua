@@ -65,7 +65,7 @@ local function binarg_select(args, raw, sz, pref)
 -- confuse the completion
 	if type(args[2]) == "table" and args[2].parg then
 		sz = args[2].offset + 1
-		table.remove(args, 1)
+		table.remove(args, 2)
 	end
 
 -- run a path-scan for the first time, might want to reset in the event of
@@ -73,6 +73,7 @@ local function binarg_select(args, raw, sz, pref)
 -- might invalidate, just a bit too expensive to run for every time
 	if #args == 1 then
 		cat9.readline:suggest(cat9.pathexec_oracle(), "insert", pref)
+		return
 
 	elseif #args == 2 then
 		cat9.readline:suggest(
@@ -83,7 +84,7 @@ local function binarg_select(args, raw, sz, pref)
 	end
 
 	local carg = args[#args]
-	if #carg == 0 then
+	if #carg == 0 or type(carg) ~= "string" then
 		return
 	end
 
