@@ -1,7 +1,7 @@
 return
 function(cat9, root, builtins, suggest)
 
-function builtins.config(key, val)
+function builtins.config(key, val, val2)
 	if not key or not cat9.config[key] then
 		cat9.add_message("missing / unknown config key")
 		return
@@ -37,8 +37,10 @@ end
 function suggest.config(args, raw)
 	if not cat9.config_cache then
 		cat9.config_cache = {}
-		for k,_ in pairs(cat9.config) do
-			table.insert(cat9.config_cache, k)
+		for k,v in pairs(cat9.config) do
+			if type(v) ~= "table" then
+				table.insert(cat9.config_cache, k)
+			end
 		end
 		table.sort(cat9.config_cache)
 	end
@@ -47,14 +49,7 @@ function suggest.config(args, raw)
 
 	if #args == 2 then
 -- actually finished with the argument but hasn't begun on the next
-		if string.sub(raw, #raw) == " " then
-			local cfg = cat9.config[args[2]]
-			cat9.add_message(
-				cfg ~= nil and tostring(cfg) .. " (" .. type(cfg) .. ")" or "")
-			set = {}
-		else
-			set = cat9.prefix_filter(cat9.config_cache, args[2])
-		end
+		set = cat9.prefix_filter(cat9.config_cache, args[2])
 		cat9.readline:suggest(set, "word")
 		return
 

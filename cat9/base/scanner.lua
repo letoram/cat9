@@ -142,8 +142,53 @@ function cat9.filedir_oracle(path, prefix, flt, offset, cookie, closure)
 	end
 end
 
+function cat9.pathexec_oracle()
+	if cat9.path_set then
+		return cat9.path_set
+	end
+
+	local path = root:getenv()["PATH"]
+	local argv = string.split(path, ":")
+	table.insert(argv, 1, "/usr/bin/find")
+	table.insert(argv, 2, "find")
+	table.insert(argv, "-executable")
+	local dupcheck = {}
+	cat9.path_set = {}
+	cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+-- add with both implicit path in search order and explicit path
+		function(set)
+			for _,v in ipairs(set) do
+				local pos = string.find(v, "/[^/]*$")
+				if pos then
+					str = string.sub(v, pos + 1)
+					if str and v[#v] ~= "/" and not dupcheck[str] then
+						dupcheck[str] = true
+						table.insert(cat9.path_set, str)
+					end
+				end
+			end
+			for _,v in ipairs(set) do
+				table.insert(cat9.path_set, v)
+			end
+		end
+	)
+	return cat9.path_set
+end
+
+local function swapin_path(argv, path)
+	local res = {}
+	for _, v in ipairs(argv) do
+		if v == "$path" then
+			table.insert(res, path)
+		else
+			table.insert(res, v)
+		end
+	end
+	return res
+end
+
 -- calculate the suggestion- set parameters to account for absolute/relative/...
-function cat9.file_completion(fn)
+function cat9.file_completion(fn, argv)
 	local path   -- actual path to search
 	local prefix -- prefix to filter from last path when applying completion
 	local flt    -- prefix to filter away from result-set
@@ -151,7 +196,7 @@ function cat9.file_completion(fn)
 
 -- args are #1 (cd) or #2 (cd <path>)
 	if not fn or #fn == 0 then
-		path = "./"
+		path = swapin_path(argv, "./")
 		prefix = ""
 		flt = "./"
 		offset = 3
@@ -178,6 +223,7 @@ function cat9.file_completion(fn)
 		else
 			flt = path .. "/" .. elements[nelem]
 		end
+		path = swapin_path(argv, path)
 		return path, prefix, flt, offset
 	end
 
@@ -186,6 +232,7 @@ function cat9.file_completion(fn)
 		offset = #path + 2
 		prefix = path .. "/"
 		flt = path .. "/" .. elements[nelem]
+		path = swapin_path(argv, path)
 		return path, prefix, flt, offset
 	end
 
@@ -193,6 +240,7 @@ function cat9.file_completion(fn)
 		offset = #path + 2
 		prefix = path .. "/"
 		flt = path .. "/" .. elements[nelem]
+		path = swapin_path(argv, path)
 		return path, prefix, flt, offset
 	end
 
@@ -206,6 +254,8 @@ function cat9.file_completion(fn)
 		prefix = prefix .. "/"
 		offset = #path + 2
 	end
+
+	path = swapin_path(argv, path)
 	return path, prefix, flt, offset
 end
 

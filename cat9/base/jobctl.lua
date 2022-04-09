@@ -31,7 +31,6 @@
 return
 function(cat9, root)
 
-local idcounter = 0 -- for referencing old outputs as part of pipeline/expansion
 local activejobs = {}
 local config = cat9.config
 cat9.activejobs = activejobs
@@ -84,7 +83,7 @@ local function flush_job(job, finish, limit)
 	local falive = true
 
 -- cap to outlim number of read-calls (at most) or until feof
-	while job.out and (outlim > 0 and (finish or falive)) do
+	while job.out and outlim > 0 and falive do
 		if job.unbuffered then
 			line, falive = job.out:read(true)
 			if line then
@@ -106,7 +105,6 @@ local function flush_job(job, finish, limit)
 					data_buffered(job, line, eof)
 				end
 				)
-			outlim = 0
 		end
 	end
 
@@ -465,11 +463,11 @@ function cat9.import_job(v)
 	end
 
 	if not v.id and not v.hidden then
-		v.id = idcounter
+		v.id = cat9.idcounter
 	end
 
-	if v.id and idcounter <= v.id then
-		idcounter = v.id + 1
+	if v.id and cat9.idcounter <= v.id then
+		cat9.idcounter = v.id + 1
 	end
 
 -- mark latest one as expanded, and the previously 'latest' back to collapsed

@@ -84,6 +84,10 @@ end
 return
 function(cat9, root, builtins, suggest)
 
+function suggest.open(args, raw)
+	cat9.readline:suggest({}, "substitute", raw)
+end
+
 function builtins.open(file, ...)
 	local trigger
 	local opts = {...}
