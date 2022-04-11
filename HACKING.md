@@ -22,6 +22,37 @@ modify cat9/myset/mycmd.lua so that the returned function modifies the builtins
 and suggest tables provided as arguments to fit the command to provide. It is
 advised to keep this clean and have a 1 file to 1 command file system layout.
 
+Job
+===
+The main data container is that of the job. It is being passed around everywhere
+and partially inherited from lash itself should the usershell be swapped out.
+The main fields of use in it are:
+
+    collapsed_rows, num : number of rows to show in collapsed form
+		line_offset, num : for scrolling
+		unbuffered, bool : true if bytes just accumulate
+		err_buffer, strtbl : accumulates error output lines
+		data, strtbl : n-indices for data as it arrives
+		closure, tbl : used to track / chain completion event handlers (internal)
+		view, tbl : points to the current active source buffer
+		dir, str: working directory
+		id, num: numeric id
+		hidden, bool: set for background jobs
+		short, str: minimal title 'string'
+
+The methods that might be invoked:
+
+    reset() : restore to a clean state
+
+If it is tied to an external living process, the 'pid' field is set
+and that is changed to code when the process terminates.
+
+The handlers subtable is used for attaching hooks in other parts:
+
+    on_destroy
+		on_finish(ok or errc)
+		on_data(line, buffered, eof)
+
 Other
 =====
 Lash itself comes with some minor support functions, the one of the most

@@ -30,12 +30,19 @@ local config =
 
 	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
 
+-- subtable are ignored for the config builtin
 	readline =
 	{
 		cancellable   = true,   -- cancel removes readline until we starts typing
 		forward_meta  = false,  -- don't need meta-keys, use default rl behaviour
 		forward_paste = true,   -- ignore builtin paste behaviour
 		forward_mouse = true,   -- needed for clicking outside the readline area
+	},
+
+	glob =
+	{
+		dir_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1", "-type", "d"},
+		file_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1"}
 	}
 }
 
@@ -55,6 +62,7 @@ local cat9 =  -- vtable for local support functions
 	laststr = "",
 	resources = {}, -- used for clipboard and bchunk ops
 
+	idcounter = 0, -- monotonic increment for each command dispatched
 	visible = true,
 	focused = true
 }

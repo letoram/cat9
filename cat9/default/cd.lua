@@ -35,10 +35,10 @@ function suggest.cd(args, raw)
 		return
 	end
 
-	local path, prefix, flt, offset = cat9.file_completion(args[2])
+	local argv, prefix, flt, offset =
+		cat9.file_completion(args[2], cat9.config.glob.dir_argv)
 
-	local argv = {"/usr/bin/find", "find", path, "-maxdepth", "1", "-type", "d"}
-	local cookie = "cd" .. path
+	local cookie = "cd" .. tostring(cat9.idcounter)
 	cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
 		function(set)
 			if #raw == 3 then

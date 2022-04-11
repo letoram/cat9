@@ -85,7 +85,7 @@ local function build_ptable(t)
 		end
 	}
 	ptable[t.OP_RPAR  ] = {
-		function(s, v)
+		function(s, v, tok)
 			if not v.in_lpar then
 				return "missing opening ("
 			end
@@ -93,7 +93,8 @@ local function build_ptable(t)
 			local pargs =
 			{
 				types = t,
-				parg = true
+				parg = true,
+				offset = tok[3]
 			}
 
 -- slice out the arguments within (
@@ -191,7 +192,7 @@ local function tokens_to_commands(tokens, types, suggest)
 -- when the sequence progress to the execution function that
 -- consumes the queue then reset the state tracking
 		if type(ent[ind]) == "function" then
-			local msg = ent[ind](seq, res)
+			local msg = ent[ind](seq, res, v)
 			if msg then
 				return fail(msg)
 			end
@@ -243,10 +244,28 @@ local function suggest_for_context(prefix, tok, types)
 			res[#res+1] = ""
 		end
 		cat9.suggest[res[1]](res, prefix)
-	else
+		return
+	end
+
 -- generic fallback? smosh whatever we find walking ., filter by taking
 -- the prefix and step back to whitespace
+	local carg = res[#res]
+	if #carg == 0 then
+		return
 	end
+
+	local argv, prefix, flt, offset =
+		cat9.file_completion(carg, cat9.config.glob.file_argv)
+
+	local cookie = "gen " .. tostring(cat9.idcounter)
+	cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+		function(set)
+			if flt then
+				set = cat9.prefix_filter(set, flt, offset)
+			end
+			cat9.readline:suggest(set, "word", prefix)
+		end
+	)
 end
 
 function cat9.readline_verify(self, prefix, msg, suggest)
