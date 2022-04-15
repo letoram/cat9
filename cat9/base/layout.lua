@@ -96,10 +96,31 @@ function cat9.xy_to_data(x, y)
 	end
 end
 
+local cjob
+local job_helpers =
+{
+	["id"] = function() return tostring(cjob.id); end,
+	["pid_or_exit"] = function()
+		local extid = -1
+		if cjob.pid then
+			extid = cjob.pid
+		elseif cjob.exit then
+			extid = cjob.exit
+		end
+		return tostring(extid)
+	end,
+	["data"] = function() return string.format("%d:%d", cjob.data.linecount, #cjob.err_buffer); end,
+	["memory_use"] = function() return cat9.bytestr(cjob.data.bytecount);	end,
+	["dir"] = function() return cjob.dir; end,
+	["full"] = function() return cjob.raw; end,
+	["short"] = function() return cjob.short; end,
+}
+
 --
 -- Draw the [metadata][command(short | raw)] interactable one-line 'titlebar'
 --
-local function draw_job_header(x, y, cols, rows, job)
+local
+function draw_job_header(x, y, cols, rows, job)
 	local hdrattr =
 	{
 		fc = job.bar_color,
@@ -114,62 +135,42 @@ local function draw_job_header(x, y, cols, rows, job)
 	rowtojob[y] = job
 	job.hdr_to_id = {}
 
-	local hdr_exp_ch = function()
-		return job.expanded and "[-]" or "[+]"
-	end
-
-	local id = function()
-		return "[#" .. tostring(job.id) .. "]"
-	end
-
-	local pid_or_exit = function()
-		local extid = -1
-		if job.pid then
-			extid = job.pid
-		elseif job.exit then
-			extid = job.exit
-		end
-		return "[" .. tostring(extid) .. "]"
-	end
-
-	local data = function()
-		return string.format("[#%d:%d]", job.data.linecount, #job.err_buffer)
-	end
-
-	local memory_use = function()
-		return "[" .. cat9.bytestr(job.data.bytecount) .. "]"
-	end
-
-	local hdr_data = function()
-		if cols - x > #job.raw then
-			if cols - x > #job.dir + #job.raw then
-				return job.dir .. "> " .. job.raw
-			else
-				return job.raw
-			end
-		else
-			return job.short
-		end
-	end
-
 -- This should really be populated by a format string in config
-	local itemstack =
-	{
-		hdr_exp_ch,
-		id,
-		pid_or_exit,
-		data,
-		memory_use,
-		hdr_data
-	}
+	local job_key = job.expanded and "job_bar_expanded" or "job_bar_collapsed"
+	if job.selected then
+		job_key = "job_bar_selected"
+	end
 
-	for i,v in ipairs(itemstack) do
-		if type(v) == "function" then
-			v = v()
-		end
+	local itemstack = config[job_key]
+	if not itemstack then
+		cat9.add_message("bad config: missing job_bar field: " .. job_key)
+		return
+	end
+
+	local function draw_item(i, cur)
 		job.hdr_to_id[i] = x
-		root:write_to(x, y, v, hdrattr)
-		x = x + #v
+		root:write_to(x, y, cur, hdrattr)
+		x = x + root:utf8_len(cur)
+	end
+
+	cjob = job
+	for i,v in ipairs(itemstack) do
+		if type(v) ~= "table" then
+			cat9.add_message("bad config: malformed job_bar field: " .. job_key)
+			return
+		end
+		local res = cat9.template_to_str(v, job_helpers)
+-- each entry here is either plain-text string, a special string or hdrattr
+		for _,w in ipairs(res) do
+			if type(w) == "table" then
+				hdrattr = w
+			elseif type(w) == "string" then
+				draw_item(i, w)
+			else
+				cat9.add_message("bad config: expected string ot table, not " .. type(w))
+				return
+			end
+		end
 	end
 end
 
@@ -317,25 +318,20 @@ local function draw_job(x, y, cols, rows, job)
 end
 
 function cat9.get_prompt()
--- context sensitive information? (e.g. git check on cd, ...)
-	local wdstr = "[ " .. (#cat9.lastdir == 0 and "/" or cat9.lastdir) .. " ]"
-	local res = {}
+	local helpers =
+	{
+		lastdir =
+		function()
+			return #cat9.lastdir > 0 and cat9.lastdir or "/"
+		end,
+		jobs =
+		function()
+			return tostring(cat9.activevisible)
+		end
+	}
 
--- only show if we have jobs going
-	table.insert(res, tui.attr({bold = false, fc = tui.colors.label}))
-	table.insert(res, "[" .. tostring(#cat9.activejobs) .. "]")
-
-	if not cat9.focused then
-		table.insert(res, wdstr)
-		return res
-	end
-
--- decent spot for some more analytics - is there a .git directory etc.
-	table.insert(res, tui.attr({bold = false, fc = tui.colors.passive}))
-	table.insert(res, os.date("[%H:%M:%S]"))
-	table.insert(res, tui.attr({bold = false, fc = tui.colors.text}))
-	table.insert(res, wdstr)
-	table.insert(res, "$ ")
+	local template = cat9.focused and config.prompt_focus or config.prompt
+	local res = cat9.template_to_str(template, helpers)
 
 	return res
 end

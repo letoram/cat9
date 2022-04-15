@@ -3,6 +3,10 @@
 -- Reference:   https://github.com/letoram/cat9
 -- See also:    HACKING.md, TODO.md
 
+local group_sep = lash.root:has_glyph("") and " " or "> "
+local collapse_sym = lash.root:has_glyph("▲") and "▲" or "[-]"
+local expand_sym = lash.root:has_glyph("▼") and "▼" or "[+]"
+local selected_sym = lash.root:has_glyph("►") and "►" or ">"
 -- simpler toggles for dynamically controlling presentation
 local config =
 {
@@ -30,7 +34,52 @@ local config =
 
 	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
 
--- subtable are ignored for the config builtin
+-- subtables are ignored for the config builtin
+-- possible job-bar meta entries (cat9/base/layout.lua):
+--  $pid_or_exit, $id, $data, $hdr_data, $memory_use, $dir, $full, $short
+--
+-- the index of each bar property is can also be used with the 'click' binds
+-- above e.g. m1_header_n_click referring to the subtable index.
+	job_bar_collapsed =
+	{
+		{expand_sym},
+		{"#", "$id", group_sep, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
+		{group_sep, "$short"},
+	},
+
+	job_bar_selected =
+	{
+		{selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
+		{group_sep, "$short", group_sep},
+		{"X"}
+	},
+
+-- powerline glyphs for easy cut'n'paste:   
+	job_bar_expanded =
+	{
+		{ selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
+		{ group_sep, "$full"},
+	},
+
+-- similar to job_bar but no click-groups so only one level of tables
+	prompt_focus =
+	{
+		"[",
+		"$jobs",
+		"]",
+		"$lastdir",
+		group_sep,
+		function() return os.date("%H:%M:%S") end,
+		group_sep,
+	},
+
+	prompt =
+	{
+		"[",
+		"$lastdir",
+		"]",
+	},
+
 	readline =
 	{
 		cancellable   = true,   -- cancel removes readline until we starts typing

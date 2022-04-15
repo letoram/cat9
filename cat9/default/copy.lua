@@ -241,4 +241,10 @@ function builtins.copy(src, opt1, opt2, opt3)
 	end
 end
 
+function suggest.copy(args, raw)
+	if #args == 2 then
+	elseif #args == 3 then
+	end
+end
+
 end

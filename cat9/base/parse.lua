@@ -250,7 +250,7 @@ local function suggest_for_context(prefix, tok, types)
 -- generic fallback? smosh whatever we find walking ., filter by taking
 -- the prefix and step back to whitespace
 	local carg = res[#res]
-	if #carg == 0 then
+	if not carg or #carg == 0 or type(carg) ~= "string" then
 		return
 	end
 

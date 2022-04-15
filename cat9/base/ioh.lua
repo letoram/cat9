@@ -41,8 +41,26 @@ function handlers.mouse_motion(self, rel, x, y)
 	cat9.flag_dirty()
 end
 
+-- custom keybinds go here (or forward routing to selected window)
 function handlers.key(self, sub, keysym, code, mods)
--- navigation key? otherwise feed into readline again
+
+	if bit.band(mods, tui.modifiers.CTRL) then
+		if keysym == tui.keys.ESCAPE then
+
+-- to disable readline there should be >= 1 valid jobs, and then
+-- we move selection with CTRL+ARROW|CTRL+HJLK
+			if cat9.readline then
+--				root:revert()
+--				cat9.readline = nil
+			end
+
+-- uncertain how to display the help still, just popup at last
+-- known cursor position? or as regular popup?
+		elseif keysym == tui.keys.F1 then
+--			print("toggle help")
+		end
+	end
+
 end
 
 function handlers.state_in(self, blob)
@@ -150,6 +168,7 @@ function handlers.tick()
 end
 
 function handlers.utf8(self, ch)
+	print("got utf8", ch)
 -- setup readline, cancel current selection activity and inject ch
 end
 

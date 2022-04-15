@@ -19,7 +19,7 @@ function(cat9, root, config)
 	for i, v in ipairs(tbl) do
 		if v == ent then
 			table.remove(tbl, i)
-			return
+			return true
 		end
 	end
 end
@@ -76,9 +76,44 @@ function cat9.run_lut(cmd, tgt, lut, set)
 	end
 end
 
+function cat9.template_to_str(template, helpers)
+	local res = {}
+	for _,v in ipairs(template) do
+		if type(v) == "table" then
+			table.insert(res, v)
+		elseif type(v) == "string" then
+			if string.sub(v, 1, 1) == "$" then
+				local hlp = helpers[string.sub(v, 2)]
+				if hlp then
+					table.insert(res, hlp())
+				else
+					cat9.add_message("unsupported helper: " .. string.sub(v, 2))
+				end
+			else
+				table.insert(res, v)
+			end
+		elseif type(v) == "function" then
+			table.insert(res, v())
+		else
+			cat9.add_message("bad member in prompt")
+		end
+	end
+	return res
+end
+
 function cat9.setup_readline(root)
 	local rl = root:readline(
 		function(self, line)
+			cat9.readline = nil
+
+			if not line then
+				if cat9.on_cancel then
+					cat9.on_cancel()
+					return
+				end
+-- question is if we want other on_cancel behaviour here
+			end
+
 			local block_reset = cat9.parse_string(self, line)
 
 -- ensure that we do not have duplicates, but keep the line as most recent

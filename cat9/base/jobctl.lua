@@ -34,6 +34,7 @@ function(cat9, root)
 local activejobs = {}
 local config = cat9.config
 cat9.activejobs = activejobs
+cat9.activevisible = 0
 
 local function data_buffered(job, line, eof)
 	for _,v in ipairs(job.hooks.on_data) do
@@ -101,6 +102,10 @@ local function flush_job(job, finish, limit)
 					upd = true
 					if eof then
 						outlim = 0
+					else
+						if not finish then
+							outlim = outlim - 1
+						end
 					end
 					data_buffered(job, line, eof)
 				end
@@ -199,6 +204,9 @@ function cat9.process_jobs()
 -- should be removed manually or jobs will 'ghost' away
 				finish_job(job, code)
 				if activejobs[i] == job then
+					if not job.hidden then
+						cat9.activevisible = cat9.activevisible - 1
+					end
 					table.remove(activejobs, i)
 				end
 
@@ -245,6 +253,9 @@ function cat9.setup_shell_job(args, mode, envv)
 		job.inp, job.out, job.err, job.pid = root:popen(args, mode)
 		if job.pid then
 			table.insert(activejobs, job)
+			if not job.hidden then
+				cat9.activevisible = cat9.activevisible + 1
+			end
 		end
 	end
 
@@ -257,6 +268,7 @@ function cat9.term_handover(cmode, ...)
 	local argv = {}
 	local env = {}
 	local open_mode = ""
+	local embed = false
 
 -- copy in global env
 	for k,v in pairs(cat9.env) do
@@ -274,6 +286,9 @@ function cat9.term_handover(cmode, ...)
 		for _,v in ipairs(t) do
 			if v == "err" then
 				open_mode = "e"
+			elseif v == "embed" then
+				embed = true
+				cmode = "embed"
 			end
 		end
 
@@ -312,7 +327,7 @@ function cat9.term_handover(cmode, ...)
 			local inp, out, err, pid =
 				wnd:phandover("/usr/bin/afsrv_terminal", open_mode, {}, env)
 
-			if #open_mode > 0 then
+			if #open_mode > 0 or embed then
 				local job =
 				{
 					pid = pid,
@@ -320,6 +335,7 @@ function cat9.term_handover(cmode, ...)
 					err = err,
 					out = out
 				}
+				job.wnd = new
 				cat9.import_job(job)
 			end
 
@@ -363,7 +379,9 @@ function cat9.remove_job(job)
 	local jc = #cat9.jobs
 
 	cat9.remove_match(cat9.jobs, job)
-	cat9.remove_match(cat9.activejobs, job)
+	if cat9.remove_match(cat9.activejobs, job) and not job.hidden then
+		cat9.activevisible = cat9.activevisible - 1
+	end
 
 	local found = jc ~= #cat9.jobs
 	if not found then
@@ -458,6 +476,9 @@ function cat9.import_job(v)
 -- jobs (for reset and UI layouting)
 	if v.pid or v.check_status then
 		table.insert(activejobs, v)
+		if not v.hidden then
+			cat9.activevisible = cat9.activevisible + 1
+		end
 	elseif not v.code then
 		v.code = 0
 	end

@@ -92,10 +92,13 @@ function builtins.open(file, ...)
 	local trigger
 	local opts = {...}
 	local spawn = false
+	local spawn_suffix = ""
 
 	for _,v in ipairs(opts) do
 		if dir_lut[v] then
 			spawn = dir_lut[v]
+		elseif v == "sync" then
+			spawn_suffix = "-sync"
 		end
 	end
 
@@ -122,7 +125,7 @@ function builtins.open(file, ...)
 			end
 		end
 
-		spawn_trigger(cat9, root, "tui", spawn, trigger)
+		spawn_trigger(cat9, root, "tui", spawn .. spawn_suffix, trigger)
 
 -- asynch query file on the file to figure out which 'proto' type to handover
 -- exec/spawn. More oracles are needed here (eg. arcan appl, xdg-open,
@@ -166,7 +169,7 @@ function builtins.open(file, ...)
 		fname_to_decode(
 		cat9, dstenv, file,
 			function()
-				spawn_trigger(cat9, root, "handover", spawn, trigger)
+				spawn_trigger(cat9, root, "handover", spawn .. spawn_suffix, trigger)
 			end
 		)
 		return
