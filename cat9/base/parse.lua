@@ -268,6 +268,53 @@ local function suggest_for_context(prefix, tok, types)
 	)
 end
 
+--
+-- There is quite a few pitfalls in this, so worth taking note of if other
+-- 'lets replace readline while the rest of the system do not expect it' -
+-- anything in the refresh/redraw will index cat9.readline so that must be
+-- removed immediately to not call into a bad widget state.
+--
+-- Then the prompt is updated on a tick timer, so if the resolve function
+-- isn't hijacked, whatever prompt is set will be overwritten almost
+-- immediately.
+--
+function cat9.suggest_history()
+	if cat9.readline then
+		cat9.laststr = cat9.readline:get()
+		root:revert()
+		cat9.readline = nil
+	end
+
+	local old_prompt = cat9.get_prompt
+
+	cat9.readline =
+	root:readline(
+		function(self, line)
+			cat9.readline = nil
+			cat9.get_prompt = old_prompt
+			if line then
+				cat9.laststr = line
+			end
+			cat9.setup_readline(root)
+		end,
+		{
+			cancellable = true,
+			forward_meta = false,
+			forward_paste = false,
+			forward_mouse = false,
+			verify =
+			function(self, prefix, msg, suggest)
+				self:suggest(cat9.prefix_filter(lash.history, msg, 0, "replace"))
+			end
+		})
+	cat9.get_prompt = function()
+		return "(history)"
+	end
+	cat9.readline:suggest(true)
+	cat9.readline:suggest(lash.history)
+	cat9.flag_dirty()
+end
+
 function cat9.readline_verify(self, prefix, msg, suggest)
 	if suggest then
 		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true)
