@@ -250,6 +250,14 @@ local function draw_job(x, y, cols, rows, job)
 -- 'the right data' (multiple possible streams) wrapped based on contents and
 -- window columns
 		local lst = get_wrapped_job(job, limit, cols - config.content_offset)
+		if type(lst) == "function" then
+			local nc = lst(job, x, y + 1, cols, limit)
+			for i=y+1,y+1+nc do
+				rowtojob[i] = job
+			end
+			return y + nc + 2
+		end
+
 		local lc = #lst
 		local index = 1 -- + job.data_offset
 
@@ -341,6 +349,7 @@ function cat9.redraw()
 	local cols, rows = root:dimensions()
 	draw_cookie = draw_cookie + 1
 	root:erase()
+	rowtojob = {}
 
 -- priority:
 -- alerts > active jobs > job history + scrolling offset
@@ -382,8 +391,8 @@ function cat9.redraw()
 	local last_row = 0
 	local reserved = (cat9.readline and 1 or 0) + (cat9.get_message(false) and 1 or 0)
 
--- draw the jobs from bottom to top, this goes against the 'regular' prompt
--- starts top until filled then always stays bottom.
+-- for multicolumn work, calculate the split - signal any PTYs accordingly
+-- split jobs into columns and gtg
 
 -- underflow? start from the top
 	if counter < rows then

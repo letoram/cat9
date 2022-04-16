@@ -93,10 +93,42 @@ function builtins.view(job, ...)
 	if type(job)== "string" then
 		if job == "monitor" then
 			view_monitor()
+
 -- help theming and testing viewing, jack in a coloriser for the data
-		elseif job == "color" then
--- create a job with just the labels
--- then add a colorizer / shaper
+-- and set a custom view handler for the task
+		elseif job == "colour" or job == "color" then
+			local job =
+			{
+				short = "Colors",
+				raw = "Monitor: colors",
+				check_status = function() return true; end
+			}
+			local job = cat9.import_job(job)
+
+-- just step through the colors and draw a line with their respective
+-- labels
+			local set = {
+				"primary", "secondary", "background",
+				"text", "cursor", "altcursor", "highlight",
+				"label", "warning", "error", "alert", "inactive",
+				"reference", "ui", "16", "17", "18", "19", "20",
+				"21", "22", "23", "24", "25", "26", "27", "28",
+				"29", "30", "31", "32"
+			}
+
+			job.view = function(job, x, y, cols, rows)
+				local lim = #set <= rows and #set - 1 or rows
+				for i=y,y+lim do
+					local lbl = set[i-y+1]
+					local col = tui.colors[lbl]
+					if not col then
+						col = tonumber(lbl)
+					end
+					local attr = {fc = col, bc = col}
+					root:write_to(x, i, lbl, attr)
+				end
+				return lim
+			end
 		end
 		return
 	end
