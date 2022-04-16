@@ -58,9 +58,10 @@ function handlers.key(self, sub, keysym, code, mods)
 -- known cursor position? or as regular popup?
 		elseif keysym == tui.keys.F1 then
 --			print("toggle help")
+		elseif keysym == tui.keys.R then
+			cat9.suggest_history()
 		end
 	end
-
 end
 
 function handlers.state_in(self, blob)
@@ -168,7 +169,6 @@ function handlers.tick()
 end
 
 function handlers.utf8(self, ch)
-	print("got utf8", ch)
 -- setup readline, cancel current selection activity and inject ch
 end
 
