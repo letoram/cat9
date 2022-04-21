@@ -2,7 +2,7 @@ return
 function(cat9, root, builtins, suggest)
 
 builtins["repeat"] =
-function(job, cmd)
+function(job, ...)
 	if type(job) ~= "table" then
 		cat9.add_message("repeat >#jobid< [flush | edit] missing job reference")
 		return
@@ -18,29 +18,74 @@ function(job, cmd)
 		return
 	end
 
-	if cmd and type(cmd) == "string" then
-		if cmd == "flush" then
-			job:reset()
-		elseif cmd == "edit" then
--- set the command-line to edit and set a target job for this line, and hook
--- cancellation so that we can revert the modification
-			cat9.laststr = job.raw
-			cat9.readline_on_cancel = function()
-				print("got cancel")
-			end
-			return
-		end
+	local cmds = {...}
+
+	local opts = {
+		flush = false,
+		diff = false,
+		edit = false
+	}
+
+	for _,v in ipairs(cmds) do
+		opts[v] = true
 	end
 
-	job["repeat"](job)
+	local function run()
+		if opts.diff then
+			if not job.history then
+				job.history = {}
+			end
+			table.insert(job.history, job.data)
+			job.data =
+			{
+				bytecount = 0,
+				linecount = 0
+			}
+		end
+		if opts.flush then
+			job:reset()
+		end
+		job["repeat"](job)
+	end
+
+-- for edit we hook into job creation, substitute in our new argv then call reset
+	if opts.edit then
+		cat9.switch_env(job, "(#" .. job.id .. " : " .. job.dir .. " ) ")
+		cat9.laststr = job.raw
+		local old_setup = cat9.setup_shell_job
+
+-- this can come asynch due to arguments not resolving immediately, so let
+-- setup_shell_job chaining do the old release
+		cat9.setup_shell_job =
+		function(args, mode, env)
+			cat9.setup_shell_job = old_setup
+			job.args = args
+			job.mode = mode
+			run()
+		end
+
+		cat9.on_cancel =
+		function()
+			cat9.switch_env()
+			cat9.setup_shell_job = old_setup
+		end
+
+		cat9.on_line =
+		function()
+			cat9.switch_env()
+		end
+	else
+		run()
+	end
 end
 
 suggest["repeat"] =
 function(args, raw)
 	local set = {}
 
-	if #args > 2 or #args == 2 and string.sub(raw, -1) == " "  then
-		cat9.readline:suggest({"flush, edit"}, "word")
+	if #args > 2 then
+		cat9.readline:suggest(
+			cat9.prefix_filter({"flush", "edit"}, args[#args]), "word")
 		return
 	end
 

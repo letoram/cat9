@@ -98,7 +98,7 @@ local config =
 local cat9 =  -- vtable for local support functions
 {
 	scanner = {}, -- state for asynch completion scanning
-	env = {},
+	env = lash.root:getenv(),
 	builtins = {},
 	suggest = {},
 	handlers = {},
@@ -115,6 +115,9 @@ local cat9 =  -- vtable for local support functions
 	visible = true,
 	focused = true
 }
+
+cat9.env["ARCAN_ARG"] = nil
+cat9.env["ARCAN_CONNPATH"] = nil
 
 -- all builtin commands are split out into a separate 'command-set' dir
 -- in order to have interchangeable sets for expanding cli/argv of others
