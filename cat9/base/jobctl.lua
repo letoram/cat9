@@ -129,6 +129,12 @@ local function flush_job(job, finish, limit)
 	return upd
 end
 
+local function run_hook(job, a)
+	local set = cat9.table_copy_shallow(job.hooks[a])
+	for _,v in ipairs(set) do
+		v()
+	end
+end
 
 local function finish_job(job, code)
 	job.exit = code
@@ -207,6 +213,13 @@ function cat9.process_jobs()
 						cat9.activevisible = cat9.activevisible - 1
 					end
 					table.remove(activejobs, i)
+				end
+
+-- since the hooks might decide to modify the set, we need a local copy first
+				if code == 0 and job.hooks.on_finish then
+					run_hook(job, "on_finish")
+				elseif code ~= 0 and job.hooks.on_fail then
+					run_hook(job, "on_fail")
 				end
 
 -- the '10' here should really be balanced against time and not a set amount of
@@ -401,9 +414,7 @@ function cat9.remove_job(job)
 		cat9.clipboard_job = nil
 	end
 
-	for _,v in ipairs(job.hooks.on_destroy) do
-		v()
-	end
+	run_hook(job, "on_destroy")
 
 	if cat9.latestjob ~= job or not config.autoexpand_latest then
 		return true
@@ -443,6 +454,7 @@ function cat9.import_job(v, noinsert)
 	{
 		on_destroy = {},
 		on_finish = {},
+		on_fail = {},
 		on_data = {}
 	}
 
