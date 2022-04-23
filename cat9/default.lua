@@ -9,5 +9,6 @@ return
 	'signal.lua',
 	'view.lua',
 	'repeat.lua',
-	'env.lua'
+	'env.lua',
+	'trigger.lua'
 }
