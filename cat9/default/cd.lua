@@ -4,14 +4,27 @@ function(cat9, root, builtins, suggest)
 function builtins.cd(step)
 	if type(step) == "table" then
 		if step.dir then
-			step = step.dir
+			cat9.switch_env(step)
 		else
 			cat9.add_message("job #" .. tostring(step.id) .. " doesn't have a working directory")
-			return
 		end
+		return
 	end
 
-	cat9.chdir(step)
+	if not step then
+		cat9.chdir(root:getenv("HOME"))
+		return
+	end
+
+	if type(step) ~= "string" then
+		return
+	end
+
+	if step == "-" then
+		cat9.chdir(cat9.prevdir)
+	else
+		cat9.chdir(step)
+	end
 end
 
 function suggest.cd(args, raw)

@@ -25,6 +25,7 @@ function(cat9, root, config)
 end
 
 function cat9.chdir(step)
+	cat9.prevdir = root:chdir()
 	root:chdir(step)
 	cat9.scanner_path = nil
 	cat9.update_lastdir()
@@ -32,7 +33,6 @@ end
 
 function cat9.update_lastdir()
 	local wd = root:chdir()
-
 	local dirs = string.split(wd, "/")
 	local dir = "/"
 	if #dirs then
@@ -101,17 +101,70 @@ function cat9.template_to_str(template, helpers)
 	return res
 end
 
+function cat9.table_copy_shallow(intbl)
+	local outtbl = {}
+	for k,v in pairs(intbl) do
+		outtbl[k] = v
+	end
+	return outtbl
+end
+
+function cat9.switch_env(job, force_prompt)
+	if cat9.job_stash and not job then
+		cat9.chdir(cat9.job_stash.dir)
+		cat9.env = cat9.job_stash.env
+		cat9.get_prompt = cat9.job_stash.get_prompt
+		cat9.job_stash = nil
+	end
+
+	if not job then
+		return
+	end
+
+	cat9.job_stash =
+	{
+		dir = root:chdir(),
+		env = cat9.table_copy_shallow(cat9.env),
+		get_prompt = cat9.get_prompt
+	}
+
+	if force_prompt then
+		print(" DAFUQ? ")
+		cat9.get_prompt =
+		function()
+			return force_prompt
+		end
+	end
+
+	cat9.chdir(job.dir)
+	cat9.env = job.env
+	print("switch_env", job.dir, force_prompt)
+end
+
 function cat9.setup_readline(root)
 	local rl = root:readline(
 		function(self, line)
 			cat9.readline = nil
 
-			if not line then
-				if cat9.on_cancel then
-					cat9.on_cancel()
+			if not line or #line == 0 then
+				local on_cancel = cat9.on_cancel
+				if on_cancel then
+					cat9.on_cancel = nil
+					on_cancel()
+					cat9.reset()
 					return
 				end
--- question is if we want other on_cancel behaviour here
+			end
+			cat9.on_cancel = nil
+
+-- allow the line to be intercepted once, with optional block- out
+			local on_line = cat9.on_line
+			if on_line then
+				cat9.on_line = nil
+				if on_line() then
+					cat9.reset()
+					return
+				end
 			end
 
 			local block_reset = cat9.parse_string(self, line)
@@ -127,7 +180,9 @@ function cat9.setup_readline(root)
 					end
 				end
 			end
+
 			table.insert(lash.history, 1, line)
+
 			if not block_reset then
 				cat9.reset()
 			end

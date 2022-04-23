@@ -29,7 +29,8 @@ https://user-images.githubusercontent.com/5888792/161494772-2abccac4-bb92-4a12-9
 This allows for neat visuals like changing layouts, reordering presentation,
 folding and unfolding. It also allows for reusing results of a previous job
 without thinking much about it - caching is the default and you don't need to
-redirect results to files just for reuse.
+redirect results to files just for reuse or re-execute commands when all you
+wanted was different processing of its old output.
 
 It is also designed with the intention of being able to frontend- legacy cli
 tools with little effort - the set of builtins that the shell provides can be
@@ -38,7 +39,7 @@ specific context. In this way, famously unfriendly tools can be worked around
 and integrated into your workflow as seemless as possible.
 
 It cooperates with your desktop window manager (should you have one), letting
-it take care of splitting out things into new windows or even embeddnig media
+it take care of splitting out things into new windows or even embedding media
 or graphical application output into clipped regions of its own window.
 
 https://user-images.githubusercontent.com/5888792/161494402-9e5636e3-dd78-4fcf-bff0-fe5c3dd0a369.mp4
@@ -97,17 +98,35 @@ ruleset. You can also run it immediately with the shell command:
     shell cat9
 
 This scans LASH\_BASE, HOME/.arcan/lash and XDG\_CONFIG\_HOME/arcan/lash
-for a matching cat9.lua and switches over to that.
+for a matching cat9.lua and switches over to that. It is also possible to
+set LASH\_SHELL=cat9 and cat9.lua will be tried immediately instead of
+default.lua
 
-Mouse gestures and rendering can be tuned by editing the config table at the
-beginning of the cat9 script file.
+Mouse gestures and rendering can be tuned by editing the config table at
+the beginning of the cat9 script file.
 
 Use
 ===
 
+By default, commands will get tracked as a 'job'.
+These get numeric identifiers and are referenced by a pound sign:
+
+    find /tmp
+		repeat #0 flush
+
+Most builtin commands use job references in one way or another. The context of
+these jobs, e.g. environment variables and path is tracked separately. By
+starting a command with a job reference, the current context is temporarily
+set to that of a previous job.
+
+    cd /usr/share
+		find . -> becomes job #0
+		cd /tmp
+		#0 pwd -> /usr/share
+
 Most strings entered will be executed as non-tty jobs. To run something
-specifically as a tty (ncurses or other 'terminal-tui' like application), mark
-it with a ! to spawn a new window.
+specifically as a tty (ncurses or other 'terminal-tui' like application),
+mark it with a ! to spawn a new window bound to a terminal emulator.
 
     !vim
 
@@ -121,8 +140,8 @@ To forego any parsing or internal pipelineing and run the entire line verbatim
 
 		!!find /usr |grep share
 
-Certain clients really want a pty, though there is no high-level vt100+ decoder
-yet.
+Certain clients really want a pty or they refuse to do anything, though there
+is no high-level vt100+ decoder yet.
 
     p!vim
 
@@ -179,10 +198,13 @@ and running; all-passive removes all jobs that have completed running.
 
 ### Repeat
 
-    repeat #job [flush]
+    repeat #job [flush | edit]
 
 This will re-execute a previously job that has completed. If the flush argument
-is specified, any collected data from its previous run will be discarded.
+is specified, any collected data from its previous run will be discarded. If
+the edit argument is specified, the command-line which spawned the job will be
+copied into the command line - and if executed, will append or flush into the
+existing job identifier.
 
 ### Cd
 

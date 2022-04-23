@@ -94,7 +94,6 @@ local function flush_job(job, finish, limit)
 			else
 				outlim = 0
 			end
--- this form will just flush all buffered in once so no reason for limit
 		else
 			_, falive =
 			job.out:read(false,
@@ -102,14 +101,14 @@ local function flush_job(job, finish, limit)
 					upd = true
 					if eof then
 						outlim = 0
-					else
-						if not finish then
-							outlim = outlim - 1
-						end
 					end
 					data_buffered(job, line, eof)
 				end
 				)
+-- this form will just flush all buffered in once so no reason for limit
+			if not finish then
+				outlim = 0
+			end
 		end
 	end
 
@@ -171,7 +170,7 @@ local function finish_job(job, code)
 -- without producing any output / explanation
 	if config.autoclear_empty and job.data.bytecount == 0 then
 		if #job.err_buffer == 0 then
-			if job.exit ~= 0 and not job.hidden then
+			if job.exit and job.exit ~= 0 and not job.hidden then
 				cat9.add_message(
 					string.format(
 						"#%d failed, code: %d (%s)", job.id and job.id or 0, job.exit, job.raw
@@ -223,10 +222,8 @@ function cat9.process_jobs()
 	return upd
 end
 
-function cat9.setup_shell_job(args, mode, envv)
--- could pick some other 'input' here, e.g.
--- .in:stdin .env:key1=env;key2=env mycmd $2 arg ..
-	local inf, outf, errf, pid = root:popen(args, mode)
+function cat9.setup_shell_job(args, mode, env)
+	local inf, outf, errf, pid = root:popen(args, mode, env)
 	if not pid then
 		cat9.add_message(args[1] .. " failed in " .. line)
 		return
@@ -235,22 +232,25 @@ function cat9.setup_shell_job(args, mode, envv)
 -- insert/spawn
 	local job =
 	{
+		env = env,
 		pid = pid,
 		inp = inf,
 		out = outf,
 		err = errf,
 		raw = line,
+		args = args,
+		mode = mode,
 		err_buffer = {},
 		dir = root:chdir(),
 		short = args[2],
 	}
 
 	job["repeat"] =
-	function()
+	function(job)
 		if job.pid then
 			return
 		end
-		job.inp, job.out, job.err, job.pid = root:popen(args, mode)
+		job.inp, job.out, job.err, job.pid = root:popen(job.args, job.mode)
 		if job.pid then
 			table.insert(activejobs, job)
 			if not job.hidden then
@@ -267,13 +267,17 @@ function cat9.term_handover(cmode, ...)
 	local argtbl = {...}
 	local argv = {}
 	local env = {}
+	local oldenv = cat9.table_copy_shallow(cat9.env)
+
+-- don't want any of these to bleed through
+	for k,v in pairs(oldenv) do
+		if string.sub(k, 1, 5) ~= "ARCAN" then
+			env[k] = v
+		end
+	end
+
 	local open_mode = ""
 	local embed = false
-
--- copy in global env
-	for k,v in pairs(cat9.env) do
-		env[k] = v
-	end
 
 -- any special !(a,b,c) options go here, this is tied to each | group,
 	if type(argtbl[1]) == "table" then
@@ -310,6 +314,7 @@ function cat9.term_handover(cmode, ...)
 -- Dispatched when the queue of runners is empty - argv is passed in env due to
 -- afsrv_terminal being used to implement the vt100 machine. This is a fair
 -- place to migrate to another vt100 implementation.
+	local dir = root:chdir()
 	local run =
 	function()
 		env["ARCAN_TERMINAL_EXEC"] = table.concat(argv, " ")
@@ -333,7 +338,9 @@ function cat9.term_handover(cmode, ...)
 					pid = pid,
 					inp = inp,
 					err = err,
-					out = out
+					out = out,
+					env = env,
+					dir = dir
 				}
 				job.wnd = new
 				cat9.import_job(job)
@@ -416,15 +423,20 @@ end
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
-function cat9.import_job(v)
+function cat9.import_job(v, noinsert)
 	if not v.collapsed_rows then
 		v.collapsed_rows = config.collapsed_rows
 	end
 	v.bar_color = tui.colors.ui
 	v.line_offset = 0
+	v.job = true
 
 	if v.unbuffered == nil then
 		v.unbuffered = false
+	end
+
+	if not v.env then
+		v.env = root:getenv()
 	end
 
 	v.hooks =
@@ -474,7 +486,8 @@ function cat9.import_job(v)
 	end
 -- track both as active (for processing) and part of the tracked
 -- jobs (for reset and UI layouting)
-	if v.pid or v.check_status then
+
+	if not noinsert and (v.pid or v.check_status) then
 		table.insert(activejobs, v)
 		if not v.hidden then
 			cat9.activevisible = cat9.activevisible + 1
@@ -511,8 +524,9 @@ function cat9.import_job(v)
 		v.view = v.err_buffer
 	end
 
-	table.insert(lash.jobs, v)
+	if not noinsert then
+		table.insert(lash.jobs, v)
+	end
 	return v
 end
-
 end

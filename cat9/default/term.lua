@@ -4,11 +4,7 @@ local function shc_helper(mode, ...)
 	local args = {...}
 	local argv = {"/bin/sh", "sh", "-c"}
 	local str  = ""
-	local env = root:getenv()
-
-	for k,v in pairs(cat9) do
-		env[k] = v
-	end
+	local env = cat9.table_copy_shallow(cat9.env)
 
 -- check processing directive
 	lastarg = args[1]

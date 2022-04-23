@@ -211,7 +211,6 @@ end
 
 local last_count = 0
 local function suggest_for_context(prefix, tok, types)
--- empty? just add builtins
 	if #tok == 0 then
 		cat9.readline:suggest(builtin_completion)
 		return
@@ -235,6 +234,15 @@ local function suggest_for_context(prefix, tok, types)
 		return
 	end
 
+-- if a job table is used silently remove it and set it as context
+-- empty? just add builtins
+	local closure = function() end
+	if res[1] and type(res[1]) == "table" and res[1].job then
+		cat9.switch_env(res[1])
+		table.remove(res, 1)
+		closure = function() cat9.switch_env(); end
+	end
+
 -- these can be delivered asynchronously, entirely based on the command
 -- also need to prefix filter the first part of the token .. Force-inject
 -- an empty argument if we have added a space but not yet started on the
@@ -244,14 +252,14 @@ local function suggest_for_context(prefix, tok, types)
 			res[#res+1] = ""
 		end
 		cat9.suggest[res[1]](res, prefix)
-		return
+		return closure()
 	end
 
 -- generic fallback? smosh whatever we find walking ., filter by taking
 -- the prefix and step back to whitespace
 	local carg = res[#res]
 	if not carg or #carg == 0 or type(carg) ~= "string" then
-		return
+		return closure()
 	end
 
 	local argv, prefix, flt, offset =
@@ -266,6 +274,8 @@ local function suggest_for_context(prefix, tok, types)
 			cat9.readline:suggest(set, "word", prefix)
 		end
 	)
+
+	return closure()
 end
 
 --
@@ -367,10 +377,21 @@ function cat9.parse_string(rl, line)
 		end
 	end
 
+	local revert = false
+	if type(commands[1]) == "table" then
+		cat9.switch_env(commands[1])
+		table.remove(commands, 1)
+		revert = true
+	end
+
 -- this prevents the builtins from being part of a pipeline which might
 -- not be desired - like cat something | process something | open @in vnew
 	if cat9.builtins[commands[1]] then
-		return cat9.builtins[commands[1]](unpack(commands, 2))
+		local res = cat9.builtins[commands[1]](unpack(commands, 2))
+		if revert then
+			cat9.switch_env()
+		end
+		return res
 	end
 
 -- validation, all entries in commands should be strings now - otherwise the
@@ -379,6 +400,9 @@ function cat9.parse_string(rl, line)
 	for _,v in ipairs(commands) do
 		if type(v) ~= "string" then
 			cat9.add_message("parsing error in commands, non-string in argument list")
+			if revert then
+				cat9.switch_env()
+			end
 			return
 		end
 	end
@@ -387,9 +411,14 @@ function cat9.parse_string(rl, line)
 	local lst = string.split(commands[1], "/")
 	table.insert(commands, 2, lst[#lst])
 
-	local job = cat9.setup_shell_job(commands, "re")
+	local job = cat9.setup_shell_job(commands, "re", cat9.env)
 	if job then
 		job.raw = line
+	end
+
+-- return to normal
+	if revert then
+		cat9.switch_env()
 	end
 end
 

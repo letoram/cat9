@@ -12,7 +12,6 @@ Job Control:
 CLI help:
 - [p] lastmsg queue rather than one-slot for important bits
 - [ ] track most used directories for execution and expose to cd h [set]
-- [ ] r for search in word
 - [ ] actual helper for keybindings (longpress on ctrl..):
       c+l = reset, d = cancel or delete word, t = swap prev.
 			b - left, f = right, k = cut to eol, u = cut to sol, p step hist b

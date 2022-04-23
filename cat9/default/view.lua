@@ -66,7 +66,10 @@ local function view_monitor()
 		local tbl = {...}
 		local fmtstr = string.rep("%s\t", #tbl)
 		local msg = string.format(fmtstr, ...)
-		table.insert(job.data, msg)
+		local lst = string.split(msg, "\n")
+		for _,v in ipairs(lst) do
+			table.insert(job.data, v)
+		end
 		cat9.flag_dirty()
 	end
 	cat9.add_message =
