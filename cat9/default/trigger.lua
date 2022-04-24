@@ -50,6 +50,22 @@ function builtins.trigger(job, action, cmd, oflow)
 end
 
 function suggest.trigger(args, raw)
+	local set = {}
+	if #args == 2 then
+		for _,v in ipairs(lash.jobs) do
+			if not v.hidden then
+				table.insert(set, "#" .. tostring(v.id))
+			end
+		end
+		cat9.readline:suggest(set, "word")
+	elseif #args == 3 then
+		cat9.readline:suggest(cat9.prefix_filter({"ok", "fail"}, args[3]), "word")
+
+	elseif #args == 4 and #args[#args] == 0 then
+		cat9.readline:suggest({"flush"}, "word")
+-- should recursively resolve the rest of the 4th argument through the
+-- same parser / suggest as we do elsewhere
+	end
 end
 
 end

@@ -59,6 +59,23 @@ local function deploy_copy(cat9, root, job)
 		return
 	end
 
+-- simpler, but we have to poll for progress if we want it via some
+-- clock timer hooking tick
+	if type(job.src) == "table" and type(job.dst) == "userdata" then
+		job.dst:write(
+			job.src,
+			function(ok)
+				if not ok then
+					job.code = 1
+					job.short = "(failed) " .. job.short
+				else
+					cat9.remove_job(job)
+				end
+				job.dst:close()
+				job.dst = nil
+			end
+		)
+	end
 end
 
 return
@@ -103,6 +120,9 @@ function builtins.copy(src, opt1, opt2, opt3)
 			cat9.add_message("copy: >src< [opt] dst [opt] - expected job, string or stream for src")
 			return
 		end
+		srclbl = "(job: " .. tostring(src.id) .. ")"
+-- for the time being just assume it's the data..
+		src = src.data
 
 -- interesting popt: view (err, std), line-ranges, relative lines, keep-on-success
 	elseif type(src) == "string" then
@@ -188,7 +208,7 @@ function builtins.copy(src, opt1, opt2, opt3)
 		else
 			job.short = "copy: [waiting for pick] -> " .. dstlbl
 			job.raw = job.short
-			cat9.resources.bin =
+			local hnd =
 			function(id, blob)
 				job.short = string.format("copy: [picked:%s] -> %s", id, dstlbl)
 				job.src = blob
@@ -196,6 +216,14 @@ function builtins.copy(src, opt1, opt2, opt3)
 				cat9.resources.bin = nil
 				deploy_copy(cat9, root, job)
 			end
+-- track and hook like this so forgetting the job won't leave us stalled on picking
+			cat9.resource.bin = hnd
+			table.insert(job.on_destroy,
+			function()
+				if cat9.resource.bin == hnd then
+					cat9.resource.bin = nil
+				end
+			end)
 		end
 -- create placeholder job, mark that we are waiting so that gets added to the bchunk hnd,
 -- something needs to be done if the job gets forgotten while we are waiting for the pick
@@ -242,9 +270,58 @@ function builtins.copy(src, opt1, opt2, opt3)
 end
 
 function suggest.copy(args, raw)
-	if #args == 2 then
-	elseif #args == 3 then
+	if #args > 3 then
+		cat9.add_message("copy src dst >...< - too nay arguments")
+		return
 	end
-end
 
+	if #args == 2 and type(args[2]) == "string" then
+		local set = {}
+		local ch = string.sub(args[2], 1, 1)
+
+		if ch and (ch == "." or ch == "/") then
+			local argv, prefix, flt, offset =
+				cat9.file_completion(args[2], cat9.config.glob.file_argv)
+			local cookie = "copy " .. tostring(cat9.idcounter)
+			cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+				function(set)
+					if flt then
+						set = cat9.prefix_filter(set, flt, offset)
+					end
+					cat9.readline:suggest(set, "word", prefix)
+				end
+			)
+			return
+		end
+
+		table.insert(set, "pick:")
+		table.insert(set, "./")
+		table.insert(set, "/")
+
+		for _,v in ipairs(lash.jobs) do
+			if not v.hidden then
+				table.insert(set, "#" .. tostring(v.id))
+			end
+		end
+
+		cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
+		return
+	end
+
+	if ch and (ch == "." or ch == "/") then
+		local argv, prefix, flt, offset =
+			cat9.file_completion(args[2], cat9.config.glob.file_argv)
+		local cookie = "copy " .. tostring(cat9.idcounter)
+		cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+			function(set)
+				if flt then
+					set = cat9.prefix_filter(set, flt, offset)
+				end
+				cat9.readline:suggest(set, "word", prefix)
+			end
+		)
+		return
+	end
+
+end
 end

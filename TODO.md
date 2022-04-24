@@ -4,11 +4,6 @@ TODO (for first release)
    realtime feedback for job open $realtime
 	 when inputting to window, each | triggers a subcommand ( grep #0 hi | grep #1 )
 
-Job Control:
-- [ ] 'on data' hook (trigger jobid data pattern trigger)
-- [ ] 'on finished' hook (trigger jobid ok trigger)
-- [ ] 'on failed' hook (trigger jobid errc trigger)
-
 CLI help:
 - [p] lastmsg queue rather than one-slot for important bits
 - [ ] track most used directories for execution and expose to cd h [set]
