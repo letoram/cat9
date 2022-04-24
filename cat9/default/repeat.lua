@@ -97,5 +97,4 @@ function(args, raw)
 
 	cat9.readline:suggest(set, "word")
 end
-
 end
