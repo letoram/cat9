@@ -1,45 +1,36 @@
-local viewlut
-local function build_lut()
-	lut = {}
-	function lut.out(set, i, job)
-		job.view = job.data
-		return i + 1
-	end
-	lut.stdout = lut.out
-
-	function lut.err(set, i, job)
-		job.view = job.err_buffer
-		return i + 1
-	end
-	lut.stderr = lut.err
-
-	function lut.exp(set, i, job)
-		job.expanded = -1
-		return i + 1
-	end
-	lut.expand = lut.exp
-
-	function lut.tog(set, i, job)
-		if job.expanded ~= nil then
-			job.expanded = nil
-		else
-			job.expanded = -1
-		end
-	end
-	lut.toggle = lut.tog
-
-	function lut.col(set, i, job)
-		job.expanded = nil
-	end
-	lut.collapse = lut.col
-	viewlut = lut
--- also need scroll, filter, ...
-end
-
-build_lut()
-
 return
 function(cat9, root, builtins, suggest)
+local viewlut = {}
+function viewlut.out(set, i, job)
+	job.view = cat9.view_raw
+	return i + 1
+end
+
+function viewlut.err(set, i, job)
+	job.view = cat9.view_err
+	return i + 1
+end
+
+function viewlut.expand(set, i, job)
+	job.expanded = -1
+	return i + 1
+end
+
+function viewlut.toggle(set, i, job)
+	if job.expanded ~= nil then
+		job.expanded = nil
+	else
+		job.expanded = -1
+	end
+end
+
+function viewlut.collapse(set, i, job)
+	job.expanded = nil
+end
+
+function viewlut.scroll(set, i, job)
+
+end
 
 local function view_monitor()
 	for _,v in ipairs(lash.jobs) do
@@ -119,8 +110,13 @@ function builtins.view(job, ...)
 				"29", "30", "31", "32"
 			}
 
-			job.view = function(job, x, y, cols, rows)
-				local lim = #set <= rows and #set - 1 or rows
+			job.view =
+			function(job, x, y, cols, rows, probe)
+				local lim = #set - 1 < rows and #set - 1 or rows
+				if probe then
+					return lim
+				end
+
 				for i=y,y+lim do
 					local lbl = set[i-y+1]
 					local col = tui.colors[lbl]
@@ -148,15 +144,30 @@ end
 function suggest.view(args, raw)
 	if #args <= 2 then
 		local set = {"monitor", "color"}
+		if cat9.selectedjob then
+			table.insert(set, "#csel")
+		end
+
+		for _,v in ipairs(lash.jobs) do
+			if not v.hidden then
+				table.insert(set, "#" .. tostring(v.id))
+			end
+		end
+		cat9.readline:suggest(cat9.prefix_filter(set, string.sub(raw, 6)), "word")
 		return
 	end
 
+-- no opts for the non-jobs atm.
 	if type(args[2]) ~= "table" then
 		return
 	end
 
--- view [job] +mode (out, err, tog, exp, scroll, wrap)
--- view monitor
+	local set = {}
+	for k, _ in pairs(viewlut) do
+		table.insert(set, k)
+	end
+
+	cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
 end
 
 end

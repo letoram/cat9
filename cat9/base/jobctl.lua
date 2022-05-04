@@ -187,7 +187,7 @@ local function finish_job(job, code)
 		end
 
 -- otherwise switch to error output
-		job.view = job.err_buffer
+		job.view = cat9.view_err
 		job.bar_color = tui.colors.alert
 	end
 end
@@ -431,6 +431,39 @@ function cat9.remove_job(job)
 	return found
 end
 
+local function raw_view(job, set, x, y, cols, rows, probe)
+	local lc = job.data.linecount
+	if job.expanded then
+		lc = lc > rows and rows or lc
+	else
+		lc = lc < job.collapsed_rows and lc or job.collapsed_rows
+	end
+
+	if probe then
+		return lc
+	end
+
+-- the rows will naturally be capped to what we claimed to support
+	local dataattr = {fc = tui.colors.inactive, bc = tui.colors.background}
+
+	for i=1,lc do
+		local row = job.data[job.data.linecount - i + 1]
+		if row then
+			root:write_to(x + config.content_offset, y+i-1, row, dataattr)
+		end
+	end
+
+	return lc
+end
+
+function cat9.view_raw(job, ...)
+	return raw_view(job, job.data, ...)
+end
+
+function cat9.view_err(job, ...)
+	return raw_view(job, job.err_buffer, ...)
+end
+
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
@@ -469,18 +502,15 @@ function cat9.import_job(v, noinsert)
 		local oe = v.err_buffer
 
 		v.err_buffer = {}
-		if v.view == oe then
-			v.view = v.err_buffer
-		else
-			v.view = v.data
-		end
 	end
+
+	v.view = cat9.view_raw
 
 	v.closure = {}
 	if not v.data then
 		v:reset()
 	end
-	v.view = v.data
+
 	if not v.cookie then
 		v.cookie = 0
 	end
@@ -533,7 +563,7 @@ function cat9.import_job(v, noinsert)
 
 -- if no stdout was provided, but stderr was, set that as the default view
 	if not v.out and v.err then
-		v.view = v.err_buffer
+		v.view = cat9.view_err
 	end
 
 	if not noinsert then

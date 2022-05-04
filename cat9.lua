@@ -24,8 +24,11 @@ local config =
 
 	content_offset = 1, -- columns to skip when drawing contents
 	job_pad        = 1, -- space after job data and next job header
-	collapsed_rows = 1, -- number of rows of contents to show when collapsed
+	collapsed_rows = 4, -- number of rows of contents to show when collapsed
 	autoclear_empty = true, -- forget jobs without output
+
+	main_column_width = 120, -- let one column be wider
+	min_column_width = 80, -- if we can add more side columns
 
 	open_spawn_default = "embed", -- split, tab, ...
 	open_embed_collapsed_rows = 4,
@@ -57,7 +60,7 @@ local config =
 -- powerline glyphs for easy cut'n'paste:   
 	job_bar_expanded =
 	{
-		{ selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
+		{ collapse_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{ group_sep, "$full"},
 	},
 
@@ -102,6 +105,7 @@ local cat9 =  -- vtable for local support functions
 	builtins = {},
 	suggest = {},
 	handlers = {},
+	views = {},
 
 -- properties exposed for other commands
 	config = config,
@@ -126,6 +130,7 @@ local safe_suggest
 local function load_builtins(base)
 	cat9.builtins = {}
 	cat9.suggest = {}
+	cat9.views = {}
 
 	local fptr, msg = loadfile(string.format("%s/cat9/%s.lua", lash.scriptdir, base))
 	if not fptr then
@@ -137,7 +142,7 @@ local function load_builtins(base)
 	for _,v in ipairs(set) do
 		local fptr, msg = loadfile(string.format("%s/cat9/%s/%s", lash.scriptdir, base, v))
 		if fptr then
-			pcall(fptr(), cat9, lash.root, cat9.builtins, cat9.suggest)
+			pcall(fptr(), cat9, lash.root, cat9.builtins, cat9.suggest, cat9.views)
 		else
 			cat9.add_message(string.format("builtin{%s:%s} failed to load: %s", base, v, msg))
 			return false

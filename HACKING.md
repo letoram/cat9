@@ -22,6 +22,35 @@ modify cat9/myset/mycmd.lua so that the returned function modifies the builtins
 and suggest tables provided as arguments to fit the command to provide. It is
 advised to keep this clean and have a 1 file to 1 command file system layout.
 
+Views
+=====
+To the set of builtins, views can also be added. These are data visualisers that
+implement anything above just basic "draw the lastest few entires of data". Adding
+a view is just like adding a builtin, with the suggestion that a subdirectory to
+the command-set is used:
+
+    default.lua:
+		   ...
+			 "views/wrap.lua"
+
+and in cat9/default/views/wrap.lua:
+
+    return
+		function(cat9, root, builtins, suggest, view)
+		    function view.wrap(job, x, y, cols, rows, hidden)
+				    return rows
+				end
+		end
+
+and should return the number of rows consumed to present job.data according to
+the view. The builtin 'view' command will then enumerate the set of known views
+and let the user toggle between them accordingly.
+
+The corresponding view function will then be called each time the view is to be
+drawn, and whenever it is marked as hidden. The function is still expected to
+return the number of rows presenting the dataset would consume, in order for
+decorations like scrollbars to be accurate.
+
 Job
 ===
 The main data container is that of the job. It is being passed around everywhere

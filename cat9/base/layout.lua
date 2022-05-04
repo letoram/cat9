@@ -38,12 +38,21 @@ function handlers.resized()
 		job.line_cache = nil
 	end
 
-	rowtojob = {}
+	rowtojob = {{width = cols, x = 0}}
+
 	cat9.redraw()
 end
 
 function cat9.xy_to_job(x, y)
-	return rowtojob[y]
+	local xi = 0
+	local xb = 0
+
+	for i=1,#rowtojob do
+		if x < rowtojob[i].width then
+			local ind = rowtojob[i]
+			return ind[y], x - ind.x
+		end
+	end
 end
 
 function cat9.id_to_job(id)
@@ -68,7 +77,7 @@ end
 -- resolve a grid coordinate to the header of a job,
 -- return the item header index (or -1 if these are not tracked)
 function cat9.xy_to_hdr(x, y)
-	local job = rowtojob[y]
+	local job, col = cat9.xy_to_job(x, y)
 
 	if not job then
 		return
@@ -80,7 +89,7 @@ function cat9.xy_to_hdr(x, y)
 	end
 
 	for i=1,#job.hdr_to_id do
-		if x < job.hdr_to_id[i] then
+		if col < job.hdr_to_id[i] then
 			break
 		end
 		id = i
@@ -90,7 +99,7 @@ function cat9.xy_to_hdr(x, y)
 end
 
 function cat9.xy_to_data(x, y)
-	local job = rowtojob[y]
+	local job, _ = cat9.xy_to_job(x, y)
 	if job and y >= job.last_row then
 		return job
 	end
@@ -118,28 +127,25 @@ local job_helpers =
 
 --
 -- Draw the [metadata][command(short | raw)] interactable one-line 'titlebar'
+-- at the specified location and constraints and the column-id
 --
 local
-function draw_job_header(x, y, cols, rows, job)
+function draw_job_header(job, x, y, cols, rows, cc)
 	local hdrattr =
 	{
 		fc = job.bar_color,
 		bc = job.bar_color
 	}
 
+	local job_key = job.expanded and "job_bar_expanded" or "job_bar_collapsed"
 	if job.selected then
+		job_key = "job_bar_selected"
 		hdrattr.fc = tui.colors.highlight
 		hdrattr.bc = tui.colors.highlight
 	end
 
-	rowtojob[y] = job
+	rowtojob[cc][y] = job
 	job.hdr_to_id = {}
-
--- This should really be populated by a format string in config
-	local job_key = job.expanded and "job_bar_expanded" or "job_bar_collapsed"
-	if job.selected then
-		job_key = "job_bar_selected"
-	end
 
 	local itemstack = config[job_key]
 	if not itemstack then
@@ -174,30 +180,6 @@ function draw_job_header(x, y, cols, rows, job)
 	end
 end
 
---
--- This takes a job that is to be presented 'expanded' and make sure that the
--- output follows wrapping rules. It should be rougly windowed so that the
--- output isn't much larger than the actual
---
-local function get_wrapped_job(job, rows, col)
--- There can be (at least) two different content 'streams' to work with, the
--- main being [stdout] and [stderr]. Others would be the histogram (if enabled)
--- or an attachable post-process "filter" or the even more decadent 'MiM-pipe'
--- where each individual part of a pipeline would be observable.
-
-	local cols, rows = root:dimensions()
-	if job.data_cache then
-		if
-			job.data_cache.rows == rows and
-			job.data_cache.cols == cols and
-			job.data_cache.view == job.view then
-			return job.data_cache
-		end
-	end
-
-	return job.view and job.view or {}
-end
-
 -- rough estimate for bars / log output etc.
 function cat9.bytestr(count)
 	if count <= 0 then
@@ -220,109 +202,62 @@ function cat9.bytestr(count)
 	return string.format("[%.2f KiB]", kb)
 end
 
-local function draw_job(x, y, cols, rows, job)
+local function rows_for_job(job, cols, rows)
+	if job.wnd then
+		if job.expanded then
+			local _, rows = job.wnd:dimensions()
+			return rows + 1
+		end
+		return config.open_embed_collapsed_rows + 1
+	end
+
+	if not job.expanded then
+		rows = rows > job.collapsed_rows and job.collapsed_rows or rows
+	end
+
+	return job:view(0, 0, cols, rows, true) + 1
+end
+
+local function draw_job(job, x, y, cols, rows, cc)
+	local rows = rows_for_job(job, rows, cols)
 	local len = 0
-	local dataattr = {fc = tui.colors.inactive, bc = tui.colors.background}
-	draw_job_header(x, y, cols, rows, job)
+
+	draw_job_header(job, x, y, cols, rows, cc)
 
 	job.last_row = y
 	job.last_col = x
 
---
--- Two ways of drawing the contents, expanded or collapsed.
---
--- Expanded tries to fill as much as possible (or up to a threshold) of
--- contents, respecting wrapping. Wrapping is difficult as the proper form has
--- contents/locale specific rules and should be reapplied when the wrap-width
--- is invalidated on a resize in order for 'scrollbar' like annotations to be
--- accurate.
---
--- A heuristic is needed - for a lower amount of lines (n < 1000 or so) the
--- wrapping can be recalculated each resize for job on expand/collapse. When
--- larger than that, having a sliding window of wrapped seems the best. Then
--- there are cases where you want compact (lots of empty linefeeds, ...)
--- presentation so no vertical space is wasted.
---
-	if job.expanded then
-		local limit = (job.expanded > 0) and job.expanded or (rows - y - 2)
+	y = y + 1
+	rows = rows - 1
 
--- draw as much as we can to fill screen, the wrapped_job is supposed to return
--- 'the right data' (multiple possible streams) wrapped based on contents and
--- window columns
-		local lst = get_wrapped_job(job, limit, cols - config.content_offset)
-		if type(lst) == "function" then
-			local nc = lst(job, x, y + 1, cols, limit)
-			for i=y+1,y+1+nc do
-				rowtojob[i] = job
-			end
-			return y + nc + 2
-		end
-
-		local lc = #lst
-		local index = 1 -- + job.data_offset
-
-		if lc - (index) > limit then
-			limit = limit - 1
-		else
-			limit = lc - 1
-		end
-
--- drawing from the most recent to the least recent (within the window)
--- adjusting for possible data-offset ('index')
-		for i=limit,0,-1 do
-			root:write_to(config.content_offset, y+i+1, lst[lc - (limit - i)], dataattr)
-			rowtojob[y+i+1] = job
-		end
-
--- some cache event to block the event+resize propagation might be useful,
+--- some cache event to block the event+resize propagation might be useful,
 -- another detail here is that wrapping at smaller than width and offsetting
 -- col anchor if the job has stdio tracked (to show both graphical and text
 -- output which is kindof useful for testing / developing graphical apps)
-		if job.wnd then
-			limit = rows - y - 4
-			job.wnd:hint(root,
-			{
-				anchor_row = y+1,
-				anchor_col = x,
-				max_rows = limit,
-				max_cols = cols,
-				hidden = false -- set if the job is actually out of view
-			}
-			)
-		end
-
-		return y + limit + 2
-	end
-
--- save the currently drawn rows for a reverse mapping (mouse action)
-	local ey = y + job.collapsed_rows
-	local line = #job.data
-
 	if job.wnd then
 		job.wnd:hint(root,
 		{
-			anchor_row = y+1,
-			max_rows = job.collapsed_rows,
+			anchor_row = y,
+			anchor_col = x,
+			max_rows = rows - 1,
 			max_cols = cols,
 			hidden = false -- set if the job is actually out of view
 		}
 		)
+		return rows
 	end
 
-	for i=y,ey do
-		rowtojob[i] = job
-		if line > 0 and i > y then
-			local len = root:utf8_len(job.data[line])
-			root:write_to(1, i, job.data[line], dataattr)
-			if len > cols then
-				root:write_to(cols-3, i, "...")
-			end
-			line = line - 1
-		end
+-- the default 'raw' view is defined inside jobctl, cap rows
+	if not job.expanded then
+		rows = rows > job.collapsed_rows and job.collapsed_rows or rows
+	end
+	local ay = job:view(x, y, cols, rows)
+	for i=y,y+ay,1 do
+		rowtojob[cc][i] = job
 	end
 
 -- return the number of consumed rows to the renderer
-	return y + job.collapsed_rows + 1
+	return ay + 1
 end
 
 function cat9.get_prompt()
@@ -344,82 +279,169 @@ function cat9.get_prompt()
 	return res
 end
 
+-- walk set and draw from bottom up, remove items as consumed
+local function
+layout_column(set, x, maxy, cols, rows, cc)
+	while #set > 0 do
+		local job = set[1]
+-- if there is no room to meaningfully expand, then just defer
+-- to next column (if any)
+		if job.expanded then
+			if rows < job.collapsed_rows * 2 then
+				break
+			end
+		else
+			if rows < job.collapsed_rows + 1 then
+				break
+			end
+		end
+		table.remove(set, 1)
+		local pref = rows_for_job(job, cols, rows - 1)
+		maxy = maxy - pref - 1
+		local nc = draw_job(job, x, maxy, cols, rows - 1, cc)
+		rows = rows - nc - config.job_pad
+	end
+
+end
+
 local draw_cookie = 0
 function cat9.redraw()
 	local cols, rows = root:dimensions()
 	draw_cookie = draw_cookie + 1
 	root:erase()
-	rowtojob = {}
+	rowtojob = {{width = cols, x = 0}}
 
 -- priority:
--- alerts > active jobs > job history + scrolling offset
-	local left = rows
+--
+-- active jobs > (job history + scrolling offset)
+--
+--  might be useful sorting active jobs by alerts, and have a
+--  toggle for history jobs to be considered 'always present'
+--
 
--- walk active jobs and then jobs (not covered this frame) to figure out how many we fit
+-- calculate the column widths by having one 'main' that is wider then add
+-- extra columns based on a fixed width for as many as we have,
+-- and then expand the main to 'fill'
+--
+-- [main          ] [extra1] [extra2] [extra3 ]
+-- [main                            ] [extra1 ]
+--
+	local jobcols = 1
+	if cols > config.main_column_width then
+		local left = cols - config.main_column_width
+		local extras = math.floor(
+			left / (config.min_column_width > 0 and config.min_column_width or left)
+		)
+		jobcols = jobcols + extras
+	end
+
+	local xofs = 0
+	for i=1,jobcols do
+		rowtojob[i] = {}
+		rowtojob[i].width = (i == 1 and config.main_column_width or config.min_column_width)
+		rowtojob[i].x = xofs
+		xofs = xofs + rowtojob[i].width
+	end
+
+-- walk active jobs and then jobs (not covered this frame) to figure
+-- out how many we fit at a maximum and add them to this lst
 	local lst = {}
-	local counter = (cat9.get_message(false) ~= nil and 1 or 0)
+
+-- reserved ui area for command-line and other messages
+	local message = cat9.get_message(false)
+	local reserved = message and 1 or 0
 	if cat9.readline then
-		counter = counter + 1
+		reserved = reserved + 1
 	end
 
 -- always put the active first
 	local activejobs = cat9.activejobs
 	for i=#activejobs,1,-1 do
-		if not activejobs[i].hidden then
+		if not activejobs[i].hidden and activejobs[i].view then
 			table.insert(lst, activejobs[i])
-			counter = counter + activejobs[i].collapsed_rows
 			activejobs[i].cookie = draw_cookie
 		end
 	end
 
--- then fill / pad with the others, don't duplicated aliased active/other jobs
-	local jobs = lash.jobs
-	for i=#jobs,1,-1 do
-		if jobs[i].cookie ~= draw_cookie and not jobs[i].hidden then
-			counter = counter + jobs[i].collapsed_rows
-			table.insert(lst, jobs[i])
-			jobs[i].cookie = draw_cookie
+	for i=#cat9.jobs,1,-1 do
+		local job = cat9.jobs[i]
+		if not job.hidden and job.cookie ~= draw_cookie and job.view then
+			table.insert(lst, job)
 		end
+	end
 
--- but stop when we have overcommitted
-		if counter > rows then
+-- quick pre-pass, do we not have enough jobs to even fill a single column?
+-- might be a point in caching this and just re-evaluating on expand-toggle
+-- or removal/introduction of more jobs.
+	local maxcap = 0
+	local simple = true
+	for i=1,#lst do
+		maxcap = maxcap + rows_for_job(lst[i], cols, rows) + config.job_pad
+		if maxcap > rows then
+			simple = false
 			break
 		end
 	end
 
--- reserve space for possible readline prompt and alert message
-	local last_row = 0
-	local reserved = (cat9.readline and 1 or 0) + (cat9.get_message(false) and 1 or 0)
+-- then we can draw single-column top-down and just early out, with
+-- the detail that we have to step lst in reverse
+	if simple or #lst == 1 then
+		local last_row = 0
 
--- for multicolumn work, calculate the split - signal any PTYs accordingly
--- split jobs into columns and gtg
-
--- underflow? start from the top
-	if counter < rows then
+		local cy = 0
 		for i=#lst,1,-1 do
-			if not lst[i].hidden then
-				last_row = draw_job(0, last_row, cols, rows - reserved, lst[i])
-			end
+			local job = lst[i]
+			local nc = draw_job(job, 0, last_row, cols, rows, 1)
+			last_row = last_row + nc + config.job_pad
+			rows = rows - nc - config.job_pad
 		end
--- otherwise start drawing from the bottom
-	else
-		for _,v in ipairs(lst) do
 
+-- add the latest notification / warning, might be better to use either
+-- the readline area (shrink with message) for this or a current-item
+-- helper (missing syntax in readline, \t or something for sep. item + descr)
+		if message then
+			root:write_to(0, last_row, message)
+			last_row = last_row + 1
 		end
-	end
-
--- add the last notification / warning
-	if cat9.get_message(false) then
-		root:write_to(0, last_row, cat9.get_message(false))
-		last_row = last_row + 1
-	end
 
 -- and the actual input / readline field
-	if cat9.readline then
-		cat9.readline:bounding_box(0, last_row, cols, last_row)
+		if cat9.readline then
+			cat9.readline:bounding_box(0, last_row, cols, last_row)
+		end
+
+		return
 	end
 
--- update content-hint for scrollbars
+	local colcap = cols
+	if jobcols > 1 then
+		colcap = config.main_column_width
+	end
+
+-- bottom up and multicolumn
+	for i=1,jobcols do
+		layout_column(lst,
+			rowtojob[i].x,
+			rows - reserved - 1,
+			rowtojob[i].width,
+			rows - reserved,
+			i
+		)
+		if #lst == 0 then
+			break
+		end
+	end
+
+	local cy = rows - 1
+	if cat9.readline then
+		cat9.readline:bounding_box(0, cy, cols, cy)
+		cy = cy - 1
+	end
+
+	if message then
+		root:write(0, cy, message)
+	end
+
+-- something with content hint based on selection?
 end
 
 function cat9.flag_dirty()

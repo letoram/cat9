@@ -129,7 +129,6 @@ function cat9.switch_env(job, force_prompt)
 	}
 
 	if force_prompt then
-		print(" DAFUQ? ")
 		cat9.get_prompt =
 		function()
 			return force_prompt
@@ -138,7 +137,6 @@ function cat9.switch_env(job, force_prompt)
 
 	cat9.chdir(job.dir)
 	cat9.env = job.env
-	print("switch_env", job.dir, force_prompt)
 end
 
 function cat9.setup_readline(root)
@@ -189,11 +187,10 @@ function cat9.setup_readline(root)
 		end, config.readline)
 
 	cat9.readline = rl
-	rl:set(cat9.laststr);
+	rl:set(cat9.laststr)
 	rl:set_prompt(cat9.get_prompt())
 	rl:set_history(lash.history)
 	rl:suggest(config.autosuggest)
 end
 
 end
-
