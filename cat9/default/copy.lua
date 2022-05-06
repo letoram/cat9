@@ -38,7 +38,6 @@ local function deploy_copy(cat9, root, job)
 					job.bar_color = tui.colors.alert
 					job.data = string.format(
 						"I/O error at %s / %s", cat9.bytestr(cur), cat9.bytestr(tot))
-					job.view = job.err_buffer
 
 -- complete
 				elseif bs == 0 then
@@ -275,6 +274,7 @@ function suggest.copy(args, raw)
 		return
 	end
 
+-- first src
 	if #args == 2 and type(args[2]) == "string" then
 		local set = {}
 		local ch = string.sub(args[2], 1, 1)

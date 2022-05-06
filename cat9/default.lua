@@ -10,5 +10,6 @@ return
 	'view.lua',
 	'repeat.lua',
 	'env.lua',
-	'trigger.lua'
+	'trigger.lua',
+--	'views/wrap.lua'
 }
