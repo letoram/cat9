@@ -78,12 +78,12 @@ end
 -- return the item header index (or -1 if these are not tracked)
 function cat9.xy_to_hdr(x, y)
 	local job, col = cat9.xy_to_job(x, y)
+	local id = -1
 
 	if not job then
-		return
+		return id, nil
 	end
 
-	local id = -1
 	if not job.hdr_to_id then
 		return id, job
 	end
