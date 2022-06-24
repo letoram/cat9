@@ -433,7 +433,7 @@ end
 
 local function raw_view(job, set, x, y, cols, rows, probe)
 	local lc = set.linecount
-	if not x then
+	if not x or not cols or not rows then
 		return set
 	end
 

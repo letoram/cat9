@@ -297,12 +297,16 @@ layout_column(set, x, maxy, cols, rows, cc)
 			end
 		end
 		table.remove(set, 1)
+
+-- get the number of rows the job will consume given the set cap (probe)
 		local pref = rows_for_job(job, cols, maxy - 1)
 		maxy = maxy - pref
+
+-- then set xy based on this and then move up with the padding
 		local nc = draw_job(job, x, maxy, cols, pref, cc)
 		rows = rows - nc - config.job_pad
+		maxy = maxy - config.job_pad
 	end
-
 end
 
 local draw_cookie = 0
