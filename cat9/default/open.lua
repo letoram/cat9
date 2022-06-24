@@ -112,7 +112,7 @@ function builtins.open(file, ...)
 				end
 			end
 			wnd:revert()
-			buf = table.concat(file.view, "")
+			buf = table.concat(file:view(), "")
 
 			if not spawn then
 				wnd:bufferview(buf, cat9.reset, arg)

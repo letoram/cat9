@@ -219,7 +219,7 @@ local function rows_for_job(job, cols, rows)
 end
 
 local function draw_job(job, x, y, cols, rows, cc)
-	local rows = rows_for_job(job, rows, cols)
+	local rows = rows_for_job(job, cols, rows)
 	local len = 0
 
 	draw_job_header(job, x, y, cols, rows, cc)
@@ -251,6 +251,7 @@ local function draw_job(job, x, y, cols, rows, cc)
 	if not job.expanded then
 		rows = rows > job.collapsed_rows and job.collapsed_rows or rows
 	end
+
 	local ay = job:view(x, y, cols, rows)
 	for i=y,y+ay,1 do
 		rowtojob[cc][i] = job
@@ -296,9 +297,9 @@ layout_column(set, x, maxy, cols, rows, cc)
 			end
 		end
 		table.remove(set, 1)
-		local pref = rows_for_job(job, cols, rows - 1)
-		maxy = maxy - pref - 1
-		local nc = draw_job(job, x, maxy, cols, rows - 1, cc)
+		local pref = rows_for_job(job, cols, maxy - 1)
+		maxy = maxy - pref
+		local nc = draw_job(job, x, maxy, cols, pref, cc)
 		rows = rows - nc - config.job_pad
 	end
 
@@ -391,22 +392,23 @@ function cat9.redraw()
 		local cy = 0
 		for i=#lst,1,-1 do
 			local job = lst[i]
-			local nc = draw_job(job, 0, last_row, cols, rows, 1)
+			local nc = draw_job(job, 0, last_row, cols, rows - reserved - 1, 1)
 			last_row = last_row + nc + config.job_pad
 			rows = rows - nc - config.job_pad
-		end
-
--- add the latest notification / warning, might be better to use either
--- the readline area (shrink with message) for this or a current-item
--- helper (missing syntax in readline, \t or something for sep. item + descr)
-		if message then
-			root:write_to(0, last_row, message)
-			last_row = last_row + 1
 		end
 
 -- and the actual input / readline field
 		if cat9.readline then
 			cat9.readline:bounding_box(0, last_row, cols, last_row)
+		end
+
+	-- add the latest notification / warning, might be better to use either
+-- the readline area (shrink with message) for this or a current-item
+-- helper (missing syntax in readline, \t or something for sep. item + descr)
+		if message then
+			cols, rows = root:dimensions()
+			root:write_to(0, rows, message)
+			last_row = last_row + 1
 		end
 
 		return
