@@ -432,7 +432,11 @@ function cat9.remove_job(job)
 end
 
 local function raw_view(job, set, x, y, cols, rows, probe)
-	local lc = job.data.linecount
+	local lc = set.linecount
+	if not x then
+		return set
+	end
+
 	if job.expanded then
 		lc = lc > rows and rows or lc
 	else
