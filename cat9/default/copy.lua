@@ -270,7 +270,7 @@ end
 
 function suggest.copy(args, raw)
 	if #args > 3 then
-		cat9.add_message("copy src dst >...< - too nay arguments")
+		cat9.add_message("copy src dst >...< - too many arguments")
 		return
 	end
 

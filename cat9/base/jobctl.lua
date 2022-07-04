@@ -432,35 +432,77 @@ function cat9.remove_job(job)
 end
 
 local function raw_view(job, set, x, y, cols, rows, probe)
-	local lc = set.linecount
+	local lc = set.linecount and set.linecount or 0
+
+-- on an empty :view() just return the dataset itself
 	if not x or not cols or not rows then
 		return set
 	end
 
+-- otherwise the amount of consumed rows
 	if job.expanded then
 		lc = lc > rows and rows or lc
 	else
 		lc = lc < job.collapsed_rows and lc or job.collapsed_rows
 	end
 
+-- and if we are probing, don't draw
 	if probe then
 		return lc
 	end
 
 -- the rows will naturally be capped to what we claimed to support
-	local dataattr = {fc = tui.colors.inactive, bc = tui.colors.background}
+	local dataattr = config.styles.data
+	local lineattr = config.styles.line_number
+	local digits = #tostring(set.linecount)
+	local ofs = job.row_offset
+
+	if lc >= set.linecount then
+		ofs = 0
+	end
 
 	for i=1,lc do
-		local ind = job.data.linecount - i + 1
-		local row = job.data[ind]
-		if row then
-			local cx = x + config.content_offset
-			if job.show_line_number then
-				root:write_to(cx, y+i-1, tostring(ind) .. ": ", dataattr)
-				cx = cx + 5
-			end
-			root:write_to(cx, y+i-1, row, dataattr)
+		local ind
+
+-- apply offset as either an offset relative to end or absolute position
+		if job.row_offset_relative then
+			ind = set.linecount - lc + i + ofs
+		else
+			ind = ofs + i
 		end
+
+-- clamp
+		if ind <= 0 then
+			ind = i
+		end
+
+-- bad .data early out
+		local row = job.data[ind]
+		if not row then
+			break
+		end
+
+		local cx = x + config.content_offset
+
+-- printing line numbers?
+		if job.show_line_number then
+
+-- left-justify
+			local num = tostring(ind)
+			if #num < digits then
+				num = string.rep(" ", digits - #num) .. num
+			end
+			root:write_to(cx, y+i-1, num, lineattr)
+			root:write(": ", lineattr)
+			cx = cx + 2 + digits
+		end
+
+-- and apply column offset
+		if job.col_offset > 0 and job.col_offset < #row then
+			row = string.sub(row, job.col_offset + 1)
+		end
+
+		root:write_to(cx, y+i-1, row, dataattr)
 	end
 
 	return lc
@@ -483,6 +525,7 @@ function cat9.import_job(v, noinsert)
 	end
 	v.bar_color = tui.colors.ui
 	v.row_offset = 0
+	v.row_offset_relative = tru
 	v.col_offset = 0
 	v.job = true
 	v.show_line_number = config.show_line_number
@@ -508,6 +551,7 @@ function cat9.import_job(v, noinsert)
 		v.wrap = true
 		v.row_offset = 0
 		v.col_offset = 0
+		v.row_offset_relative = true
 		v.data = {
 			bytecount = 0,
 			linecount = 0,

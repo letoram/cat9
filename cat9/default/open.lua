@@ -125,6 +125,7 @@ function builtins.open(file, ...)
 			end
 		end
 
+		spawn = spawn and spawn or "split"
 		spawn_trigger(cat9, root, "tui", spawn .. spawn_suffix, trigger)
 
 -- asynch query file on the file to figure out which 'proto' type to handover

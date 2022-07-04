@@ -3,11 +3,15 @@ function(cat9, root, builtins, suggest)
 local viewlut = {}
 function viewlut.out(set, i, job)
 	job.view = cat9.view_raw
+	job.row_offset = 0
+	job.col_offset = 0
 	return i + 1
 end
 
 function viewlut.err(set, i, job)
 	job.view = cat9.view_err
+	job.row_offset = 0
+	job.col_offset = 0
 	return i + 1
 end
 
@@ -44,12 +48,29 @@ function viewlut.collapse(set, i, job)
 end
 
 function viewlut.scroll(set, i, job)
+-- treat +n and -n
+	local function is_rel(str)
+		if not str then
+			return false
+		end
+		local prefix = string.sub(str, 1, 1)
+		return prefix == "+" or prefix == "-"
+	end
+
 -- something to go to beginning/end?
+	local row = 0
+	job.row_offset_relative = is_rel(set[2])
 	local row = cat9.opt_number(set, 2, 0)
 	local col = cat9.opt_number(set, 3, 0)
+
 	sind = sind and sind or 0
-	job.row_offset = row
-	job.col_offset = col
+	job.row_offset = job.row_offset + row
+	job.col_offset = job.col_offset + col
+
+-- clamp relative so we don't go outside actual data range
+	if job.row_offset_relative and job.row_offset > 0 then
+		job.row_offset = 0
+	end
 end
 
 local function view_monitor()

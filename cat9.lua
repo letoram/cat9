@@ -3,102 +3,6 @@
 -- Reference:   https://github.com/letoram/cat9
 -- See also:    HACKING.md, TODO.md
 
-local group_sep = lash.root:has_glyph("") and " " or "> "
-local collapse_sym = lash.root:has_glyph("▲") and "▲" or "[-]"
-local expand_sym = lash.root:has_glyph("▼") and "▼" or "[+]"
-local selected_sym = lash.root:has_glyph("►") and "►" or ">"
--- simpler toggles for dynamically controlling presentation
-local config =
-{
-	autoexpand_latest = true,
-	autosuggest = true, -- start readline with tab completion enabled
-	debug = true, -- dump parsing output / data to the command-line
-
--- all clicks can also be bound as m1_header_index_click where index is the item group,
--- and the binding value will be handled just as typed (with csel substituted for cursor
--- position)
-	m1_click = "view #csel toggle",
-	m2_click = "open #csel tab hex",
-	m3_click = "open #csel hex",
-	hex_mode = "hex_detail_meta", -- hex, hex_detail hex_detail_meta
-
-	content_offset = 1, -- columns to skip when drawing contents
-	job_pad        = 1, -- space after job data and next job header
-	collapsed_rows = 4, -- number of rows of contents to show when collapsed
-	autoclear_empty = true, -- forget jobs without output
-	show_line_number = true, -- default line number view
-
-	main_column_width = 120, -- let one column be wider
-	min_column_width = 80, -- if we can add more side columns
-
-	open_spawn_default = "embed", -- split, tab, ...
-	open_embed_collapsed_rows = 4,
-
-	clipboard_job = true,     -- create a new job that absorbs all paste action
-
-	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
-
--- subtables are ignored for the config builtin
--- possible job-bar meta entries (cat9/base/layout.lua):
---  $pid_or_exit, $id, $data, $hdr_data, $memory_use, $dir, $full, $short
---
--- the index of each bar property is can also be used with the 'click' binds
--- above e.g. m1_header_n_click referring to the subtable index.
-	job_bar_collapsed =
-	{
-		{expand_sym},
-		{"#", "$id", group_sep, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
-		{group_sep, "$short"},
-	},
-
-	job_bar_selected =
-	{
-		{selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
-		{group_sep, "$short", group_sep},
-		{"X"}
-	},
-
--- powerline glyphs for easy cut'n'paste:   
-	job_bar_expanded =
-	{
-		{ collapse_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
-		{ group_sep, "$full"},
-	},
-
--- similar to job_bar but no click-groups so only one level of tables
-	prompt_focus =
-	{
-		"[",
-		"$jobs",
-		"]",
-		"$lastdir",
-		group_sep,
-		function() return os.date("%H:%M:%S") end,
-		group_sep,
-	},
-
-	prompt =
-	{
-		"[",
-		"$lastdir",
-		"]",
-	},
-
-	readline =
-	{
-		cancellable   = true,   -- cancel removes readline until we starts typing
-		forward_meta  = false,  -- don't need meta-keys, use default rl behaviour
-		forward_paste = true,   -- ignore builtin paste behaviour
-		forward_mouse = true,   -- needed for clicking outside the readline area
-	},
-
-	glob =
-	{
-		dir_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1", "-type", "d"},
-		file_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1"}
-	}
-}
-
 local cat9 =  -- vtable for local support functions
 {
 	scanner = {}, -- state for asynch completion scanning
@@ -109,7 +13,7 @@ local cat9 =  -- vtable for local support functions
 	views = {},
 
 -- properties exposed for other commands
-	config = config,
+	config = loadfile(string.format("%s/cat9/config/default.lua", lash.scriptdir))(),
 	jobs = lash.jobs,
 
 	lastdir = "",
@@ -121,6 +25,12 @@ local cat9 =  -- vtable for local support functions
 	focused = true
 }
 
+if not cat9.config then
+	table.insert(lash.messages, "cat9: error loading/parsing config/default.lua")
+	return false
+end
+
+-- zero env out so our launch properties doesn't propagate
 cat9.env["ARCAN_ARG"] = nil
 cat9.env["ARCAN_CONNPATH"] = nil
 
@@ -196,7 +106,7 @@ load_builtins("default")
 safe_builtins = cat9.builtins
 safe_suggest = cat9.suggest
 
-config.readline.verify = cat9.readline_verify
+cat9.config.readline.verify = cat9.readline_verify
 
 lash.root:set_flags(tui.flags.mouse)
 lash.root:set_handlers(cat9.handlers)
