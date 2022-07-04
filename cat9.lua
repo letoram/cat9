@@ -26,6 +26,7 @@ local config =
 	job_pad        = 1, -- space after job data and next job header
 	collapsed_rows = 4, -- number of rows of contents to show when collapsed
 	autoclear_empty = true, -- forget jobs without output
+	show_line_number = true, -- default line number view
 
 	main_column_width = 120, -- let one column be wider
 	min_column_width = 80, -- if we can add more side columns

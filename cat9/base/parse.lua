@@ -300,6 +300,7 @@ function cat9.suggest_history()
 	cat9.readline =
 	root:readline(
 		function(self, line)
+			print("give up on readline")
 			cat9.readline = nil
 			cat9.get_prompt = old_prompt
 			if line then
