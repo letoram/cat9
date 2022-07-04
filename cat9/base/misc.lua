@@ -57,6 +57,11 @@ function cat9.get_message(dequeue)
 	return old
 end
 
+function cat9.opt_number(set, ind, default)
+	local num = set[ind] and tostring(set[ind])
+	return num and num or default
+end
+
 function cat9.run_lut(cmd, tgt, lut, set)
 	local i = 1
 	while i and i <= #set do

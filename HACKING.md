@@ -24,12 +24,14 @@ advised to keep this clean and have a 1 file to 1 command file system layout.
 
 Views
 =====
-To the set of builtins, views can also be added. These are data visualisers that
-implement anything above just basic "draw the lastest few entires of data". Adding
-a view is just like adding a builtin, with the suggestion that a subdirectory to
-the command-set is used:
 
-    default.lua:
+It is possible to add alternate input/output handlers as well. These are
+refered to as views, and are defined and added in the same way as builtins -
+but added to another argument table, 'views' instead. It is suggested that a
+'views' subfolder is addded to the builtin set, so it is easier to distinguish
+and transplant across sets.
+
+       cat9/default/default.lua:
 		   ...
 			 "views/wrap.lua"
 
@@ -37,19 +39,20 @@ and in cat9/default/views/wrap.lua:
 
     return
 		function(cat9, root, builtins, suggest, view)
-		    function view.wrap(job, x, y, cols, rows, hidden)
+		    function view.wrap(job, x, y, cols, rows, probe, hidden)
 				    return rows
 				end
 		end
 
-and should return the number of rows consumed to present job.data according to
-the view. The builtin 'view' command will then enumerate the set of known views
-and let the user toggle between them accordingly.
+and should return the number of rows consumed to present job.data at a
+possible job.row\_offset and job.col\_offset. If probe or hidden is set, just
+estimate the upper bound for layouting purposes - otherwise draw into the
+provided root.
 
-The corresponding view function will then be called each time the view is to be
-drawn, and whenever it is marked as hidden. The function is still expected to
-return the number of rows presenting the dataset would consume, in order for
-decorations like scrollbars to be accurate.
+The corresponding view function will then be called each time the view is to
+be drawn, and whenever it is marked as hidden. The function is still expected
+to return the number of rows presenting the dataset would consume, in order
+for decorations like scrollbars to be accurate.
 
 Job
 ===
@@ -104,3 +107,35 @@ the tui API works can be found at:
 These bindings can also be used to run lash without the afsrv\_terminal chainloader,
 which might make it easier to debug lower level problems. Simply build them as you
 any other lua bindings, and run the examples/lash.lua script.
+
+Layout
+======
+One of the more complicated pieces of this is drawing and laying out jobs. The basic
+flow is as follows:
+
+layout.lua:cat9.redraw() is called every time the window is dirty and should be redrawn.
+1. clear screen
+2. estimate the number of columns consumed and set width accordingly.
+3. reserve vertical space for the prompt and a possible message area.
+4. for each non-hidden, non-visited job with an active view, add to working set.
+5. estimate the number of rows consumed by the jobs in the set to determine if
+	 the simple path should be used.
+
+the number of rows consumed by each job is limited by if the job is viewed as
+collapsed or expanded.
+
+For jobs with external / embedded contents, send hint about the current state
+(expanded / collapsed) with scaling preferences and anchoring row/column.
+
+simple mode:
+   work from top to bottom
+   for each job, draw the job and its header
+	 mark the consumed bounding volume as part of the job (for mouse picking)
+	 draw message
+	 draw readline area
+
+advanced mode:
+   work from bottom to top
+   for the number of estimated columns:
+	 layout the column based on the number of cells reserved
+	 repeat until set is empty

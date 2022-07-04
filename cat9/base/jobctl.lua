@@ -451,9 +451,15 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	local dataattr = {fc = tui.colors.inactive, bc = tui.colors.background}
 
 	for i=1,lc do
-		local row = job.data[job.data.linecount - i + 1]
+		local ind = job.data.linecount - i + 1
+		local row = job.data[ind]
 		if row then
-			root:write_to(x + config.content_offset, y+i-1, row, dataattr)
+			local cx = x + config.content_offset
+			if job.show_line_number then
+				root:write_to(cx, y+i-1, tostring(ind) .. ": ", dataattr)
+				cx = cx + 5
+			end
+			root:write_to(cx, y+i-1, row, dataattr)
 		end
 	end
 
@@ -476,8 +482,10 @@ function cat9.import_job(v, noinsert)
 		v.collapsed_rows = config.collapsed_rows
 	end
 	v.bar_color = tui.colors.ui
-	v.line_offset = 0
+	v.row_offset = 0
+	v.col_offset = 0
 	v.job = true
+	v.show_line_number = config.show_line_number
 
 	if v.unbuffered == nil then
 		v.unbuffered = false
@@ -498,7 +506,8 @@ function cat9.import_job(v, noinsert)
 	v.reset =
 	function(v)
 		v.wrap = true
-		v.line_offset = 0
+		v.row_offset = 0
+		v.col_offset = 0
 		v.data = {
 			bytecount = 0,
 			linecount = 0,

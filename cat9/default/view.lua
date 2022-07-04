@@ -24,12 +24,32 @@ function viewlut.toggle(set, i, job)
 	end
 end
 
+function viewlut.linenumber(set, i, job)
+	if set[2] and set[2] == "on" then
+		job.show_linenumber = true
+		return
+	elseif set[2] and set[2] == "off" then
+		job.show_linenumber = false
+	end
+
+	if job.show_linenumber then
+		job.show_linenumber = false
+	else
+		job.show_linenumber = true
+	end
+end
+
 function viewlut.collapse(set, i, job)
 	job.expanded = nil
 end
 
 function viewlut.scroll(set, i, job)
-
+-- something to go to beginning/end?
+	local row = cat9.opt_number(set, 2, 0)
+	local col = cat9.opt_number(set, 3, 0)
+	sind = sind and sind or 0
+	job.row_offset = row
+	job.col_offset = col
 end
 
 local function view_monitor()
