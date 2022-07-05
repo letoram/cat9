@@ -102,8 +102,8 @@ for a matching cat9.lua and switches over to that. It is also possible to
 set LASH\_SHELL=cat9 and cat9.lua will be tried immediately instead of
 default.lua
 
-Mouse gestures and rendering can be tuned by editing the config table at
-the beginning of the cat9 script file.
+UI behaviour, gesture response and keybindings can be inspected and changed in
+the default.lua file of the config subdirectory.
 
 Use
 ===
