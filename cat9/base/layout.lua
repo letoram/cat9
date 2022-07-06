@@ -145,7 +145,9 @@ function draw_job_header(job, x, y, cols, rows, cc)
 	end
 
 	rowtojob[cc][y] = job
+
 	job.hdr_to_id = {}
+	job.last_key = job_key
 
 	local itemstack = config[job_key]
 	if not itemstack then

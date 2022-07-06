@@ -10,9 +10,8 @@ return
 	autosuggest = true, -- start readline with tab completion enabled
 	debug = true, -- dump parsing output / data to the command-line
 
--- all clicks can also be bound as m1_header_index_click where index is the item group,
--- and the binding value will be handled just as typed (with csel substituted for cursor
--- position)
+-- generic mouse handlers for any job, specific actions can be dynamically
+-- defined by the job creator, as well as the job-bar mouse handler below.
 	m1_click = "view #csel toggle",
 	m2_click = "open #csel tab hex",
 	m3_click = "open #csel hex",
@@ -38,15 +37,16 @@ return
 	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
 
 -- subtables are ignored for the config builtin
+--
 -- possible job-bar meta entries (cat9/base/layout.lua):
 --  $pid_or_exit, $id, $data, $hdr_data, $memory_use, $dir, $full, $short
 --
--- the index of each bar property is can also be used with the 'click' binds
--- above e.g. m1_header_n_click referring to the subtable index.
+-- the action subtable matches
+--
 	job_bar_collapsed =
 	{
 		{expand_sym},
-		{"#", "$id", group_sep, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
+		{"#", "$id", group_sep, group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{group_sep, "$short"},
 	},
 
@@ -54,7 +54,8 @@ return
 	{
 		{selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{group_sep, "$short", group_sep},
-		{"X"}
+		{"X"},
+		m1 = {[3] = "forget #csel"}
 	},
 
 -- powerline glyphs for easy cut'n'paste:   
