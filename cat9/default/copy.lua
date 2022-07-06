@@ -109,6 +109,10 @@ function builtins.copy(src, opt1, opt2, opt3)
 		dstarg = opt2
 	end
 
+	if (srcarg) then
+		print("got pots")
+	end
+
 	local pick_pending_in, pick_pending_out
 	local copy_opt = "p"
 
@@ -192,16 +196,17 @@ function builtins.copy(src, opt1, opt2, opt3)
 		flags = copy_opt,
 		check_status = function() return true; end
 	}
+	local destroy_hook
 
 	if pick_pending_in then
 		if type(cat9.resources.bin) == "function" then
 			cat9.add_message("picking rejected, already queued")
 			return
 		elseif type(cat9.resources.bin) == "table" then
-			job.src = cat9.resource.bin[2]
+			job.src = cat9.resources.bin[2]
 			job.short = "copy: [preknown-io] -> " .. dstlbl
 			job.raw = job.short
-			cat9.resource.bin = nil
+			cat9.resources.bin = nil
 			cat9.import_job(job)
 			deploy_copy(cat9, root, job)
 		else
@@ -216,19 +221,22 @@ function builtins.copy(src, opt1, opt2, opt3)
 				deploy_copy(cat9, root, job)
 			end
 -- track and hook like this so forgetting the job won't leave us stalled on picking
-			cat9.resource.bin = hnd
-			table.insert(job.on_destroy,
-			function()
-				if cat9.resource.bin == hnd then
-					cat9.resource.bin = nil
+			cat9.resources.bin = hnd
+			destroy_hook =
+				function()
+					if cat9.resources.bin == hnd then
+						cat9.resources.bin = nil
+					end
 				end
-			end)
 		end
 -- create placeholder job, mark that we are waiting so that gets added to the bchunk hnd,
 -- something needs to be done if the job gets forgotten while we are waiting for the pick
 -- (reset whatever resources[key] that was used at least).
 		root:request_io(pick_pending_in, pick_pending_out)
 		cat9.import_job(job)
+		if destroy_hook then
+			table.insert(job.hooks.on_destroy, destroy_hook)
+		end
 
 	elseif pick_pending_out then
 		if type(cat9.resources.bout) == "function" then

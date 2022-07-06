@@ -136,11 +136,25 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 			end
 		end
 
--- several possible 'on click' targets:
--- 'header', 'header-column-item group and data (expanded or not)
--- with a generic fallback for just any click
+-- first check if we are on the job bar, and the bar handler for the job
+-- has a mouse action assigned to the group index at the cursor position
+		local id, job = cat9.xy_to_hdr(x, y)
+		if job and id > 0 then
+			local mind = "m" .. tostring(index)
+			local cfgrp = config[job.last_key][mind]
+
+			if cfgrp and cfgrp[id] then
+				cat9.parse_string(nil, cfgrp[id])
+				return
+			end
+		end
+
+-- here is a possible spot for forwarding to the active view on the job
+-- in order to have better click-action handlers (e.g. open or select per line)
+
+-- then check if we should act special on the data (e.g. scroll) or
+-- fallback to a more generic mouse handler
 		if (
-			try("m%d_header_%d_click", index, cat9.xy_to_hdr(x, y)) or
 			(cat9.xy_to_data(x, y) ~= nil and try("m%d_data_click", index)) or
 			try("m%d_click", index)) then
 			return

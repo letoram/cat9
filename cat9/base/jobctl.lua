@@ -502,6 +502,9 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			row = string.sub(row, job.col_offset + 1)
 		end
 
+		if #row > cols then
+			row = string.sub(row, 1, cols)
+		end
 		root:write_to(cx, y+i-1, row, dataattr)
 	end
 
