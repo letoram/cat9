@@ -30,25 +30,23 @@ Exec:
 - [ ] env control (env=bla in=#4) action_a | (env=bla2) action_b
       should translate to "take the contents from job 4, map as input
 			and run action_a)"
-
 - [ ] data dependent expand print (view #0 ...)
     - [ ] hex
 		- [ ] simplified 'in house' vt100
 		- [ ] pattern match
 
 Ui:
-- [ ] view #jobid scroll n-step
-- [ ] view #jobid wrap
-- [ ] view #jobid unwrap
-- [ ] histogram viewing mode
+- [x] view #jobid scroll n-step
+- [x] view #jobid wrap
+- [x] view #jobid unwrap
 - [ ] job history scroll
 - [ ] alias
-- [ ] multicolumn mode (hmm, rowtoid need something)
-- [ ] history / alias / config persistence
-
-- [p] format string to job-bar (see stack)
-  - [ ] format string to prompt
-
+- [p] multicolumn mode
+  - [ ] mouse click on alt columns not working
+- [ ] persistence
+  - [ ] history
+	- [ ] alias / favorites
+	- [ ]
 - [ ] keyboard job selected / stepping (escape out of readline)
 - [ ] mouse select in buffer
-- [ ] line# column in view, click line# marks it for selection
+- [x] line# column in view, click line# marks it for selection
