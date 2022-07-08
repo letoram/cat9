@@ -125,7 +125,7 @@ end
 
 function builtins.view(job, ...)
 -- special case, assign messages and 'print' calls into a job
-	if type(job)== "string" then
+	if type(job) == "string" then
 		if job == "monitor" then
 			view_monitor()
 
@@ -178,6 +178,14 @@ function builtins.view(job, ...)
 		return
 	end
 
+-- dynamically loaded views take precedence
+	local arg = {...}
+	local viewer = cat9.views[arg[1]]
+	if viewer then
+		viewer(job)
+		return
+	end
+
 	cat9.run_lut("view #job", job, viewlut, {...})
 	cat9.flag_dirty()
 end
@@ -185,6 +193,13 @@ end
 function suggest.view(args, raw)
 	if #args <= 2 then
 		local set = {"monitor", "color"}
+
+-- the views are factory functions that provide suggestions or modify
+-- job to attach a custom viewer
+		for k,v in pairs(cat9.views) do
+			table.insert(set, k)
+		end
+
 		if cat9.selectedjob then
 			table.insert(set, "#csel")
 		end
@@ -198,7 +213,8 @@ function suggest.view(args, raw)
 		return
 	end
 
--- no opts for the non-jobs atm.
+-- no opts for the non-jobs atm. these should both use the suggest form
+-- of calling dynamically loaded views..
 	if type(args[2]) ~= "table" then
 		return
 	end

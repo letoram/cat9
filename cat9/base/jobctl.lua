@@ -432,7 +432,8 @@ function cat9.remove_job(job)
 end
 
 local function raw_view(job, set, x, y, cols, rows, probe)
-	local lc = set.linecount and set.linecount or 0
+	set.linecount = set.linecount or 0
+	local lc = set.linecount
 
 -- on an empty :view() just return the dataset itself
 	if not x or not cols or not rows then

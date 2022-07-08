@@ -13,9 +13,28 @@
 --
 return
 function(cat9, root, config)
-	local lastmsg
+local lastmsg
 
-	function cat9.remove_match(tbl, ent)
+function cat9.each_ch(str, cb, err)
+	local u8_step = root.utf8_step
+	local pos = 1
+	while true do
+		local nextch = u8_step(str, 1, pos)
+		if nextch == -1 then
+			if pos <= #str then
+				err(str, pos)
+			end
+			return
+		end
+		cb(string.sub(str, pos, nextch-1), pos)
+		if nextch - pos > 1 then
+		end
+
+		pos = nextch
+	end
+end
+
+function cat9.remove_match(tbl, ent)
 	for i, v in ipairs(tbl) do
 		if v == ent then
 			table.remove(tbl, i)

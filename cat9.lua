@@ -100,6 +100,7 @@ load_feature("parse.lua")   -- breaking up a command-line into actions and sugge
 load_feature("layout.lua")  -- drawing screen, decorations and related handlers
 load_feature("misc.lua")    -- support functions that doesn't fit anywhere else
 load_feature("ioh.lua")     -- event handlers for display server device/state io
+load_feature("vt100.lua")   -- state machine to plugin decoding
 
 -- use mouse-forward mode, implement our own selection / picking
 load_builtins("default")
