@@ -35,6 +35,7 @@ function get_range(low, high)
 		table.insert(res, low)
 		low = low + 1
 	end
+	return res
 end
 
 -- default catch all state
