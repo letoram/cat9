@@ -520,6 +520,49 @@ function cat9.view_err(job, ...)
 	return raw_view(job, job.err_buffer, ...)
 end
 
+-- create a job of job data based on a set of coordinate references (here, line-numbers)
+local function slice_view(job, lines)
+	local res = {}
+	local data = job.data
+
+	if job.view == cat9.view_err then
+		data = job.err_buffer
+	end
+
+	if not lines or #lines == 0 then
+		return data
+	end
+
+	for _,v in ipairs(lines) do
+		local num = tonumber(v)
+		if num then
+			if data[num] then
+				table.insert(res, data[num])
+			end
+		elseif type(v) == "string" then
+			local set = string.split(v, "-")
+			local err = "bad / malformed range"
+			if #set ~= 2 then
+				return nil, err
+			end
+			local a = tonumber(set[1])
+			local b = tonumber(set[2])
+			if not a or not b then
+				return nil, err
+			end
+			local step = a > b and -1 or 1
+			for i=a,b,step do
+				if not data[i] then
+					break
+				end
+				table.insert(res, data[i])
+			end
+		end
+	end
+
+	return res
+end
+
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
@@ -533,6 +576,7 @@ function cat9.import_job(v, noinsert)
 	v.col_offset = 0
 	v.job = true
 	v.show_line_number = config.show_line_number
+	v.slice = slice_view
 
 	if v.unbuffered == nil then
 		v.unbuffered = false

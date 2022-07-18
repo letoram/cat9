@@ -84,6 +84,54 @@ end
 return
 function(cat9, root, builtins, suggest)
 
+-- asynch query file on the file to figure out which 'proto' type to
+-- handover exec/spawn. More oracles are needed here (eg. arcan appl,
+-- xdg-open, arcan-wayland, default browser ...)
+local function open_string(file, spawn)
+	local dstenv = {}
+
+	if not spawn then
+		spawn = cat9.config.open_spawn_default
+	end
+
+-- handover to the decoder, create a job for tracking and as anchor if
+-- we are supposed to embed
+	trigger =
+	function(par, wnd)
+		local _, _, _, pid = par:phandover("/usr/bin/afsrv_decode", "", {}, dstenv)
+		if not pid then
+			wnd:close()
+			return
+		end
+
+		local job =
+		{
+			pid = pid
+		}
+
+		if spawn == "embed" then
+			job.wnd = wnd
+		else
+			job.hidden = true
+		end
+		cat9.import_job(job)
+		job.collapsed_rows = cat9.config.open_embed_collapsed_rows
+
+		return true
+	end
+
+-- fname to decode spawns 'file' -> on result, runs the closure here, that in
+-- turn modifies dstenv to match file and then queues the new window and runs
+-- 'trigger'.
+	fname_to_decode(
+	cat9, dstenv, file,
+		function()
+			spawn_trigger(cat9, root, "handover", spawn .. spawn_suffix, trigger)
+		end
+	)
+	return
+end
+
 function suggest.open(args, raw)
 	cat9.readline:suggest({}, "substitute", raw)
 end
@@ -93,6 +141,11 @@ function builtins.open(file, ...)
 	local opts = {...}
 	local spawn = false
 	local spawn_suffix = ""
+	local parg = {}
+
+	if type(opts[1]) == "table" and opts[1].parg then
+		parg = table.remove(opts, 1)
+	end
 
 	for _,v in ipairs(opts) do
 		if dir_lut[v] then
@@ -102,7 +155,19 @@ function builtins.open(file, ...)
 		end
 	end
 
-	if type(file) == "table" and file.data then
+	if spawn then
+		spawn = spawn .. spawn_suffix
+	end
+
+-- two options for what to do with parg here:
+--
+-- open #1(1-5) should we treat that as a data slice to "open"
+-- in another job or should we treat it as 5 regular 'strings'
+-- to open from the context of #1, or make a playlist of the
+-- 5 strings and open them sequentially?
+--
+--
+	if type(file) == "table" and file.view then
 		trigger =
 		function(par, wnd)
 			local arg = {read_only = true}
@@ -112,10 +177,11 @@ function builtins.open(file, ...)
 				end
 			end
 			wnd:revert()
-			buf = table.concat(file:view(), "")
+			buf = table.concat(file:view(parg), "")
 
 			if not spawn then
 				wnd:bufferview(buf, cat9.reset, arg)
+				return true
 			else
 				wnd:bufferview(buf,
 					function()
@@ -125,55 +191,10 @@ function builtins.open(file, ...)
 			end
 		end
 
-		spawn = spawn and spawn or "split"
-		spawn_trigger(cat9, root, "tui", spawn .. spawn_suffix, trigger)
+		return spawn_trigger(cat9, root, "tui", spawn, trigger)
 
--- asynch query file on the file to figure out which 'proto' type to handover
--- exec/spawn. More oracles are needed here (eg. arcan appl, xdg-open,
--- arcan-wayland, default browser ...)
 	elseif type(file) == "string" then
-		local dstenv = {}
-
-		if not spawn then
-			spawn = cat9.config.open_spawn_default
-		end
-
--- handover to the decoder, create a job for tracking and as anchor if we are
--- supposed to embed
-		trigger =
-		function(par, wnd)
-			local _, _, _, pid = par:phandover("/usr/bin/afsrv_decode", "", {}, dstenv)
-			if not pid then
-				wnd:close()
-				return
-			end
-
-			local job =
-			{
-				pid = pid
-			}
-
-			if spawn == "embed" then
-				job.wnd = wnd
-			else
-				job.hidden = true
-			end
-			cat9.import_job(job)
-			job.collapsed_rows = cat9.config.open_embed_collapsed_rows
-
-			return true
-		end
-
--- fname to decode spawns 'file' -> on result, runs the closure here, that in
--- turn modifies dstenv to match file and then queues the new window and runs
--- 'trigger'.
-		fname_to_decode(
-		cat9, dstenv, file,
-			function()
-				spawn_trigger(cat9, root, "handover", spawn .. spawn_suffix, trigger)
-			end
-		)
-		return
+		open_string(file, spawn)
 	end
 end
 

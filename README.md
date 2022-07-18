@@ -18,10 +18,10 @@ remix it into something different that fits you - see HACKING.md for more tips.
 What can it do?
 ===============
 
-One of the bigger convenience, on top of being quite snappy, is being able to
+One of the bigger conveniences, on top of being quite snappy, is being able to
 run and cleanly separate multiple concurrent jobs asynchronously, with the
 results from 'out' and 'err' being kept until you decide to forget it. At the
-same time, traditionally noisy tasks like changing directories are kept from
+same time, traditionally noisy tasks like changing directories are blocked from
 polluting your view with irrelevant information.
 
 https://user-images.githubusercontent.com/5888792/161494772-2abccac4-bb92-4a12-9a69-987e66201719.mp4
@@ -29,8 +29,8 @@ https://user-images.githubusercontent.com/5888792/161494772-2abccac4-bb92-4a12-9
 This allows for neat visuals like changing layouts, reordering presentation,
 folding and unfolding. It also allows for reusing results of a previous job
 without thinking much about it - caching is the default and you don't need to
-redirect results to files just for reuse or re-execute commands when all you
-wanted was different processing of its old output.
+redirect results to files just for reuse or re-execute pipelines when all you
+wanted was different processing of its old outputs.
 
 It is also designed with the intention of being able to frontend- legacy cli
 tools with little effort - the set of builtins that the shell provides can be
@@ -60,7 +60,7 @@ to setup. Twice the fun.
 For our ends here, it works just fine as a window that looks strangely much
 like a terminal emulator would look, but its innards are entirely different.
 
-If you managed to build Arcan- to your liking, you then need to start Arcan
+If you managed to build Arcan to your liking, you then need to start Arcan
 with a suitable window manager.
 
 There are several to chose from, notable ones being:
@@ -76,24 +76,25 @@ these vary, for console it is easy:
 
     arcan console lash
 
-This should not only convince Arcan to setup a simple fullscreen graphical
-shell that then runs the textual command-line shell in lash. Alas the shell
-will be kindof useless. This is where Cat9 comes in.
+This should convince Arcan to setup a simple fullscreen graphical shell that
+then runs the textual command-line shell in lash. Alas the shell will be kindof
+useless. This is where Cat9 comes in.
 
 Underneath the surface it actually runs:
 
     ARCAN_ARG=cli=lua afsrv_terminal
 
-copy or link cat9.lua to $HOME/.arcan/lash/default.lua (make the directory
-should it not exist) as well as the cat9 subdirectory so that there is a
-$HOME/.arcan/lash/cat9.
+copy or link cat9.lua to $HOME/.arcan/lash/default.lua or cat9.lua (make the
+directory should it not exist) as well as the cat9 subdirectory so that there
+is a $HOME/.arcan/lash/cat9.
 
 Similarly, in durden it would be global/open/terminal=cli=lua and for
 safespaces, tack on cli=lua to the terminal spawn line, e.g.
 layers/current/terminal=cli=lua
 
-Next time you start the arcan console like above, it should switch to cat9s
-ruleset. You can also run it immediately with the shell command:
+Next time you start the arcan console like above, if you picked the default.lua
+route it will start immediately - otherwise you have to manually tell lash to
+run the cat9 rulset with the shell command:
 
     shell cat9
 
@@ -102,8 +103,9 @@ for a matching cat9.lua and switches over to that. It is also possible to
 set LASH\_SHELL=cat9 and cat9.lua will be tried immediately instead of
 default.lua
 
-UI behaviour, gesture response and keybindings can be inspected and changed in
-the default.lua file of the config subdirectory.
+This extra set of steps is to allow multiple shells to coexist, so that there
+is a premade path for other rulesets to join the scene with less of a
+disadvantage.
 
 Use
 ===
@@ -241,7 +243,7 @@ The possible options are:
 
 ### Copy
 
-    copy src dst
+    copy src [opts] dst
 
 The copy command is used to copy data in and out of Cat9 itself, such as taking
 the output of a previous job and storing it in a file or into another running
@@ -256,6 +258,16 @@ Using pick: will treat it as a request to an outer graphical shell (i.e. your
 wm) to provide a file, optionally with an extension hint:
 
     copy pick:iso test.iso
+
+The optional source arguments can be used to slice out subranges, e.g.
+
+    copy #0 (1-10,20) dst
+
+Which would copy lines 1 to 10 and line 20 of the current view buffer into
+the destination.
+
+Copy destinations do not have to be files, they can also be other interactive
+jobs, or special ones like $clipboard.
 
 Backstory
 =========

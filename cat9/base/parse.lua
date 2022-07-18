@@ -22,6 +22,19 @@
 --       If this happens, expand_arg is expected to invoke closure() when done
 --       and return a function that cancels the job if it fails. (incomplete).
 --
+
+-- change the default lexer operator treatment so that /hi would becomes
+-- TOK_STR(/hi) and not OP_DIV TOK_STR.
+local lex_opts =
+{
+	operator_mask = {
+		["+"] = true,
+		["-"] = true,
+		["/"] = true,
+		["="] = true,
+	}
+}
+
 return
 function(cat9, root, config)
 
@@ -55,6 +68,22 @@ local function lookup_job(s, v)
 	end
 end
 
+local function flush_pargs(v)
+-- slice out the arguments within (
+	local stop = #v
+	local start = v.in_lpar+1
+	local ntc = (stop + 1) - start
+	local set = {}
+
+	while ntc > 0 do
+		local rem = table.remove(v, start)
+		table.insert(set, rem)
+		ntc = ntc - 1
+	end
+
+	return table.concat(set, "")
+end
+
 local ptable, ttable
 local function build_ptable(t)
 	ptable = {}
@@ -63,6 +92,14 @@ local function build_ptable(t)
 	ptable[t.SYMBOL    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.STRING    ] = {function(s, v) table.insert(v, s[1][2]); end}
 	ptable[t.NUMBER    ] = {function(s, v) table.insert(v, tostring(s[1][2])); end}
+	ptable[t.OP_SEP    ] = {function(s, v)
+		if v.in_lpar then
+			table.insert(v.lpar_stack, flush_pargs(v, true))
+			v.in_lpar = #v
+		else
+			table.insert(v, ",")
+		end
+	end}
 	ptable[t.OP_NOT    ] = {
 	function(s, v)
 		if #v > 0 and type(v[#v]) == "string" then
@@ -81,6 +118,7 @@ local function build_ptable(t)
 				return "nesting ( prohibited"
 			else
 				v.in_lpar = #v
+				v.lpar_stack = {}
 			end
 		end
 	}
@@ -89,26 +127,21 @@ local function build_ptable(t)
 			if not v.in_lpar then
 				return "missing opening ("
 			end
-			local stop = #v
 			local pargs =
 			{
 				types = t,
 				parg = true,
 				offset = tok[3]
 			}
+			table.insert(v.lpar_stack, flush_pargs(v))
 
--- slice out the arguments within (
-			local start = v.in_lpar+1
-			local ntc = (stop + 1) - start
-
-			while ntc > 0 do
-				local rem = table.remove(v, start)
-				table.insert(pargs, rem)
-				ntc = ntc - 1
+			for _,v in ipairs(v.lpar_stack) do
+				table.insert(pargs, v)
 			end
-			table.insert(v, pargs)
 
+			table.insert(v, pargs)
 			v.in_lpar = nil
+			v.lpar_stack = nil
 		end
 	}
 
@@ -137,6 +170,8 @@ local function tokens_to_commands(tokens, types, suggest)
 				print(lst)
 		end
 
+-- adding the message on every parse run would be confusing,
+-- especially as some 'in parg' etc. stepping yields more args
 		if not suggest then
 			cat9.add_message(msg)
 		end
@@ -195,6 +230,10 @@ local function tokens_to_commands(tokens, types, suggest)
 			local msg = ent[ind](seq, res, v)
 			if msg then
 				return fail(msg)
+
+-- make sure dangling last error/fail message is cleared
+			else
+				cat9.add_message("")
 			end
 			seq = {}
 			ent = nil
@@ -300,7 +339,6 @@ function cat9.suggest_history()
 	cat9.readline =
 	root:readline(
 		function(self, line)
-			print("give up on readline")
 			cat9.readline = nil
 			cat9.get_prompt = old_prompt
 			if line then
@@ -328,12 +366,12 @@ end
 
 function cat9.readline_verify(self, prefix, msg, suggest)
 	if suggest then
-		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true)
+		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true, lex_opts)
 		suggest_for_context(prefix, tokens, types)
 	end
 
 	cat9.laststr = msg
-	local tokens, msg, ofs, types = lash.tokenize_command(msg, true)
+	local tokens, msg, ofs, types = lash.tokenize_command(msg, true, lex_opts)
 	if msg then
 		return ofs
 	end
@@ -358,7 +396,7 @@ function cat9.parse_string(rl, line)
 	end
 
 	cat9.laststr = ""
-	local tokens, msg, ofs, types = lash.tokenize_command(line, true)
+	local tokens, msg, ofs, types = lash.tokenize_command(line, true, lex_opts)
 	if msg then
 		cat9.add_message(msg)
 		return

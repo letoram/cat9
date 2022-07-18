@@ -100,6 +100,18 @@ function cat9.run_lut(cmd, tgt, lut, set)
 	end
 end
 
+function cat9.add_job_suggestions(set, allow_hidden)
+	if cat9.selectedjob then
+		table.insert(set, "#csel")
+	end
+
+	for _,v in ipairs(lash.jobs) do
+		if not v.hidden or allow_hidden then
+			table.insert(set, "#" .. tostring(v.id))
+		end
+	end
+end
+
 function cat9.template_to_str(template, helpers)
 	local res = {}
 	for _,v in ipairs(template) do
