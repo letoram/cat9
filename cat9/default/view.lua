@@ -29,17 +29,20 @@ function viewlut.toggle(set, i, job)
 end
 
 function viewlut.linenumber(set, i, job)
-	if set[2] and set[2] == "on" then
-		job.show_linenumber = true
-		return
-	elseif set[2] and set[2] == "off" then
-		job.show_linenumber = false
+	if set[2] then
+		if set[2] == "on" then
+			job.show_line_number = true
+			return
+		elseif set[2] == "off" then
+			job.show_line_number = false
+			return
+		end
 	end
 
-	if job.show_linenumber then
-		job.show_linenumber = false
+	if job.show_line_number then
+		job.show_line_number = false
 	else
-		job.show_linenumber = true
+		job.show_line_number = true
 	end
 end
 
@@ -102,6 +105,7 @@ local function view_monitor()
 		for _,v in ipairs(lst) do
 			table.insert(job.data, v)
 		end
+		job.data.linecount = job.data.linecount + 1
 		cat9.flag_dirty()
 	end
 	cat9.add_message =
@@ -200,15 +204,7 @@ function suggest.view(args, raw)
 			table.insert(set, k)
 		end
 
-		if cat9.selectedjob then
-			table.insert(set, "#csel")
-		end
-
-		for _,v in ipairs(lash.jobs) do
-			if not v.hidden then
-				table.insert(set, "#" .. tostring(v.id))
-			end
-		end
+		cat9.add_job_suggestions(set, false)
 		cat9.readline:suggest(cat9.prefix_filter(set, string.sub(raw, 6)), "word")
 		return
 	end

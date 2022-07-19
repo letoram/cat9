@@ -108,6 +108,10 @@ These bindings can also be used to run lash without the afsrv\_terminal chainloa
 which might make it easier to debug lower level problems. Simply build them as you
 any other lua bindings, and run the examples/lash.lua script.
 
+With afsrv\_terminal and getting trace/stdio output:
+
+    ARCAN_ARG=cli=lua afsrv_terminal
+
 Layout
 ======
 One of the more complicated pieces of this is drawing and laying out jobs. The basic

@@ -109,10 +109,6 @@ function builtins.copy(src, opt1, opt2, opt3)
 		dstarg = opt2
 	end
 
-	if (srcarg) then
-		print("got pots")
-	end
-
 	local pick_pending_in, pick_pending_out
 	local copy_opt = "p"
 
@@ -123,9 +119,11 @@ function builtins.copy(src, opt1, opt2, opt3)
 			cat9.add_message("copy: >src< [opt] dst [opt] - expected job, string or stream for src")
 			return
 		end
+
+-- get the active data-set, raw versus processed is a thing to consider here - strip
+-- escape sequences or not as an example. srcargs (popt) could be used to this effect
 		srclbl = "(job: " .. tostring(src.id) .. ")"
--- for the time being just assume it's the data..
-		src = src.data
+		src = src:slice(srcarg)
 
 -- interesting popt: view (err, std), line-ranges, relative lines, keep-on-success
 	elseif type(src) == "string" then
@@ -159,6 +157,7 @@ function builtins.copy(src, opt1, opt2, opt3)
 			dst = dst.inp
 		else
 		end
+		dstlbl = "(job)"
 
 	elseif type(dst) == "string" then
 		if string.sub(dst, 1, 5) == "pick:" then
@@ -276,45 +275,9 @@ function builtins.copy(src, opt1, opt2, opt3)
 	end
 end
 
-function suggest.copy(args, raw)
-	if #args > 3 then
-		cat9.add_message("copy src dst >...< - too many arguments")
-		return
-	end
-
--- first src
-	if #args == 2 and type(args[2]) == "string" then
-		local set = {}
-		local ch = string.sub(args[2], 1, 1)
-
-		if ch and (ch == "." or ch == "/") then
-			local argv, prefix, flt, offset =
-				cat9.file_completion(args[2], cat9.config.glob.file_argv)
-			local cookie = "copy " .. tostring(cat9.idcounter)
-			cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
-				function(set)
-					if flt then
-						set = cat9.prefix_filter(set, flt, offset)
-					end
-					cat9.readline:suggest(set, "word", prefix)
-				end
-			)
-			return
-		end
-
-		table.insert(set, "pick:")
-		table.insert(set, "./")
-		table.insert(set, "/")
-
-		for _,v in ipairs(lash.jobs) do
-			if not v.hidden then
-				table.insert(set, "#" .. tostring(v.id))
-			end
-		end
-
-		cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
-		return
-	end
+local function suggest_for_src(args, raw)
+	local set = {}
+	local ch = string.sub(args[2], 1, 1)
 
 	if ch and (ch == "." or ch == "/") then
 		local argv, prefix, flt, offset =
@@ -331,5 +294,86 @@ function suggest.copy(args, raw)
 		return
 	end
 
+	table.insert(set, "pick:")
+	table.insert(set, "./")
+	table.insert(set, "/")
+
+	for _,v in ipairs(lash.jobs) do
+		if not v.hidden then
+			table.insert(set, "#" .. tostring(v.id))
+		end
+	end
+
+	cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
+	return
+end
+
+local function parg_count(args)
+	local count = 0
+	for _, v in ipairs(args) do
+		if type(v) == "table" and v.parg then
+			count = count + 1
+		end
+	end
+	return count
+end
+
+function suggest.copy(args, raw)
+
+-- wait while we are in ( state, further validation here would
+-- be to ensure that only numbers and ranges are applied
+	if args.in_lpar then
+		return
+	end
+
+	if #args - parg_count(args) > 3 then
+		cat9.add_message("copy src dst >...< - too many arguments")
+		return
+	end
+
+-- first src
+	if #args == 2 then
+		if type(args[2]) == "string" then
+			suggest_for_src(args, raw)
+		end
+		return
+	end
+
+-- just finished an lpar, so the next will have to be dst,
+-- where basically everything is a candidate.
+	if #args == 3 and type(args[3]) == "table" and args[3].parg then
+		return
+	end
+
+-- now dst
+	local carg = args[#args]
+	if type(carg) ~= "string" then
+		return
+	end
+
+	local ch = string.sub(carg, 1, 1)
+	if ch and (ch == "." or ch == "/") then
+		local argv, prefix, flt, offset =
+			cat9.file_completion(carg, cat9.config.glob.file_argv)
+		local cookie = "copy " .. tostring(cat9.idcounter)
+		cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+			function(set)
+				if flt then
+					set = cat9.prefix_filter(set, flt, offset)
+				end
+				cat9.readline:suggest(set, "word", prefix)
+			end
+		)
+		return
+	end
+
+	local set =
+	{
+		".",
+		"/",
+		"pick:",
+	}
+	cat9.add_job_suggestions(set, false)
+	cat9.readline:suggest(set, "word", prefix)
 end
 end
