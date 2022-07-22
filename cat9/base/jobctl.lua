@@ -674,6 +674,12 @@ function cat9.import_job(v, noinsert)
 	if not noinsert then
 		table.insert(lash.jobs, v)
 	end
+
+-- but override view with any default
+	if config.default_job_view and cat9.views[config.default_job_view] then
+		cat9.views[config.default_job_view](v, false)
+	end
+
 	return v
 end
 end

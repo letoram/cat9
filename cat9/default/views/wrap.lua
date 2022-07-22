@@ -1,9 +1,36 @@
 return
 function(cat9, root, builtins, suggest, views)
+
+-- for each index in fmt within the range start <= n <= stop,
+-- slice out msg, add to dst table and inject fmt
+local function walk_fmt(dst, msg, start, stop, fmt)
+	local last = start
+
+	for i=start,stop do
+		if fmt[i] then
+			if i > start then
+				local pre = string.sub(msg, last, i)
+				if #pre > 0 then
+					table.insert(dst, pre)
+					last = i
+				end
+			end
+			table.insert(dst, fmt[i])
+		end
+	end
+
+	if last ~= stop then
+		table.insert(dst, string.sub(msg, last, stop))
+	end
+end
+
 -- greedy / naive / compacting:
-local function break_line(dst, msg, prefix, cap, offset, raw)
+local function break_line(dst, msg, prefix, cap, offset, raw, fmt)
+
 -- compact if desired (     ) -> ( ) and tab to two spaces.
-	if not raw then
+-- can't do that (yet) if we have formats as their indices would
+-- get out of sync
+	if not raw and not fmt then
 		msg = string.gsub(msg, "%s+", " ")
 		msg = string.gsub(msg, "\t", "  ")
 	end
@@ -11,14 +38,16 @@ local function break_line(dst, msg, prefix, cap, offset, raw)
 	local len = root:utf8_len(msg)
 	local blen = #msg
 
--- early out, it already fits and strip out if it is just whitespace
+-- early out, it already fits, still need to apply formatting though
 	if len <= cap then
-		if not raw and len > 0 then
+		if not fmt then
 			table.insert(dst, msg)
-			table.insert(dst, "\n")
-			return 1
+		else
+			walk_fmt(dst, msg, 1, #msg, fmt)
 		end
-		return 0
+
+		table.insert(dst, "\n")
+		return 1
 	end
 
 -- better / language specific word-breaking rules go here, for now
@@ -105,7 +134,14 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 -- if we enable state decoding, the wrapping need to process the annotated
 -- output while tracking the atttribute correctly as well
 		if job.view_state then
-			job.view_state:consume(row)
+			local cached = job.view_state.row_cache[ind]
+			if cached then
+				row = cached[1]
+				attr = cached[2]
+			else
+				row, attr = job.view_state:consume(row)
+				job.view_state.row_cache[i] = {row, attr}
+			end
 		end
 
 -- add line number and formatting
@@ -122,7 +158,7 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 		end
 
 -- add the final linefeed to indicate that there is actually a newline
-		local count = break_line(res, row, prefix, cols, job.col_offset or 0, raw)
+		local count = break_line(res, row, prefix, cols, job.col_offset or 0, raw, attr)
 		if count > 0 then
 			total = total + count
 			table.insert(res, dataattr)
@@ -211,7 +247,10 @@ end
 function views.wrap(job, suggest)
 	if not suggest then
 		job.view = job_wrap
-		job.view_state = cat9.vt100_state and cat9.vt100_state()
+		if cat9.vt100_state then
+			job.view_state = cat9.vt100_state()
+			job.view_state.row_cache = {}
+		end
 	end
 end
 end

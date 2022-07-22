@@ -26,6 +26,8 @@ return
 	autoclear_empty = true, -- forget jobs without output
 	show_line_number = true, -- default line number view
 
+	default_job_view = "crop",
+
 	main_column_width = 120, -- let one column be wider
 	min_column_width = 80, -- if we can add more side columns
 
