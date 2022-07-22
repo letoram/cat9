@@ -193,7 +193,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 -- if set.linecount and presentation offsets are the same as cached,
 -- early out - otherwise rebuild the split / absorbed set
 	local reduced, count
-	if false and job.wrap_cache and
+	if job.wrap_cache and
 		job.wrap_cache.linecount == set.linecount and
 		job.wrap_cache.col_offset == job.col_offset and
 		job.wrap_cache.row_offset == job.row_offset then
@@ -244,13 +244,20 @@ end
 -- very similar to base/jobctl.lua:raw_view with the main difference
 -- being that the set is mapped through the break_line call and out:ed
 -- when the linecount cap is exceeded.
-function views.wrap(job, suggest)
+function views.wrap(job, suggest, args, raw)
 	if not suggest then
 		job.view = job_wrap
-		if cat9.vt100_state then
+		job.view_state = nil
+		job.wrap_cache = nil
+
+		if args[2] and args[2] == "vt100" and cat9.vt100_state then
 			job.view_state = cat9.vt100_state()
 			job.view_state.row_cache = {}
 		end
+
+		return
 	end
+
+	cat9.readline:suggest(cat9.prefix_filter({"vt100"}, args[#args]), "word")
 end
 end

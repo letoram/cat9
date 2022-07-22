@@ -36,17 +36,10 @@ function(...)
 -- behaviour and hold/wait like scenarios that will bite immediately, e.g. ssh
 -- asking for prompt.
 --
--- This is also where we should have an attachable vt100 parser in multiple
--- stages, from just 'cursor + motion' to full on terminal. This helper
--- should probably be part of proper (lash.tty_setup(wnd) -> function(data))
---
--- the terminal option would probably be best solved with running through an
--- afsrv_terminal that unpacks inputs from stdin, runs into its state machine
--- and ttpacks the results back.
+-- we also static-default to wrap in vt100 mode.
 --
 	local job = shc_helper("pty", ...)
 	if job then
-		job.isatty = true
 		job.unbuffered = true
 	end
 end
@@ -106,7 +99,6 @@ local function binarg_select(args, raw, sz, pref)
 		end
 	)
 end
-
 
 suggest["!"] =
 function(args, raw)

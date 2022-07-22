@@ -20,6 +20,7 @@ Data Processing:
 - [p] Copy command (job to clip, to file, to ..)
 - [ ] descriptor-to-pseudofile substitution for jobs
       eg. diff #0 #1
+- [x] autoprune bad-empty (timer to 0 or ..)
 
 Exec:
 - [p] Open (media, handover exec to afsrv_decode)
