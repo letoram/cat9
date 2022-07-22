@@ -11,12 +11,18 @@ local esc_lut = {}
 local esc_direct_lut = {}
 local c0c1_lut = {}
 local gnd_lut = {}
-local csi_lut = {}
+
+local csi_lut = loadfile(
+	string.format("%s/cat9/base/vt100_csi.lua", lash.scriptdir))()
+
 local osc_lut = {}
 local dsc_lut = {}
 
 -- special, contains the 'can come from anywhere' transitions
 local any_lut = {}
+
+-- track any seen commands that we lack an implementation for
+local missing = { csi = {} }
 
 local enter_esc, enter_osc, enter_csi, enter_dsc
 
@@ -100,10 +106,44 @@ end
 
 local
 function
+csi_dispatch(state, dst, ch, val)
+	if #state.csi.collect > 0 then
+		table.insert(state.csi.param, state.csi.collect)
+		state.csi.collect = ""
+	end
+
+	if csi_lut[val] then
+		csi_lut[val](state, dst, state.csi)
+	else
+		if not missing.csi[val] then
+			missing.csi[val] = true
+			print(string.format("EIMPL: CSI(%x)", val))
+		end
+	end
+	return state_gnd
+end
+
+local
+function
 csi_param(state, dst, ch, val)
+	if ch == ';' then
+		table.insert(state.csi.param, state.csi.collect)
+		state.csi.collect = ""
+		return csi_param
+
+-- perhaps go for separate table here
+	elseif ch == ':' then
+	end
+
 	if val == 0xa or (val >= 0x3c and val <= 0x3f) then
 		return csi_ignore
+
+	elseif val >= 0x40 and val <= 0x7e then
+		return csi_dispatch(state, dst, ch, val)
 	end
+
+	state.csi.collect = state.csi.collect .. ch
+	return csi_param
 end
 
 local
@@ -114,31 +154,24 @@ exec_csi(state, dst, ch, val)
 
 -- dispatch
 	elseif val >= 0x40 and val <= 0x7e then
-		if csi_lut[val] then
-			csi_lut[val](state, dst, state.csi)
-			enter_csi(state, dst, ch, val)
-		end
-		return state_gnd
+		return csi_dispatch(state, dst, ch, val)
 
--- collect
+-- collect (0x3c-0x3f)
 	elseif val >= 0x20 and val <= 0x2f then
-		table.insert(state.csi.collect, val)
+		state.csi.collect = state.csi.collect .. ch
+		return csi_param
 
--- step parameter
+-- step parameter (0x30 - 0x39, 0x3b)
 	elseif val >= 0x30 and val <= 0x39 or val == 0x3b then
-		table.insert(state.csi.param, state.csi.collect)
-		state.csi.param = {}
-		return exec_csi
+		return csi_param(state, dst, ch, val)
 	end
 
--- 0x30-0x39, 0x3b [param]  0x3c-0x3f [collect]
--- 0x3a -> csi-ignore
---
+	return state_gnd
 end
 
 enter_csi =
 function(state, dst, ch, val)
-	state.csi = {collect = {}, param = {}}
+	state.csi = {collect = "", param = {}}
 	state.mask_c0c1 = false
 	return exec_csi
 end
@@ -173,6 +206,23 @@ local
 function state_c0c1(state, dst, ch, val)
 end
 
+local function state_any(state, dst, ch, val)
+	table.insert(dst, ch)
+	return state_any
+end
+
+local state_lut = {
+	[state_any] = "any",
+	[state_c0c1] = "c0c1",
+	[enter_osc] = "osc-in",
+	[enter_esc] = "esc-in",
+	[enter_dcs] = "dcs-in",
+	[state_gnd] = "gnd",
+	[exec_esc] = "esc",
+	[csi_param] = "csi-param",
+	[csi_ignore] = "csi-ign",
+}
+
 -- [from anywhere, execute:]
 set_range(any_lut, state_gnd, {0x18, 0x1a, 0x99, 0x9a})
 set_range(any_lut, state_gnd, get_range(0x80, 0x8f))
@@ -188,7 +238,7 @@ set_range(c0c1_lut, state_c0c1, {0x19, 0x1c, 0x1d, 0x1f})
 -- tui:write (when necessary), along with the raw 'stripped' data
 local
 function parse_vt100(state, data)
-	local inbuf = buffer_raw
+	local inbuf = state.buffer_raw
 	local statefn = state_any
 
 -- run through the state machine,
@@ -198,11 +248,18 @@ function parse_vt100(state, data)
 		data,
 		function(ch, pos)
 			local val = string.byte(ch)
+			local newstate
 -- alter parser state accordingly
-			if any_lut[ch] then
+			if any_lut[val] then
+				newstate = any_lut[val](state, inbuf, ch, val)
 -- otherwise process the state
 			else
-				statefn = statefn(state, ch, string.byte(ch))
+				newstate = statefn(state, inbuf, ch, val)
+			end
+
+			if newstate and newstate ~= statefn then
+--				print("state transition", newstate, ch, val)
+				statefn = newstate
 			end
 
 -- or if we need to exit out from anywhere
@@ -214,23 +271,13 @@ function parse_vt100(state, data)
 		state.on_error
 	)
 
--- merge buffer_out into a new tui:write() able array of interleaved data
--- and format, while also providing the 'raw' unformatted text as it is
--- cheaper to do here rather than deinterleave later.
-	local out = {}
-	local index = 1
-	for _,v in ipairs(state.buffer_fmt) do
-		while index < v[1] do
-			table.insert(out, inbuf[index])
-			index = index + 1
-		end
-		table.insert(out, v[2])
-	end
+	local res = state.buffer_raw
+	local fmt = state.buffer_fmt
 
 	state.buffer_raw = {}
 	state.buffer_fmt = {}
 
-	return out, table.concat(out, "")
+	return table.concat(res, ""), fmt
 end
 
 return function(cat9, root, config)
@@ -246,6 +293,11 @@ return function(cat9, root, config)
 			parser_state = ground,
 			buffer_raw = {},
 			buffer_fmt = {},
+			default_attr =
+			{
+				fc = tui.colors.text,
+				bc = tui.colors.text
+			},
 			on_error = function() end,
 		}
 		return state
