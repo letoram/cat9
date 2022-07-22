@@ -180,6 +180,16 @@ function handlers.tick()
 		cat9.flag_dirty()
 		clock = 10
 	end
+
+-- auto-clean jobs, ones that need periodic polling, ...
+	if #cat9.timers > 0 then
+		local torem = {}
+		for i=#cat9.timers,1 do
+			if not cat9.timers[i]() then
+				table.remove(cat9.timers, i)
+			end
+		end
+	end
 end
 
 function handlers.utf8(self, ch)

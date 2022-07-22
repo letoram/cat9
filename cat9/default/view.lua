@@ -186,11 +186,11 @@ function builtins.view(job, ...)
 	local arg = {...}
 	local viewer = cat9.views[arg[1]]
 	if viewer then
-		viewer(job)
+		viewer(job, false, arg)
 		return
 	end
 
-	cat9.run_lut("view #job", job, viewlut, {...})
+	cat9.run_lut("view #job", job, viewlut, arg)
 	cat9.flag_dirty()
 end
 
@@ -200,10 +200,6 @@ function suggest.view(args, raw)
 
 -- the views are factory functions that provide suggestions or modify
 -- job to attach a custom viewer
-		for k,v in pairs(cat9.views) do
-			table.insert(set, k)
-		end
-
 		cat9.add_job_suggestions(set, false)
 		cat9.readline:suggest(cat9.prefix_filter(set, string.sub(raw, 6)), "word")
 		return
@@ -215,7 +211,20 @@ function suggest.view(args, raw)
 		return
 	end
 
+	if #args > 3 then
+		if cat9.views[args[3]] then
+			table.remove(args, 1)
+			table.remove(args, 1)
+			return cat9.views[args[1]](job, true, args, raw)
+		end
+	end
+
+-- view #0 command [...]
 	local set = {}
+	for k,v in pairs(cat9.views) do
+		table.insert(set, k)
+	end
+
 	for k, _ in pairs(viewlut) do
 		table.insert(set, k)
 	end

@@ -25,6 +25,7 @@ return
 	collapsed_rows = 4, -- number of rows of contents to show when collapsed
 	autoclear_empty = true, -- forget jobs without output
 	show_line_number = true, -- default line number view
+	autokill_quiet_bad = 100, -- timeout for jobs that failed with just errc.
 
 	default_job_view = "crop",
 

@@ -189,6 +189,18 @@ local function finish_job(job, code)
 -- otherwise switch to error output
 		job.view = cat9.view_err
 		job.bar_color = tui.colors.alert
+
+-- and possibly add a cleanup timer, the [1] might be reconsiderable
+		if #job.err_buffer <= 1 and config.autokill_quiet_bad > 0 then
+			local cd = config.autokill_quiet_bad
+			table.insert(cat9.timers, function()
+				cd = cd - 1
+				if cd > 0 then
+					return true
+				end
+				cat9.remove_job(job)
+			end)
+		end
 	end
 end
 
@@ -273,6 +285,12 @@ function cat9.setup_shell_job(args, mode, env)
 	end
 
 	cat9.import_job(job)
+
+-- enable vt100
+	if mode == "pty" and cat9.views["wrap"] then
+		cat9.views["wrap"](job, false, {"cat9", "vt100"}, "")
+	end
+
 	return job
 end
 
@@ -398,6 +416,7 @@ end
 function cat9.remove_job(job)
 	local jc = #cat9.jobs
 
+	cat9.remove_match(cat9.timers, job)
 	cat9.remove_match(cat9.jobs, job)
 	if cat9.remove_match(cat9.activejobs, job) and not job.hidden then
 		cat9.activevisible = cat9.activevisible - 1
