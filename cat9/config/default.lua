@@ -29,8 +29,8 @@ return
 
 	default_job_view = "crop",
 
-	main_column_width = 120, -- let one column be wider
-	min_column_width = 80, -- if we can add more side columns
+	main_column_width = 80, -- let one column be wider
+	min_column_width = 40, -- if we can add more side columns
 
 	open_spawn_default = "embed", -- split, tab, ...
 	open_embed_collapsed_rows = 4,
