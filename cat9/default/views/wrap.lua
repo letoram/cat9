@@ -133,14 +133,17 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 
 -- if we enable state decoding, the wrapping need to process the annotated
 -- output while tracking the atttribute correctly as well
-		if job.view_state then
+		if job.view_state.consume then
 			local cached = job.view_state.row_cache[ind]
 			if cached then
 				row = cached[1]
 				attr = cached[2]
 			else
-				row, attr = job.view_state:consume(row)
-				job.view_state.row_cache[i] = {row, attr}
+-- if another data filter has been attached ..
+				if job.view_state.consume then
+					row, attr = job.view_state:consume(row)
+					job.view_state.row_cache[i] = {row, attr}
+				end
 			end
 		end
 
@@ -190,12 +193,17 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 		ofs = 0
 	end
 
+	if job.view_state.cap and job.view_state.cap < cols then
+		cols = job.view_state.cap
+	end
+
 -- if set.linecount and presentation offsets are the same as cached,
 -- early out - otherwise rebuild the split / absorbed set
 	local reduced, count
 	if job.wrap_cache and
 		job.wrap_cache.linecount == set.linecount and
 		job.wrap_cache.col_offset == job.col_offset and
+		job.wrap_cache.show_line_number == job.show_line_number and
 		job.wrap_cache.row_offset == job.row_offset then
 		reduced = job.wrap_cache.reduced
 		count = job.wrap_cache.count
@@ -206,6 +214,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 			linecount = set.linecount,
 			col_offset = job.col_offset,
 			row_offset = job.row_offset,
+			show_line_number = job.show_line_number,
 			reduced = reduced,
 			count = count
 		}
@@ -241,23 +250,42 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 	return cy - y
 end
 
--- very similar to base/jobctl.lua:raw_view with the main difference
--- being that the set is mapped through the break_line call and out:ed
--- when the linecount cap is exceeded.
+-- very similar to base/jobctl.lua:raw_view with the main difference being that
+-- the set is mapped through the break_line call and out:ed when the linecount
+-- cap is exceeded.
 function views.wrap(job, suggest, args, raw)
 	if not suggest then
 		job.view = job_wrap
-		job.view_state = nil
+		job.view_state = {}
 		job.wrap_cache = nil
 
-		if args[2] and args[2] == "vt100" and cat9.vt100_state then
-			job.view_state = cat9.vt100_state()
-			job.view_state.row_cache = {}
+		if not args[2] then
+			return
+		end
+
+		for _,v in ipairs(args) do
+			if v == "vt100" then
+				job.view_state = cat9.vt100_state()
+				job.view_state.row_cache = {}
+			elseif tonumber(v) then
+				job.view_state.cap = tonumber(v)
+			end
 		end
 
 		return
 	end
 
-	cat9.readline:suggest(cat9.prefix_filter({"vt100"}, args[#args]), "word")
+-- vt100 and column- count can come in any order, we don't yet have the
+-- option to hint about args that won't get "expanded" (limitation in
+-- readline)
+	local set = {"vt100"}
+	for i,v in ipairs(args) do
+		if v == "vt100" then
+			table.remove(set, 1)
+			break
+		end
+	end
+
+	cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
 end
 end
