@@ -13,8 +13,6 @@
 --
 return function(cat9, root, config)
 
--- for mouse selection, when a job is rendered its rows are registered
-local rowtojob   = {}
 local handlers = cat9.handlers
 
 function handlers.recolor()
@@ -43,14 +41,24 @@ function handlers.resized()
 	cat9.redraw()
 end
 
-function cat9.xy_to_job(x, y)
-	local xi = 0
-	local xb = 0
+local function inside(job, x, y)
+	return
+		x >= job.region[1] and y >= job.region[2] and
+		x < job.region[3] and y < job.region[4]
+end
 
-	for i=1,#rowtojob do
-		if x < rowtojob[i].width then
-			local ind = rowtojob[i]
-			return ind[y], x - ind.x
+function cat9.xy_to_job(x, y)
+-- remember last job and check extents for that
+-- if not, sweep all jobs and find the one with hit
+	for i=#cat9.activejobs,1,-1 do
+		if inside(cat9.activejobs[i], x, y) then
+			return cat9.activejobs[i], x - job.region[1], y - job.region[2]
+		end
+	end
+
+	for _, job in ipairs(cat9.jobs) do
+		if inside(job, x, y) then
+			return job, x - job.region[1], y - job.region[2]
 		end
 	end
 end
@@ -99,7 +107,7 @@ function cat9.xy_to_hdr(x, y)
 end
 
 function cat9.xy_to_data(x, y)
-	local job, _ = cat9.xy_to_job(x, y)
+	local job = cat9.xy_to_job(x, y)
 	if job and y >= job.last_row then
 		return job
 	end
@@ -143,8 +151,6 @@ function draw_job_header(job, x, y, cols, rows, cc)
 		hdrattr.fc = tui.colors.highlight
 		hdrattr.bc = tui.colors.highlight
 	end
-
-	rowtojob[cc][y] = job
 
 	job.hdr_to_id = {}
 	job.last_key = job_key
@@ -224,6 +230,7 @@ local function draw_job(job, x, y, cols, rows, cc)
 	local rows = rows_for_job(job, cols, rows)
 	local len = 0
 
+	job.region = {x, y, x + cols, y}
 	draw_job_header(job, x, y, cols, rows, cc)
 
 	job.last_row = y
@@ -254,10 +261,10 @@ local function draw_job(job, x, y, cols, rows, cc)
 		rows = rows > job.collapsed_rows and job.collapsed_rows or rows
 	end
 
+-- the row to job can probably be ignored eventually by just tracking
+-- visual set and scanning based on x, y, cols, rows
 	local ay = job:view(x, y, cols, rows)
-	for i=y,y+ay,1 do
-		rowtojob[cc][i] = job
-	end
+	job.region[4] = ay + y + 1
 
 -- return the number of consumed rows to the renderer
 	return ay + 1
@@ -316,7 +323,6 @@ function cat9.redraw()
 	local cols, rows = root:dimensions()
 	draw_cookie = draw_cookie + 1
 	root:erase()
-	rowtojob = {{width = cols, x = 0}}
 
 -- priority:
 --
@@ -340,14 +346,6 @@ function cat9.redraw()
 			left / (config.min_column_width > 0 and config.min_column_width or left)
 		)
 		jobcols = jobcols + extras
-	end
-
-	local xofs = 0
-	for i=1,jobcols do
-		rowtojob[i] = {}
-		rowtojob[i].width = (i == 1 and config.main_column_width or config.min_column_width)
-		rowtojob[i].x = xofs
-		xofs = xofs + rowtojob[i].width
 	end
 
 -- walk active jobs and then jobs (not covered this frame) to figure
@@ -408,7 +406,7 @@ function cat9.redraw()
 			cat9.readline:bounding_box(0, last_row, cols, last_row)
 		end
 
-	-- add the latest notification / warning, might be better to use either
+-- add the latest notification / warning, might be better to use either
 -- the readline area (shrink with message) for this or a current-item
 -- helper (missing syntax in readline, \t or something for sep. item + descr)
 		if message then

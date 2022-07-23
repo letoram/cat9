@@ -136,6 +136,12 @@ local function run_hook(job, a)
 	end
 end
 
+local function job_mm(job, x, y)
+end
+
+local function job_mb(job, ind, x, y, mods, active)
+end
+
 local function finish_job(job, code)
 	job.exit = code
 
@@ -596,6 +602,7 @@ function cat9.import_job(v, noinsert)
 	v.job = true
 	v.show_line_number = config.show_line_number
 	v.slice = slice_view
+	v.region = {0, 0, 0, 0}
 
 	if v.unbuffered == nil then
 		v.unbuffered = false
@@ -612,6 +619,14 @@ function cat9.import_job(v, noinsert)
 		on_fail = {},
 		on_data = {}
 	}
+
+	if not v.handlers then
+		v.handlers =
+		{
+			mouse_motion = job_mm,
+			mouse_button = job_mb,
+		}
+	end
 
 	v.reset =
 	function(v)
