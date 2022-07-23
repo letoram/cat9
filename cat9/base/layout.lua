@@ -331,7 +331,6 @@ function cat9.redraw()
 --  might be useful sorting active jobs by alerts, and have a
 --  toggle for history jobs to be considered 'always present'
 --
-
 -- calculate the column widths by having one 'main' that is wider then add
 -- extra columns based on a fixed width for as many as we have,
 -- and then expand the main to 'fill'
@@ -339,13 +338,23 @@ function cat9.redraw()
 -- [main          ] [extra1] [extra2] [extra3 ]
 -- [main                            ] [extra1 ]
 --
+-- these currently work with static boundaries rather then getting the width
+-- from the contents itself - the current jobs and views do not cover current
+-- maximum number of columns.
+--
 	local jobcols = 1
-	if cols > config.main_column_width then
-		local left = cols - config.main_column_width
-		local extras = math.floor(
-			left / (config.min_column_width > 0 and config.min_column_width or left)
-		)
-		jobcols = jobcols + extras
+	local sidecol_w = config.min_column_width > 0 and config.min_column_width or 80
+	local maincol_w = config.main_column_width > 0 and config.main_column_width or 80
+	local left = cols - maincol_w
+
+	if left > 0 then
+		if left >= sidecol_w then
+			jobcols = jobcols + math.floor(left / sidecol_w)
+		end
+
+		maincol_w = cols - ((jobcols - 1) * sidecol_w)
+	else
+		maincol_w = cols
 	end
 
 -- walk active jobs and then jobs (not covered this frame) to figure
@@ -418,22 +427,24 @@ function cat9.redraw()
 		return
 	end
 
-	local colcap = cols
-	if jobcols > 1 then
-		colcap = config.main_column_width
-	end
-
 -- bottom up and multicolumn
-	for i=1,jobcols do
-		layout_column(lst,
-			rowtojob[i].x,
-			rows - reserved - 1,
-			rowtojob[i].width,
-			rows - reserved,
-			i
-		)
-		if #lst == 0 then
-			break
+	layout_column(lst, 0, rows - reserved - 1, maincol_w, rows - reserved, 1)
+	local cx = maincol_w
+
+	if jobcols > 1 then
+		for i=2,jobcols do
+			layout_column(lst,
+				cx,
+				rows - reserved - 1,
+				sidecol_w,
+				rows - reserved,
+				i
+			)
+			cx = cx + sidecol_w
+
+			if #lst == 0 then
+				break
+			end
 		end
 	end
 
