@@ -126,7 +126,7 @@ local function open_string(file, spawn)
 	fname_to_decode(
 	cat9, dstenv, file,
 		function()
-			spawn_trigger(cat9, root, "handover", spawn .. spawn_suffix, trigger)
+			spawn_trigger(cat9, root, "handover", spawn, trigger)
 		end
 	)
 	return

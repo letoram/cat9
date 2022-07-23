@@ -80,6 +80,16 @@ end
 return
 function(cat9, root, builtins, suggest)
 
+local function set_clipboard(src)
+	if type(src) == "string" then
+		root:to_clipboard(src)
+	elseif type(src) == "table" then
+		root:to_clipboard(table.concat(src, ""))
+	else
+		cat9.add_message("EIMPL: clipboard binary / file sources")
+	end
+end
+
 --
 -- many possible combinations for this, hence the complexity.
 -- src [popts] dst [popts]
@@ -160,7 +170,11 @@ function builtins.copy(src, opt1, opt2, opt3)
 		dstlbl = "(job)"
 
 	elseif type(dst) == "string" then
-		if string.sub(dst, 1, 5) == "pick:" then
+		if string.sub(dst, 1, 10) == "clipboard:" then
+			set_clipboard(src)
+			return
+
+		elseif string.sub(dst, 1, 5) == "pick:" then
 			if pick_pending_in then
 				cat9.add_message("copy src(pick) dst(pick) : only src or dst can be a pick target")
 				return
@@ -372,8 +386,9 @@ function suggest.copy(args, raw)
 		".",
 		"/",
 		"pick:",
+		"clipboard:",
 	}
 	cat9.add_job_suggestions(set, false)
-	cat9.readline:suggest(set, "word", prefix)
+	cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
 end
 end
