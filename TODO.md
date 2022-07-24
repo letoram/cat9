@@ -28,13 +28,12 @@ Exec:
   - [ ] -> autodetect arcan appl (lwa)
   - [ ]   -> state scratch folder (tar for state store/restore) + use with browser
 - [ ] arcan-net integration (scan, ...)
-- [ ] env control (env=bla in=#4) action_a | (env=bla2) action_b
-      should translate to "take the contents from job 4, map as input
-			and run action_a)"
-- [ ] data dependent expand print (view #0 ...)
-    - [ ] hex
-		- [ ] simplified 'in house' vt100
-		- [ ] pattern match
+- [ ] env control
+  - [ ] as parg (env k1=v1, env k2=v2, ...) cmd1 | cmd2
+	- [ ] as context #0 cmd1 | #1 cmd2
+- [p] data dependent expand print (view #0 ...)
+		- [p] simplified 'in house' vt100
+		- [p] pattern match
 
 Ui:
 - [x] view #jobid scroll n-step

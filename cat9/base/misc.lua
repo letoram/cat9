@@ -59,8 +59,11 @@ function cat9.update_lastdir()
 	end
 end
 
+cat9.MESSAGE_WARNING = 0
+cat9.MESSAGE_HELP = 1
+
 -- expected to return nil (block_reset) to fit in with expectations of builtins
-function cat9.add_message(msg)
+function cat9.add_message(msg, use)
 	if type(msg) ~= "string" then
 		print("add_message(" .. type(msg) .. ")" .. debug.traceback())
 	else

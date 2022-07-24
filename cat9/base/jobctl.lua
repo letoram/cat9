@@ -503,7 +503,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		end
 
 -- bad .data early out
-		local row = job.data[ind]
+		local row = set[ind]
 		if not row then
 			break
 		end
@@ -542,6 +542,7 @@ function cat9.view_raw(job, ...)
 end
 
 function cat9.view_err(job, ...)
+	job.err_buffer.linecount = #job.err_buffer
 	return raw_view(job, job.err_buffer, ...)
 end
 
