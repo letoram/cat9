@@ -11,6 +11,7 @@ return
 	'repeat.lua',
 	'env.lua',
 	'trigger.lua',
+	'input.lua',
 	'views/wrap.lua',
 	'views/crop.lua',
 	'views/filter.lua',

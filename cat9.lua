@@ -110,7 +110,7 @@ safe_suggest = cat9.suggest
 
 cat9.config.readline.verify = cat9.readline_verify
 
-lash.root:set_flags(tui.flags.mouse)
+lash.root:set_flags(tui.flags.mouse_full)
 lash.root:set_handlers(cat9.handlers)
 cat9.reset()
 cat9.update_lastdir()
@@ -132,6 +132,9 @@ while root:process() do
 	end
 
 	if cat9.dirty then
-		root:refresh()
+		cat9.redraw()
+		cat9.dirty = false
 	end
+
+	root:refresh()
 end

@@ -396,6 +396,7 @@ function cat9.parse_string(rl, line)
 	end
 
 	cat9.laststr = ""
+	cat9.flag_dirty()
 	local tokens, msg, ofs, types = lash.tokenize_command(line, true, lex_opts)
 	if msg then
 		cat9.add_message(msg)

@@ -4,7 +4,7 @@ function(cat9, root, builtins, suggest)
 builtins["repeat"] =
 function(job, ...)
 	if type(job) ~= "table" then
-		cat9.add_message("repeat >#jobid< [flush | edit] missing job reference")
+		cat9.add_message("repeat >#jobid< [flush | edit] [input] missing job reference")
 		return
 	end
 
@@ -23,7 +23,8 @@ function(job, ...)
 	local opts = {
 		flush = false,
 		diff = false,
-		edit = false
+		edit = false,
+		input = false
 	}
 
 	for _,v in ipairs(cmds) do
@@ -45,7 +46,7 @@ function(job, ...)
 		if opts.flush then
 			job:reset()
 		end
-		job["repeat"](job)
+		job["repeat"](job, input)
 	end
 
 -- for edit we hook into job creation, substitute in our new argv then call reset
@@ -85,7 +86,7 @@ function(args, raw)
 
 	if #args > 2 then
 		cat9.readline:suggest(
-			cat9.prefix_filter({"flush", "edit"}, args[#args]), "word")
+			cat9.prefix_filter({"flush", "edit", "input"}, args[#args]), "word")
 		return
 	end
 

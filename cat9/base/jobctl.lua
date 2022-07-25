@@ -52,6 +52,18 @@ local function data_buffered(job, line, eof)
 	end
 end
 
+local function drop_selection(job)
+-- if this job holds focus, drop it and return to readline
+	if cat9.selectedjob ~= job then
+		return
+	end
+
+	cat9.selectedjob = nil
+	if not cat9.readline then
+		cat9.setup_readline(root)
+	end
+end
+
 local function data_unbuffered(job, line, eof)
 	for _,v in ipairs(job.hooks.on_data) do
 		v(line, false, eof)
@@ -167,6 +179,7 @@ local function finish_job(job, code)
 	end
 
 	if job.inp then
+		drop_selection(job)
 		job.inp:close()
 		job.inp = nil
 	end
@@ -276,17 +289,37 @@ function cat9.setup_shell_job(args, mode, env)
 		short = args[2],
 	}
 
+-- allow interactive / copy write into the job, track this as well so that
+-- repeat will continue to repeat the input that gets sent to the job
+	if inf then
+		job.inp_buffer = {}
+		job.write =
+		function(data)
+			if type(data) == "table" then
+				for _,v in ipairs(data) do
+					table.insert(job.inp_buffer, v)
+				end
+			elseif type(data) == "string" then
+				table.insert(err_buffer, data)
+			end
+			inp:write(data)
+		end
+	end
+
 	job["repeat"] =
-	function(job)
+	function(job, repeat_input)
 		if job.pid then
 			return
 		end
-		job.inp, job.out, job.err, job.pid = root:popen(job.args, job.mode)
+		job.inp, job.out, job.err, job.pid = root:popen(job.args, job.mode, job.env)
 		if job.pid then
 			table.insert(activejobs, job)
 			if not job.hidden then
 				cat9.activevisible = cat9.activevisible + 1
 			end
+		end
+		if repeat_input and #job.inp_buffer > 0 then
+			job:write(job.inp_buffer)
 		end
 	end
 
@@ -439,8 +472,10 @@ function cat9.remove_job(job)
 		cat9.clipboard_job = nil
 	end
 
+	drop_selection(job)
 	run_hook(job, "on_destroy")
 
+-- if this job last, let the previous job autofill
 	if cat9.latestjob ~= job or not config.autoexpand_latest then
 		return true
 	end
@@ -509,6 +544,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		end
 
 		local cx = x + config.content_offset
+		local ccols = cols
 
 -- printing line numbers?
 		if job.show_line_number then
@@ -518,9 +554,11 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			if #num < digits then
 				num = string.rep(" ", digits - #num) .. num
 			end
+
 			root:write_to(cx, y+i-1, num, lineattr)
 			root:write(": ", lineattr)
-			cx = cx + 2 + digits
+			cx = cx + 3 + digits
+			ccols = cols - digits - 4
 		end
 
 -- and apply column offset
@@ -528,8 +566,8 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			row = string.sub(row, job.col_offset + 1)
 		end
 
-		if #row > cols then
-			row = string.sub(row, 1, cols)
+		if #row > ccols then
+			row = string.sub(row, 1, ccols)
 		end
 		root:write_to(cx, y+i-1, row, dataattr)
 	end

@@ -51,8 +51,9 @@ function cat9.xy_to_job(x, y)
 -- remember last job and check extents for that
 -- if not, sweep all jobs and find the one with hit
 	for i=#cat9.activejobs,1,-1 do
-		if inside(cat9.activejobs[i], x, y) then
-			return cat9.activejobs[i], x - job.region[1], y - job.region[2]
+		local job = cat9.activejobs[i]
+		if inside(job, x, y) then
+			return job, x - job.region[1], y - job.region[2]
 		end
 	end
 
@@ -92,7 +93,7 @@ function cat9.xy_to_hdr(x, y)
 		return id, nil
 	end
 
-	if not job.hdr_to_id then
+	if not job.hdr_to_id or not job.hdr_to_id.y or y ~= job.hdr_to_id.y then
 		return id, job
 	end
 
@@ -153,6 +154,7 @@ function draw_job_header(job, x, y, cols, rows, cc)
 	end
 
 	job.hdr_to_id = {}
+	job.hdr_to_id.y = y
 	job.last_key = job_key
 
 	local itemstack = config[job_key]
@@ -410,18 +412,19 @@ function cat9.redraw()
 			rows = rows - nc - config.job_pad
 		end
 
--- and the actual input / readline field
-		if cat9.readline then
-			cat9.readline:bounding_box(0, last_row, cols, last_row)
-		end
-
 -- add the latest notification / warning, might be better to use either
 -- the readline area (shrink with message) for this or a current-item
 -- helper (missing syntax in readline, \t or something for sep. item + descr)
 		if message and #message > 0 then
 			cols, rows = root:dimensions()
-			root:write_to(0, rows, message)
+			root:write_to(0, last_row, message)
 			last_row = last_row + 1
+		end
+
+	-- and the actual input / readline field
+		if cat9.readline then
+			cat9.readline:bounding_box(0, last_row, cols, last_row)
+			cat9.readline:set_prompt(cat9.get_prompt())
 		end
 
 		return
@@ -431,8 +434,10 @@ function cat9.redraw()
 	layout_column(lst, 0, rows - reserved - 1, maincol_w, rows - reserved, 1)
 	local cx = maincol_w
 
+-- erase the region afterwards to protect against a bad view overstepping its region
 	if jobcols > 1 then
 		for i=2,jobcols do
+			root:erase_region(cx, rows - reserved - 1, cx + maincol_w, rows - reserved)
 			layout_column(lst,
 				cx,
 				rows - reserved - 1,
@@ -448,22 +453,18 @@ function cat9.redraw()
 		end
 	end
 
-	local cy = rows - 1
-	if cat9.readline then
-		cat9.readline:bounding_box(0, cy, cols, cy)
-		cy = cy - 1
-	end
-
 	if message then
-		root:write_to(0, cy, message)
+		root:write_to(0, rows - 2, message)
 	end
 
--- something with content hint based on selection?
+	if cat9.readline then
+		cat9.readline:bounding_box(0, rows - 1, cols, rows - 1)
+		cat9.readline:set_prompt(cat9.get_prompt())
+	end
 end
 
 function cat9.flag_dirty()
 	if cat9.readline then
-		cat9.readline:set_prompt(cat9.get_prompt())
 	end
 	cat9.dirty = true
 end
