@@ -418,7 +418,7 @@ function cat9.redraw()
 -- add the latest notification / warning, might be better to use either
 -- the readline area (shrink with message) for this or a current-item
 -- helper (missing syntax in readline, \t or something for sep. item + descr)
-		if message then
+		if message and #message > 0 then
 			cols, rows = root:dimensions()
 			root:write_to(0, rows, message)
 			last_row = last_row + 1
@@ -455,7 +455,7 @@ function cat9.redraw()
 	end
 
 	if message then
-		root:write(0, cy, message)
+		root:write_to(0, cy, message)
 	end
 
 -- something with content hint based on selection?

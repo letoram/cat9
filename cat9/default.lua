@@ -12,5 +12,6 @@ return
 	'env.lua',
 	'trigger.lua',
 	'views/wrap.lua',
-	'views/crop.lua'
+	'views/crop.lua',
+	'views/filter.lua',
 }

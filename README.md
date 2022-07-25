@@ -142,10 +142,13 @@ To forego any parsing or internal pipelineing and run the entire line verbatim
 
 		!!find /usr |grep share
 
-Certain clients really want a pty or they refuse to do anything, though there
-is no high-level vt100+ decoder yet.
+Certain clients really want a pseudoterminal or they refuse to do anything,
+for those clients, start with p! like so:
 
     p!vim
+
+These will default switch to 'view wrap vt100' that has a rudimentary terminal
+emulator state machine that need some more work (see base/vt100\*)
 
 ## Builtins
 
@@ -173,7 +176,8 @@ on a process identifier (number).
 
     config key value
 
-The config options changes the runtime shell behavior configuration.
+The config options changes the runtime shell behavior configuration. It is
+populated by the keys and values in config/default.lua
 
 ### Open
 
@@ -230,7 +234,7 @@ The possible options are:
 * out or stdout - set the presentation buffer to be what is read from the
                   standard output of the job.
 
-* err or stderr - set the presentation buffer to be twhat is read from the
+* err or stderr - set the presentation buffer to be what is read from the
                   standard error output of the job.
 
 * col or collapse - only present a small number of lines.
@@ -239,7 +243,16 @@ The possible options are:
 
 * tog or toggle - switch between col and exp mode
 
-* filter ptn - present lines that match the lua pattern defined by 'ptn'
+* linenumber - toggle showing a column with line numbers on/off
+
+There are also a number of dynamic views that can apply higher level transforms
+on the contents to change how it presents. One such view is 'wrap':
+
+    view #job wrap [vt100] [max-col]
+
+This implements word wrap, optionally filtered through a terminal state machine
+(vt100) and with a custom column cap.
+
 
 ### Copy
 
@@ -267,7 +280,20 @@ Which would copy lines 1 to 10 and line 20 of the current view buffer into
 the destination.
 
 Copy destinations do not have to be files, they can also be other interactive
-jobs, or special ones like $clipboard.
+jobs, or special ones like clipboard: that would forward to the outer WM
+clipboard.
+
+### Env
+
+    env [#job] key value
+
+This is used to change the environment for new jobs. It can also be used to
+update the cached environment for an existing job. This environment will be
+applied if the job is repeated, or if a new job is derived from the context
+of one:
+
+    env #0 LS_COLOR yes
+		#0 ls /tmp
 
 Backstory
 =========
