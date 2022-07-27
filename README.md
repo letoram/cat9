@@ -165,6 +165,17 @@ frontends to other tools and maintain a unified look and feel. You can also
 modify/extend this to mimic the behaviour of other common shells. The ones
 included by default are as follows:
 
+### Input
+
+The input command is for controlling how parts of the UI responds to mouse or
+keyboard inputs. By default the keyboard is grabbed by the command-line. This
+grab can be toggled with CTRL+ESCAPE.
+
+    input #jobid focus_toggle
+
+This will only trigger for jobs that have a working input sink, and retain
+current focus if it does not.
+
 ### Signal
 
     signal #jobid or pid [signal: kill, hup, user1, user2, stop, quit, continue]

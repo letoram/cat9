@@ -7,7 +7,7 @@ function(cat9, root, config)
 local handlers = cat9.handlers
 
 local mstate = {}
-function handlers.mouse_motion(self, rel, x, y)
+function handlers.mouse_motion(self, rel, x, y, mods)
 	if rel then
 		return
 	end
@@ -43,24 +43,31 @@ end
 
 -- custom keybinds go here (or forward routing to selected window)
 function handlers.key(self, sub, keysym, code, mods)
-
-	if bit.band(mods, tui.modifiers.CTRL) then
+	if bit.band(mods, tui.modifiers.CTRL) > 0 then
 		if keysym == tui.keys.ESCAPE then
-
 -- to disable readline there should be >= 1 valid jobs, and then
 -- we move selection with CTRL+ARROW|CTRL+HJLK
 			if cat9.readline then
---				root:revert()
---				cat9.readline = nil
+				cat9.hide_readline(root)
+			else
+				cat9.setup_readline(root)
 			end
+			return
 
 -- uncertain how to display the help still, just popup at last
 -- known cursor position? or as regular popup?
 		elseif keysym == tui.keys.F1 then
 --			print("toggle help")
 		elseif keysym == tui.keys.R then
-			cat9.suggest_history()
+			if cat9.readline then
+				cat9.suggest_history()
+				return
+			end
 		end
+	end
+
+	if (cat9.selectedjob and cat9.selectedjob.write) then
+		cat9.selectedjob:write(keysym)
 	end
 end
 
@@ -193,7 +200,12 @@ function handlers.tick()
 end
 
 function handlers.utf8(self, ch)
--- setup readline, cancel current selection activity and inject ch
+-- the :write is likely an nbio- table, but can be swapped out if interleaving/
+-- queuing mechanisms are needed
+	if cat9.selectedjob and cat9.selectedjob.inp then
+		cat9.selectedjob.inp:write(ch)
+		return true
+	end
 end
 
 end

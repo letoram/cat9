@@ -178,6 +178,15 @@ function cat9.switch_env(job, force_prompt)
 	cat9.env = job.env
 end
 
+function cat9.hide_readline(root)
+	if not cat9.readline then
+		return
+	end
+	cat9.laststr = cat9.readline:get()
+	root:revert()
+	cat9.readline = nil
+end
+
 function cat9.setup_readline(root)
 	local rl = root:readline(
 		function(self, line)
