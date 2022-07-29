@@ -285,6 +285,7 @@ function cat9.setup_shell_job(args, mode, env)
 		args = args,
 		mode = mode,
 		err_buffer = {},
+		inp_buffer = {},
 		dir = root:chdir(),
 		short = args[2],
 	}
@@ -292,7 +293,6 @@ function cat9.setup_shell_job(args, mode, env)
 -- allow interactive / copy write into the job, track this as well so that
 -- repeat will continue to repeat the input that gets sent to the job
 	if inf then
-		job.inp_buffer = {}
 		job.write =
 		function(data)
 			if type(data) == "table" then
@@ -311,6 +311,7 @@ function cat9.setup_shell_job(args, mode, env)
 		if job.pid then
 			return
 		end
+		job.exit = nil
 		job.inp, job.out, job.err, job.pid = root:popen(job.args, job.mode, job.env)
 		if job.pid then
 			table.insert(activejobs, job)
@@ -474,6 +475,7 @@ function cat9.remove_job(job)
 
 	drop_selection(job)
 	run_hook(job, "on_destroy")
+	job.dead = true
 
 -- if this job last, let the previous job autofill
 	if cat9.latestjob ~= job or not config.autoexpand_latest then
@@ -627,6 +629,16 @@ local function slice_view(job, lines)
 	return res
 end
 
+local function find_lowest_free()
+	local lowest = 0
+	for _,v in ipairs(lash.jobs) do
+		if not v.hidden and v.id >= lowest then
+			lowest = v.id + 1
+		end
+	end
+	return lowest
+end
+
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
@@ -717,11 +729,7 @@ function cat9.import_job(v, noinsert)
 	end
 
 	if not v.id and not v.hidden then
-		v.id = cat9.idcounter
-	end
-
-	if v.id and cat9.idcounter <= v.id then
-		cat9.idcounter = v.id + 1
+		v.id = find_lowest_free()
 	end
 
 -- mark latest one as expanded, and the previously 'latest' back to collapsed

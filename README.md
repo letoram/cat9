@@ -264,7 +264,6 @@ on the contents to change how it presents. One such view is 'wrap':
 This implements word wrap, optionally filtered through a terminal state machine
 (vt100) and with a custom column cap.
 
-
 ### Copy
 
     copy src [opts] dst
@@ -305,6 +304,25 @@ of one:
 
     env #0 LS_COLOR yes
 		#0 ls /tmp
+
+### Trigger
+
+    trigger #job condition [delay n] action
+
+It is possible to attach several event triggers to a job that has an external
+action attached. The command for that is 'trigger'. The condition can be either
+'ok' or 'fail', with an optional delay in seconds. The action is any regular
+command-line string (remember to encapsulate with "").
+
+To remove previously set triggers, use 'flush' instead of action.
+
+A common case for trigger is to repeat a job that finished:
+
+    trigger #0 ok delay 10 "repeat #0"
+
+Would keep the job #0 relaunching 10 seconds after completing until removed:
+
+    trigger #0 ok flush
 
 Backstory
 =========

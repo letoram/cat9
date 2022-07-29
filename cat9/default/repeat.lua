@@ -46,7 +46,7 @@ function(job, ...)
 		if opts.flush then
 			job:reset()
 		end
-		job["repeat"](job, input)
+		job["repeat"](job, opts.input)
 	end
 
 -- for edit we hook into job creation, substitute in our new argv then call reset
