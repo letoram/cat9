@@ -422,6 +422,11 @@ function cat9.parse_string(rl, line)
 		cat9.switch_env(commands[1])
 		table.remove(commands, 1)
 		revert = true
+
+-- just switch context
+		if #commands == 0 then
+			return
+		end
 	end
 
 -- this prevents the builtins from being part of a pipeline which might
