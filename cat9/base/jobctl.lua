@@ -651,6 +651,12 @@ function cat9.import_job(v, noinsert)
 	v.row_offset_relative = tru
 	v.col_offset = 0
 	v.job = true
+
+-- save the CLI environment so it can be restored later (or when repeating)
+	v.builtins = cat9.builtins
+	v.views = cat9.views
+	v.suggest = cat9.suggest
+
 	v.show_line_number = config.show_line_number
 	v.slice = slice_view
 	v.region = {0, 0, 0, 0}
