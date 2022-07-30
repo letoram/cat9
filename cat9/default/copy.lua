@@ -1,79 +1,105 @@
-local function deploy_copy(cat9, root, job)
--- combinations going in
---
--- src: userdata | table
--- dst: userdata | table
---
--- once committed - this is not directly cancellable (currently) without
--- explicitly closing the job src/dst inputs
---
-	if type(job.src) == "userdata" and type(job.dst) == "userdata" then
-		local progio = root:bgcopy(job.src, job.dst, job.flags)
-		if not progio then
-			cat9.add_message("copy {...} - copy job rejected (resource exhaustion)")
-			return
+local function copy_tbl_ud(cat9, root, job)
+	job.dst:write(
+	job.src,
+		function(ok)
+			if not ok then
+				job.code = 1
+				job.short = "(failed) " .. job.short
+			else
+				cat9.remove_job(job)
+			end
+			job.dst:close()
+			job.dst = nil
+			job.src = nil
+			job.check_status = nil
 		end
+	)
+end
 
-		local acc = 0
+local function copy_tbl(cat9, root, job)
+	job.data =
+	{
+		linecount = job.src.linecount,
+		bytecount = job.src.bytecount
+	}
+
+	for i=1,#job.src do
+		table.insert(job.data, job.src[i])
+	end
+
+	job.src = nil
+	job.dst = nil
+	job.check_status = nil
+end
+
+local function copy_ud_ud(cat9, root, job)
+	local acc = 0
+	local progio = root:bgcopy(job.src, job.dst, job.flags)
+
+	if not progio then
+		cat9.add_message("copy {...} - copy job rejected (resource exhaustion)")
+		return
+	end
+
 -- now we can update status, though we don't have the quantities necessarily
-		progio:data_handler(
-			function()
-				local line, alive = progio:read()
-				local last = line
-				while line and #line > 0 do
-					last = line
-					line, alive = progio:read()
-				end
+	progio:data_handler(
+		function()
+			local line, alive = progio:read()
+			local last = line
+			while line and #line > 0 do
+				last = line
+				line, alive = progio:read()
+			end
 
-				local props = string.split(last, ":") -- [status, current, total]
-				if #props < 3 then -- unknown format
-					return
-				end
+			local props = string.split(last, ":") -- [status, current, total]
+			if #props < 3 then -- unknown format
+				return
+			end
 
-				local bs = tonumber(props[1])
-				local cur = tonumber(props[2])
-				local tot = tonumber(props[3])
+			local bs = tonumber(props[1])
+			local cur = tonumber(props[2])
+			local tot = tonumber(props[3])
 
-				if bs < 0 then
-					job.bar_color = tui.colors.alert
-					job.data = string.format(
-						"I/O error at %s / %s", cat9.bytestr(cur), cat9.bytestr(tot))
+			if bs < 0 then
+				job.bar_color = tui.colors.alert
+				job.data = string.format(
+					"I/O error at %s / %s", cat9.bytestr(cur), cat9.bytestr(tot))
 
 -- complete
-				elseif bs == 0 then
-					cat9.remove_job(job)
-				else
-					local prog = ""
-					if tot > 0 then
-						prog = string.format("%.2f %%", cur / tot * 100.0)
-					end
-					job.raw = string.format("read: %s, total: %s %s",
-						cat9.bytestr(cur), cat9.bytestr(tot), prog)
-					cat9.flag_dirty()
+			elseif bs == 0 then
+				cat9.remove_job(job)
+			else
+				local prog = ""
+				if tot > 0 then
+					prog = string.format("%.2f %%", cur / tot * 100.0)
 				end
-
-				return alive
+				job.raw = string.format("read: %s, total: %s %s",
+					cat9.bytestr(cur), cat9.bytestr(tot), prog)
+				cat9.flag_dirty()
 			end
-		)
-		return
+
+			return alive
+		end
+	)
+	return
+end
+
+local function deploy_copy(cat9, root, job)
+-- once committed - this is not directly cancellable (currently) without
+-- explicitly closing the job src/dst inputs
+	if type(job.src) == "userdata" and type(job.dst) == "userdata" then
+		return copy_ud_ud(cat9, root, job)
 	end
 
 -- simpler, but we have to poll for progress if we want it via some
 -- clock timer hooking tick
 	if type(job.src) == "table" and type(job.dst) == "userdata" then
-		job.dst:write(
-			job.src,
-			function(ok)
-				if not ok then
-					job.code = 1
-					job.short = "(failed) " .. job.short
-				else
-					cat9.remove_job(job)
-				end
-				job.dst:close()
-				job.dst = nil
-			end
-		)
+		return copy_tbl_ud(cat9, root, job)
+	end
+
+-- just a raw data copy
+	if type(job.src) == "table" and not job.dst then
+		copy_tbl(cat9, root, job)
 	end
 end
 
@@ -108,7 +134,7 @@ function builtins.copy(src, opt1, opt2, opt3)
 
 --
 -- the possibles are:
--- src [popts] dst [popts]
+-- src [popts] [dst] [popts]
 --
 	if type(opt1) == "table" and opt1.parg then
 		dst = opt2
@@ -195,8 +221,10 @@ function builtins.copy(src, opt1, opt2, opt3)
 		end
 	elseif type(dst) == "userdata" then
 		dstlbl = "(ext-io)"
--- same as before, userdata assumed to come from nbio and that's the type we
--- should have dst to so that's fine
+
+	elseif type(dst) == "nil" then
+		dstlbl = ""
+-- just a raw data copy
 	else
 		cat9.add_message("copy src >dst< : unknown destination type ( " .. type(dst) .. " )")
 		return
