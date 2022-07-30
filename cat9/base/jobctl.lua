@@ -588,7 +588,12 @@ end
 
 -- create a job of job data based on a set of coordinate references (here, line-numbers)
 local function slice_view(job, lines)
-	local res = {}
+	local res =
+	{
+		linecount = 0,
+		bytecount = 0
+	}
+
 	local data = job.data
 
 	if job.view == cat9.view_err then
@@ -624,6 +629,9 @@ local function slice_view(job, lines)
 				table.insert(res, data[i])
 			end
 		end
+
+		res.linecount = res.linecount + 1
+		res.bytecount = res.bytecount + #(res[#res])
 	end
 
 	return res
