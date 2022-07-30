@@ -140,6 +140,7 @@ local job_helpers =
 --
 local
 function draw_job_header(job, x, y, cols, rows, cc)
+	local startx = x
 	local hdrattr =
 	{
 		fc = job.bar_color,
@@ -164,7 +165,7 @@ function draw_job_header(job, x, y, cols, rows, cc)
 	end
 
 	local function draw_item(i, cur)
-		job.hdr_to_id[i] = x
+		job.hdr_to_id[i] = x - startx
 		root:write_to(x, y, cur, hdrattr)
 		x = x + root:utf8_len(cur)
 	end
