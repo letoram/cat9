@@ -203,7 +203,7 @@ function handlers.utf8(self, ch)
 -- the :write is likely an nbio- table, but can be swapped out if interleaving/
 -- queuing mechanisms are needed
 	if cat9.selectedjob and cat9.selectedjob.inp then
-		cat9.selectedjob.inp:write(ch)
+		cat9.selectedjob:write(ch)
 		return true
 	end
 end

@@ -294,15 +294,15 @@ function cat9.setup_shell_job(args, mode, env)
 -- repeat will continue to repeat the input that gets sent to the job
 	if inf then
 		job.write =
-		function(data)
+		function(self, data)
 			if type(data) == "table" then
 				for _,v in ipairs(data) do
 					table.insert(job.inp_buffer, v)
 				end
 			elseif type(data) == "string" then
-				table.insert(err_buffer, data)
+				table.insert(job.inp_buffer, data)
 			end
-			inp:write(data)
+			inf:write(data)
 		end
 	end
 
@@ -319,8 +319,8 @@ function cat9.setup_shell_job(args, mode, env)
 				cat9.activevisible = cat9.activevisible + 1
 			end
 		end
-		if repeat_input and #job.inp_buffer > 0 then
-			job:write(job.inp_buffer)
+		if job.inp and repeat_input and #job.inp_buffer > 0 then
+			job.inp:write(job.inp_buffer)
 		end
 	end
 
