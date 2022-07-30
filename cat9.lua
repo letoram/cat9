@@ -39,12 +39,16 @@ cat9.env["ARCAN_CONNPATH"] = nil
 -- in order to have interchangeable sets for expanding cli/argv of others
 local safe_builtins
 local safe_suggest
+local safe_views
+builtin_completion = {}
+
 local function load_builtins(base)
 	cat9.builtins = {}
 	cat9.suggest = {}
 	cat9.views = {}
 
 	local fptr, msg = loadfile(string.format("%s/cat9/%s.lua", lash.scriptdir, base))
+
 	if not fptr then
 		cat9.add_message(string.format("builtin: [" .. base .. "] failed to load: %s", msg))
 		return false
@@ -53,6 +57,7 @@ local function load_builtins(base)
 
 	for _,v in ipairs(set) do
 		local fptr, msg = loadfile(string.format("%s/cat9/%s/%s", lash.scriptdir, base, v))
+
 		if fptr then
 			pcall(fptr(), cat9, lash.root, cat9.builtins, cat9.suggest, cat9.views)
 		else
@@ -61,16 +66,11 @@ local function load_builtins(base)
 		end
 	end
 
-	builtin_completion = {}
-	for k, _ in pairs(cat9.builtins) do
-		table.insert(builtin_completion, k)
-	end
-
 -- force-inject loading builtin set so swapping works ok
 	cat9.builtins["builtin"] =
 	function(a)
 		if not a or #a == 0 then
-			cat9.add_message("builtin - missing set name")
+			a = "default"
 			return
 		end
 
@@ -79,10 +79,16 @@ local function load_builtins(base)
 				"missing requested builtin set [%s] - revert to default.", a))
 			cat9.builtins = safe_builtins
 			cat9.suggest = safe_suggest
+			cat9.views = safe_views
 		end
 	end
 
+	builtin_completion = {}
+	for k, _ in pairs(cat9.builtins) do
+		table.insert(builtin_completion, k)
+	end
 	table.sort(builtin_completion)
+
 	return true
 end
 

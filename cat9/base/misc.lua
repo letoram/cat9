@@ -153,6 +153,9 @@ function cat9.switch_env(job, force_prompt)
 		cat9.chdir(cat9.job_stash.dir)
 		cat9.env = cat9.job_stash.env
 		cat9.get_prompt = cat9.job_stash.get_prompt
+		cat9.builtins = cat9.job_stash.builtins
+		cat9.views = cat9.job_stash.views
+		cat9.suggest = cat9.job_stash.suggest
 		cat9.job_stash = nil
 	end
 
@@ -164,7 +167,10 @@ function cat9.switch_env(job, force_prompt)
 	{
 		dir = root:chdir(),
 		env = cat9.table_copy_shallow(cat9.env),
-		get_prompt = cat9.get_prompt
+		get_prompt = cat9.get_prompt,
+		views = job.views,
+		builtins = job.builtins,
+		suggest = job.suggest
 	}
 
 	if force_prompt then

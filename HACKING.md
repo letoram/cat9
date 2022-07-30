@@ -22,6 +22,12 @@ modify cat9/myset/mycmd.lua so that the returned function modifies the builtins
 and suggest tables provided as arguments to fit the command to provide. It is
 advised to keep this clean and have a 1 file to 1 command file system layout.
 
+This set can be activated by running 'builtin myset'. It will be dynamically
+loaded each time, and failure to load will revert to the default set.
+
+Jobs spawned will remember the set of builtins used, so switching a job context
+(> #0) will activate that set without dynamically reloading it.
+
 Views
 =====
 
