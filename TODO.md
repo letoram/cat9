@@ -2,7 +2,6 @@ TODO (for first release)
 
 -- interesting:
    realtime feedback for job open $realtime
-	 when inputting to window, each | triggers a subcommand ( grep #0 hi | grep #1 )
 
 CLI help:
 - [p] lastmsg queue rather than one-slot for important bits
@@ -42,11 +41,9 @@ Ui:
 - [ ] job history scroll
 - [ ] alias
 - [p] multicolumn mode
-  - [ ] mouse click on alt columns not working
-- [ ] persistence
+- [x] persistence
   - [ ] history
 	- [ ] alias / favorites
-	- [ ]
-- [ ] keyboard job selected / stepping (escape out of readline)
+- [x] keyboard job selected / stepping (escape out of readline)
 - [ ] mouse select in buffer
-- [x] line# column in view, click line# marks it for selection
+- [x] line# column in view

@@ -72,9 +72,90 @@ function handlers.key(self, sub, keysym, code, mods)
 end
 
 function handlers.state_in(self, blob)
+	blob:lf_strip(true)
+	local buf = {}
+	local alive = true
+
+-- just buffer everything first.
+	while (alive) do
+		_, alive = blob:read(buf)
+	end
+	blob:close()
+
+	local magic = table.remove(buf, 1)
+	if not magic or magic ~= "cat9_state_v1" then
+		cat9.add_message("state-load: missing header/magic id")
+		return
+	end
+
+-- then split/parse
+	while #buf > 0 do
+		local header = table.remove(buf, 1)
+		header = string.split(header, " ")
+		if #header ~= 2 or tonumber(header[2]) == nil then
+			break
+		end
+
+-- trivial line format:
+-- group n_keys\n
+-- key\nval\n
+-- key\nval\n
+-- ...
+		local group = header[1]
+		local count = tonumber(header[2])
+
+-- fill out with k[y]
+		local out = {}
+		while count > 0 do
+			local key = table.remove(buf, 1)
+			local val = table.remove(buf, 1)
+			if not key or not val then
+				cat9.add_message("state-load: missing key/values in group " .. group)
+				break
+			end
+
+			count = count - 1
+			out[key:gsub("^%s*", "")] = val:gsub("^%s*", "")
+		end
+
+-- and forward to the right module
+		if cat9.state.import[group] then
+			cat9.state.import[group](out)
+		else
+			cat9.state.orphan[group] = out
+		end
+	end
 end
 
+-- generate a t[group]={k=v} table of all registered state providers
 function handlers.state_out(self, blob)
+-- run through all state handlers and retrieve their states
+	local out = {"cat9_state_v1\n"}
+
+	for k,v in pairs(cat9.state.export) do
+		local i = 1
+		local set = v()
+
+		table.insert(out, "") -- reserve header space
+		local ci = #out
+
+		local count = 0
+		for k,v in pairs(set) do
+			if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then
+				print("set", k, v)
+				v = tostring(v)
+				if not string.find(v, "\n") then
+					count = count + 1
+					table.insert(out, string.format("\t%s\n", k))
+					table.insert(out, string.format("\t%s\n", v))
+				end
+			end
+		end
+		out[ci] = string.format("%s %d\n", k, count)
+	end
+
+	blob:write(out)
+	blob:flush()
 end
 
 --

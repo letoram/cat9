@@ -36,8 +36,9 @@ return
 	open_embed_collapsed_rows = 4,
 
 	clipboard_job = true,     -- create a new job that absorbs all paste action
-
 	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
+
+	allow_state = true, -- load/store persistent state at startup or at wm request
 
 -- subtables are ignored for the config builtin
 --

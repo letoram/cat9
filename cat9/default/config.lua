@@ -1,8 +1,31 @@
 return
 function(cat9, root, builtins, suggest)
 
-function builtins.config(key, val, val2)
-	if not key or not cat9.config[key] then
+cat9.state.import["config"] =
+function(tbl)
+	for k,v in pairs(tbl) do
+-- ignore any non-matching keys
+		if cat9.config[k] then
+			if type(cat9.config[k]) == "number" then
+				if tonumber(v) then
+					cat9.config[k] = tonumber(v)
+				end
+			elseif type(cat9.config[k]) == "boolean" then
+				cat9.config[k] = v == "true"
+			elseif type(cat9.config[k]) == "string" then
+				cat9.config[k] = v
+			end
+		end
+	end
+end
+
+cat9.state.export["config"] =
+function()
+	return cat9.config
+end
+
+function builtins.config(key, val)
+	if not key or cat9.config[key] == nil then
 		cat9.add_message("missing / unknown config key")
 		return
 	end
@@ -59,7 +82,7 @@ function suggest.config(args, raw)
 	end
 
 -- entering the value, just set the message to current/type
-	if not cat9.config[args[2]] then
+	if cat9.config[args[2]] == nil then
 		cat9.add_message("unknown key")
 		return
 	end

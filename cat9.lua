@@ -20,7 +20,7 @@ local cat9 =  -- vtable for local support functions
 	lastdir = "",
 	laststr = "",
 	resources = {}, -- used for clipboard and bchunk ops
-
+	state = {export = {}, import = {}, orphan = {}},
 	idcounter = 0, -- monotonic increment for each command dispatched
 	visible = true,
 	focused = true
@@ -101,18 +101,29 @@ local function load_feature(name)
 	init(cat9, lash.root, cat9.config)
 end
 
+-- treat config overloading as injecting additional state
+-- (builtin/config config =save/=load maps)
+load_feature("misc.lua")    -- support functions that doesn't fit anywhere else
+load_feature("ioh.lua")     -- event handlers for display server device/state io
 load_feature("scanner.lua") -- running hidden jobs that collect information
 load_feature("jobctl.lua")  -- processing / forwarding job input-output
 load_feature("parse.lua")   -- breaking up a command-line into actions and suggestions
 load_feature("layout.lua")  -- drawing screen, decorations and related handlers
-load_feature("misc.lua")    -- support functions that doesn't fit anywhere else
-load_feature("ioh.lua")     -- event handlers for display server device/state io
 load_feature("vt100.lua")   -- state machine to plugin decoding
 
 -- use mouse-forward mode, implement our own selection / picking
 load_builtins("default")
 safe_builtins = cat9.builtins
 safe_suggest = cat9.suggest
+
+-- now that the builtins are available, load the ingoing state groups
+if cat9.config.allow_state and cat9.handlers.state_in then
+	lash.root:state_size(1 * 1024)
+	local state = lash.root:fopen(lash.scriptdir .. "/cat9/config/state.lua", "r")
+	if state then
+		cat9.handlers.state_in(lash.root, state)
+	end
+end
 
 cat9.config.readline.verify = cat9.readline_verify
 
@@ -143,4 +154,12 @@ while root:process() do
 	end
 
 	root:refresh()
+end
+
+if cat9.config.allow_state then
+	local state = root:fopen(lash.scriptdir .. "/cat9/config/state.lua", "w")
+	if state then
+		cat9.handlers.state_out(root, state)
+		state:flush()
+	end
 end
