@@ -42,7 +42,7 @@ return
 
 -- subtables are ignored for the config builtin
 --
--- possible job-bar meta entries (cat9/base/layout.lua):
+-- possible job-bar meta entries (cat9/base/jobmeta.lua):
 --  $pid_or_exit, $id, $data, $hdr_data, $memory_use, $dir, $full, $short
 --
 -- the action subtable matches
@@ -70,15 +70,23 @@ return
 	},
 
 -- similar to job_bar but no click-groups so only one level of tables
+-- possible specials defined in base/promptmeta.lua
 	prompt_focus =
 	{
 		"[",
-		"$jobs",
-		"]",
-		"$lastdir",
-		group_sep,
 		function() return os.date("%H:%M:%S") end,
-		group_sep,
+		"]",
+--		"[",
+--		"$battery_charging",
+--		"$battery_pct",
+--		"% ",
+--		"$battery_power",
+--		"W]",
+		"[",
+		"$jobs",
+		"] ",
+		"$lastdir",
+		"# "
 	},
 
 	prompt =

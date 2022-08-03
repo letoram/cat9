@@ -115,6 +115,8 @@ local function flush_job(job, finish, limit)
 						outlim = 0
 					end
 					data_buffered(job, line, eof)
+					outlim = outlim - 1
+					return outlim == 0
 				end
 				)
 -- this form will just flush all buffered in once so no reason for limit

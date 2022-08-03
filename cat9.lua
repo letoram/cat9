@@ -7,10 +7,15 @@ local cat9 =  -- vtable for local support functions
 {
 	scanner = {}, -- state for asynch completion scanning
 	env = lash.root:getenv(),
+
+-- all these tables are built / populated through the various builtin
+-- sets currently available, as well as the dynamic scanning in jobmeta/promptmeta
 	builtins = {},
 	suggest = {},
 	handlers = {},
 	views = {},
+	jobmeta = {},
+	promptmeta = {},
 
 -- properties exposed for other commands
 	config = loadfile(string.format("%s/cat9/config/default.lua", lash.scriptdir))(),
@@ -110,6 +115,8 @@ load_feature("jobctl.lua")  -- processing / forwarding job input-output
 load_feature("parse.lua")   -- breaking up a command-line into actions and suggestions
 load_feature("layout.lua")  -- drawing screen, decorations and related handlers
 load_feature("vt100.lua")   -- state machine to plugin decoding
+load_feature("jobmeta.lua") -- job contextual information providers
+load_feature("promptmeta.lua") --  prompt contextual information providers
 
 -- use mouse-forward mode, implement our own selection / picking
 load_builtins("default")

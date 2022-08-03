@@ -52,7 +52,6 @@ function builtins.forget(...)
 			if in_range then
 				in_range = false
 				if lastid then
-					local start = lastid+1
 					for i=lastid,v.id do
 						forget(i, signal)
 					end

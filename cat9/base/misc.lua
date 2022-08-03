@@ -115,7 +115,7 @@ function cat9.add_job_suggestions(set, allow_hidden)
 	end
 end
 
-function cat9.template_to_str(template, helpers)
+function cat9.template_to_str(template, helpers, ...)
 	local res = {}
 	for _,v in ipairs(template) do
 		if type(v) == "table" then
@@ -124,7 +124,12 @@ function cat9.template_to_str(template, helpers)
 			if string.sub(v, 1, 1) == "$" then
 				local hlp = helpers[string.sub(v, 2)]
 				if hlp then
-					table.insert(res, hlp())
+					local exp = hlp(...)
+					if not exp then
+						cat9.add_message("broken template helper:" .. v)
+					else
+						table.insert(res, exp)
+					end
 				else
 					cat9.add_message("unsupported helper: " .. string.sub(v, 2))
 				end

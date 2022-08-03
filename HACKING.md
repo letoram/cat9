@@ -6,8 +6,11 @@ Organisation
 		cat9/base/jobctl.lua - process lifecycle, reading / buffering / writing
 		cat9/base/layout.lua - drawing / window management / prompt
 		cat9/base/misc.lua - support functions
+		cat9/base/promptmeta.lua - data formatters for the prompt
+		cat9/base/jobmeta.lua - data formatters for titlebars
 		cat9/default.lua - loader for standard builtin- functions
 		cat9/default/... - builtin functions picked by cat9/default.lua
+		cat9/base/osdev/... - sensor and hardware interfaces
 
 Builtins
 ========
@@ -81,6 +84,9 @@ The main fields of use in it are:
 The methods that might be invoked:
 
     reset() : restore to a clean state
+
+These are reset / validated as part of cat9.import\_job and a more complete
+list of members and methods can be found there.
 
 If it is tied to an external living process, the 'pid' field is set
 and that is changed to code when the process terminates.
