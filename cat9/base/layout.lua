@@ -114,26 +114,6 @@ function cat9.xy_to_data(x, y)
 	end
 end
 
-local cjob
-local job_helpers =
-{
-	["id"] = function() return tostring(cjob.id); end,
-	["pid_or_exit"] = function()
-		local extid = -1
-		if cjob.pid then
-			extid = cjob.pid
-		elseif cjob.exit then
-			extid = cjob.exit
-		end
-		return tostring(extid)
-	end,
-	["data"] = function() return string.format("%d:%d", cjob.data.linecount, #cjob.err_buffer); end,
-	["memory_use"] = function() return cat9.bytestr(cjob.data.bytecount);	end,
-	["dir"] = function() return cjob.dir; end,
-	["full"] = function() return cjob.raw; end,
-	["short"] = function() return cjob.short; end,
-}
-
 --
 -- Draw the [metadata][command(short | raw)] interactable one-line 'titlebar'
 -- at the specified location and constraints and the column-id
@@ -170,13 +150,12 @@ function draw_job_header(job, x, y, cols, rows, cc)
 		x = x + root:utf8_len(cur)
 	end
 
-	cjob = job
 	for i,v in ipairs(itemstack) do
 		if type(v) ~= "table" then
 			cat9.add_message("bad config: malformed job_bar field: " .. job_key)
 			return
 		end
-		local res = cat9.template_to_str(v, job_helpers)
+		local res = cat9.template_to_str(v, cat9.jobmeta, job)
 -- each entry here is either plain-text string, a special string or hdrattr
 		for _,w in ipairs(res) do
 			if type(w) == "table" then
@@ -274,20 +253,8 @@ local function draw_job(job, x, y, cols, rows, cc)
 end
 
 function cat9.get_prompt()
-	local helpers =
-	{
-		lastdir =
-		function()
-			return #cat9.lastdir > 0 and cat9.lastdir or "/"
-		end,
-		jobs =
-		function()
-			return tostring(cat9.activevisible)
-		end
-	}
-
 	local template = cat9.focused and config.prompt_focus or config.prompt
-	local res = cat9.template_to_str(template, helpers)
+	local res = cat9.template_to_str(template, cat9.promptmeta)
 
 	return res
 end

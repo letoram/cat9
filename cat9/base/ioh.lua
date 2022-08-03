@@ -142,7 +142,6 @@ function handlers.state_out(self, blob)
 		local count = 0
 		for k,v in pairs(set) do
 			if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then
-				print("set", k, v)
 				v = tostring(v)
 				if not string.find(v, "\n") then
 					count = count + 1
