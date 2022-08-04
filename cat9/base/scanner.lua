@@ -30,6 +30,7 @@ function(cat9, root, config)
 --
 function cat9.set_scanner(path, cookie, closure)
 	cat9.stop_scanner()
+	cat9.scanner.active = path
 
 	local _, out, _, pid = root:popen(path, "r")
 
@@ -37,13 +38,13 @@ function cat9.set_scanner(path, cookie, closure)
 		if config.debug then
 			print("failed to spawn scanner job:", path)
 		end
+		cat9.scanner.active = nil
 		return
 	end
 
 -- the pid will be wait():ed / killed as part of job control
 	cat9.scanner.pid = pid
 	cat9.scanner.closure = closure
-	cat9.scanner.active = path
 	cat9.scanner.pathcookie = cookie
 
 -- mark as hidden so it doesn't clutter the UI or consume job IDs but can still
