@@ -22,7 +22,6 @@ end
 function battery.percent(self)
 	local now = tonumber(self.state.charge_now)
 	local tot = tonumber(self.state.charge_full)
-	print("now", now, "tot", tot)
 	if now and tot and now > 0 and tot > 0 then
 		return math.min(math.ceil(now / tot * 100), 100)
 	end
