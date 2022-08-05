@@ -65,8 +65,13 @@ function builtins.cd(step, opt)
 		return
 	end
 
-	if step == "f" and type(opt) == "string" then
-		step = opt
+	if type(opt) == "string" then
+		if step == "F-" then
+			hist[opt] = nil
+			return
+		elseif step == "f" then
+			step = opt
+		end
 	end
 
 	if step == "-" then
@@ -79,9 +84,12 @@ end
 
 function suggest.cd(args, raw)
 	if #args > 2 then
-		if args[2] == "f" then
-			cat9.readline:suggest(cat9.prefix_filter(linearize(hist), args[3]), "word")
-			return
+
+		if type(args[2]) == "string" then
+			if args[2] == "f" or args[2] == "F-" then
+				cat9.readline:suggest(cat9.prefix_filter(linearize(hist), args[3]), "word")
+				return
+			end
 		end
 
 		if #args > 4 then
