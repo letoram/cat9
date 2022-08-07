@@ -29,6 +29,11 @@ function(cat9, root, config)
 		)
 	end
 
+	cat9.jobmeta["view"] =
+	function(job)
+		return job.view_name and job.view_name or ""
+	end
+
 	cat9.jobmeta["dir"] =
 	function(job)
 		return job.dir

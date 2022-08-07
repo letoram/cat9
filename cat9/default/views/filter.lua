@@ -135,7 +135,7 @@ local function build_chain(job, args)
 	end
 end
 
-function views.filter(job, suggest, args, raw)
+function views.filter(job, suggest, args)
 	if not suggest then
 		if not args[2] then
 			cat9.add_message("view(match): empty pattern/string")
@@ -149,6 +149,7 @@ function views.filter(job, suggest, args, raw)
 		job.view_state = {data_linecount = 0, linecount = 0}
 
 		table.remove(args, 1)
+		job.view_name = "filter(" .. table.concat(args, "") .. ")"
 		job.view_state.filter = build_chain(job, args)
 		return
 	end

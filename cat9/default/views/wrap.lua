@@ -258,6 +258,7 @@ function views.wrap(job, suggest, args, raw)
 		job.view = job_wrap
 		job.view_state = {}
 		job.wrap_cache = nil
+		job.view_name = "wrap"
 
 		if not args[2] then
 			return

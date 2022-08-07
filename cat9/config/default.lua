@@ -66,6 +66,7 @@ return
 	job_bar_expanded =
 	{
 		{ collapse_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
+		{ group_sep, "$view"},
 		{ group_sep, "$full"},
 	},
 
