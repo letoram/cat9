@@ -16,6 +16,7 @@ local cat9 =  -- vtable for local support functions
 	views = {},
 	jobmeta = {},
 	promptmeta = {},
+	aliases = {},
 
 -- properties exposed for other commands
 	config = loadfile(string.format("%s/cat9/config/default.lua", lash.scriptdir))(),
