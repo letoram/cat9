@@ -53,6 +53,13 @@ function handlers.key(self, sub, keysym, code, mods)
 				cat9.setup_readline(root)
 			end
 			return
+		elseif keysym == tui.keys.SPACE then
+			if cat9.readline then
+				local str = cat9.readline:get()
+				if cat9.aliases[str] then
+					cat9.readline:set(cat9.aliases[str])
+				end
+			end
 
 -- uncertain how to display the help still, just popup at last
 -- known cursor position? or as regular popup?
