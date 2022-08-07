@@ -5,6 +5,7 @@ function views.crop(job, suggest)
 	if not suggest then
 		job.view = cat9.view_raw
 		job.view_state = nil
+		job.view_name = "crop"
 	end
 end
 end
