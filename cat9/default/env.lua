@@ -3,7 +3,7 @@ function(cat9, root, builtins, suggest)
 
 local default = lash.root:getenv()
 
-function builtins.env(key, val)
+function builtins.env(key, val, path)
 	if key == "=clear" then
 		cat9.env = {}
 		return
@@ -18,7 +18,7 @@ function builtins.env(key, val)
 	end
 
 	if key == "=alias" then
-		cat9.aliases[key] = val
+		cat9.aliases[val] = path
 		return
 	end
 

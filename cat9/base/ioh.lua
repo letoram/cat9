@@ -54,6 +54,7 @@ function handlers.key(self, sub, keysym, code, mods)
 			end
 			return
 		elseif keysym == tui.keys.SPACE then
+
 			if cat9.readline then
 				local str = cat9.readline:get()
 				if cat9.aliases[str] then
@@ -268,6 +269,7 @@ end
 -- use for monotonic scrolling (drag+select on expanded?) and dynamic prompt
 local clock = 10
 function handlers.tick()
+	cat9.time = cat9.time + 1
 	clock = clock - 1
 
 	if clock == 0 then
