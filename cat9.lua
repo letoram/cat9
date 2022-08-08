@@ -29,7 +29,8 @@ local cat9 =  -- vtable for local support functions
 	state = {export = {}, import = {}, orphan = {}},
 	idcounter = 0, -- monotonic increment for each command dispatched
 	visible = true,
-	focused = true
+	focused = true,
+	time = 0 -- monotonic tick
 }
 
 if not cat9.config then
@@ -103,6 +104,7 @@ local function load_feature(name)
 	if not fptr then
 		return false, msg
 	end
+
 	local init = fptr()
 	init(cat9, lash.root, cat9.config)
 end
@@ -127,7 +129,8 @@ safe_suggest = cat9.suggest
 -- now that the builtins are available, load the ingoing state groups
 if cat9.config.allow_state and cat9.handlers.state_in then
 	lash.root:state_size(1 * 1024)
-	local state = lash.root:fopen(lash.scriptdir .. "/cat9/config/state.lua", "r")
+	local state = lash.root:fopen(
+		cat9.system_path("state") .. "/cat9_state.lua", "r")
 	if state then
 		cat9.handlers.state_in(lash.root, state)
 	end
@@ -164,10 +167,26 @@ while root:process() do
 	root:refresh()
 end
 
-if cat9.config.allow_state then
-	local state = root:fopen(lash.scriptdir .. "/cat9/config/state.lua", "w")
-	if state then
-		cat9.handlers.state_out(root, state)
-		state:flush()
+if cat9.config.allow_state and cat9.handlers.state_out then
+	local spath = cat9.system_path("state")
+	root:chdir(spath)
+	local tpath, tmp
+
+-- mktemp has not been added to arcan-tui yet so work around that though we
+-- lack other building blocks as well (proper hash..) to be consistent with
+-- other parts of arcan, that should be exposed in the blake3 form.
+	if root.mktemp then
+		tpath, tmp = root:mktemp()
+	else
+		tpath = ".tmp.state." .. tostring(cat9.time) .. tostring(os.time())
+		tmp = root:fopen(tpath, "w")
+	end
+
+	if tmp then
+		cat9.handlers.state_out(root, tmp)
+		root:frename(tpath, "cat9_state.lua")
+		root:funlink(tpath)
+		tmp:flush()
+		tmp:close()
 	end
 end

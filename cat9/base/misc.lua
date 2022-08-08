@@ -43,6 +43,15 @@ function cat9.remove_match(tbl, ent)
 	end
 end
 
+function cat9.system_path(ns)
+	local base = lash.scriptdir .. "/cat9/config"
+	if cat9.env["XDG_STATE_HOME"] then
+		base = cat9.env["XDG_STATE_HOME"]
+	end
+
+	return base
+end
+
 function cat9.chdir(step)
 	cat9.prevdir = root:chdir()
 	root:chdir(step)
