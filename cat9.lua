@@ -18,16 +18,16 @@ local cat9 =  -- vtable for local support functions
 	promptmeta = {},
 	aliases = {},
 
--- properties exposed for other commands
 	config = loadfile(string.format("%s/cat9/config/default.lua", lash.scriptdir))(),
 	jobs = lash.jobs,
 	timers = {},
 
-	lastdir = "",
-	laststr = "",
 	resources = {}, -- used for clipboard and bchunk ops
 	state = {export = {}, import = {}, orphan = {}},
+
 	idcounter = 0, -- monotonic increment for each command dispatched
+	lastdir = "",
+	laststr = "",
 	visible = true,
 	focused = true,
 	time = 0 -- monotonic tick
@@ -183,10 +183,10 @@ if cat9.config.allow_state and cat9.handlers.state_out then
 	end
 
 	if tmp then
-		cat9.handlers.state_out(root, tmp)
+		cat9.handlers.state_out(root, tmp, true)
+		tmp:flush(-1)
+		tmp:close()
 		root:frename(tpath, "cat9_state.lua")
 		root:funlink(tpath)
-		tmp:flush()
-		tmp:close()
 	end
 end

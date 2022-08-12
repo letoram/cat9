@@ -36,6 +36,40 @@ local config = cat9.config
 cat9.activejobs = activejobs
 cat9.activevisible = 0
 
+local function default_factory(job, tbl)
+-- if a number / boolean type is added to this table, make sure to
+-- also update the typemap down by the import function
+	local res =
+	{
+		id = job.id,
+		alias = job.alias,
+		unbuffered = job.unbuffered,
+		factory_mode = job.factory_mode,
+		dir = job.dir,
+		raw = job.raw,
+		short = job.short,
+
+-- currently missing / complicated:
+--  views, commands (need some id name to rebuild)
+--  command-history
+--  input-buffer
+	}
+
+-- flatten out env
+	for k,v in pairs(job.env) do
+		res["env_" .. k] = v
+	end
+
+-- same with args
+	if job.args then
+		for i,v in ipairs(job.args) do
+			res["arg_" .. tostring(i)] = v
+		end
+	end
+
+	return res
+end
+
 local function data_buffered(job, line, eof)
 	for _,v in ipairs(job.hooks.on_data) do
 		v(line, true, eof)
@@ -74,18 +108,20 @@ local function data_unbuffered(job, line, eof)
 	end
 
 	local lst = line.split(line, "\n")
+
 	if #lst == 1 then
 		if #job.data == 0 then
 			job.data[1] = ""
 			job.data.linecount = 1
 		end
 
-		job.data.bytecount = job.data.bytecount + #lst
+		job.data.bytecount = job.data.bytecount + #line
 		job.data[#job.data] = job.data[#job.data] .. lst[1]
 	else
 		for _,v in ipairs(lst) do
 			table.insert(job.data, v)
 			job.data.linecount = job.data.linecount + 1
+			job.data.bytecount = job.data.bytecount + #line
 		end
 	end
 end
@@ -102,7 +138,9 @@ local function flush_job(job, finish, limit)
 			if line then
 				data_unbuffered(job, line)
 				upd = true
-				outlim = outlim - 1
+				if not finish then
+					outlim = outlim - 1
+				end
 			else
 				outlim = 0
 			end
@@ -115,7 +153,9 @@ local function flush_job(job, finish, limit)
 						outlim = 0
 					end
 					data_buffered(job, line, eof)
-					outlim = outlim - 1
+					if not finish then
+						outlim = outlim - 1
+					end
 					return outlim == 0
 				end
 				)
@@ -137,7 +177,9 @@ local function flush_job(job, finish, limit)
 			break
 		end
 		count = #job.err_buffer
-		outlim = outlim - 1
+		if not finish then
+			outlim = outlim - 1
+		end
 	end
 
 	return upd
@@ -268,29 +310,41 @@ function cat9.process_jobs()
 	return upd
 end
 
-function cat9.setup_shell_job(args, mode, env)
-	local inf, outf, errf, pid = root:popen(args, mode, env)
-	if not pid then
-		cat9.add_message(args[1] .. " failed in " .. line)
-		return
+function
+	cat9.setup_shell_job(args, mode, env, line, job, passive)
+	local inf, outf, errf, pid
+
+	if not passive then
+		inf, outf, errf, pid = root:popen(args, mode, env)
+		if not pid then
+			cat9.add_message(args[1] .. " failed in " .. line)
+			return
+		end
+	end
+
+	if not job then
+		job = {}
 	end
 
 -- insert/spawn
-	local job =
-	{
-		env = env,
-		pid = pid,
-		inp = inf,
-		out = outf,
-		err = errf,
-		raw = line,
-		args = args,
-		mode = mode,
-		err_buffer = {},
-		inp_buffer = {},
-		dir = root:chdir(),
-		short = args[2],
-	}
+	job.env = env
+	job.pid = pid
+	job.inp = inf
+	job.out = outf
+	job.err = errf
+	job.raw = line
+	job.args = args
+	job.mode = mode
+	job.err_buffer = {}
+	job.inp_buffer = {}
+	job.short = args[2]
+
+	if not job.dir then
+		job.dir = root:chdir()
+	end
+	if not job.factory then
+		job.factory = default_factory
+	end
 
 -- allow interactive / copy write into the job, track this as well so that
 -- repeat will continue to repeat the input that gets sent to the job
@@ -649,6 +703,51 @@ local function find_lowest_free()
 	return lowest
 end
 
+cat9.state.export["jobs"] =
+function()
+	local res = {}
+
+	for _,v in ipairs(lash.jobs) do
+		if v.factory and v.factory_mode == "auto" or v.factory_mode == "manual" then
+			table.insert(res, v:factory())
+		end
+	end
+
+	return res
+end
+
+-- conversions based on field name for import
+local typemap =
+{
+	id = tonumber,
+	unbuffered = function(x) return x == "true"; end,
+}
+
+cat9.state.import["jobs"] =
+function(intbl)
+	local tbl =
+	{
+		env = {},
+		args = {}
+	}
+
+	for k,v in pairs(intbl) do
+		local pref = string.sub(k, 1, 4)
+		if pref == "env_" then
+			tbl.env[string.sub(k, 5)] = v
+		elseif pref == "arg_" then
+			tbl.args[tonumber(string.sub(k, 5))] = v
+		else
+			tbl[k] = typemap[k] and typemap[k](v) or v
+		end
+	end
+
+	local dir = root:chdir(tbl.dir)
+	cat9.setup_shell_job(
+		tbl.args, tbl.mode, tbl.env, tbl.raw, tbl, tbl.factory_mode == "manual")
+	root:chdir(dir)
+end
+
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
@@ -656,9 +755,10 @@ function cat9.import_job(v, noinsert)
 	if not v.collapsed_rows then
 		v.collapsed_rows = config.collapsed_rows
 	end
+
 	v.bar_color = tui.colors.ui
 	v.row_offset = 0
-	v.row_offset_relative = tru
+	v.row_offset_relative = true
 	v.col_offset = 0
 	v.job = true
 

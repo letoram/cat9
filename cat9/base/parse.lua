@@ -365,6 +365,10 @@ function cat9.suggest_history()
 end
 
 function cat9.readline_verify(self, prefix, msg, suggest)
+	if string.sub(prefix, 1, 2) == "!!" then
+		return
+	end
+
 	if suggest then
 		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true, lex_opts)
 		suggest_for_context(prefix, tokens, types)
@@ -397,6 +401,13 @@ function cat9.parse_string(rl, line)
 
 	cat9.laststr = ""
 	cat9.flag_dirty()
+
+-- build job, special case !! as prefix for 'verbatim string'
+	if string.sub(line, 1, 2) == "!!" then
+		cat9.setup_shell_job(string.sub(line, 3), "re", cat9.env, line)
+		return
+	end
+
 	local tokens, msg, ofs, types = lash.tokenize_command(line, true, lex_opts)
 	if msg then
 		cat9.add_message(msg)
@@ -405,18 +416,14 @@ function cat9.parse_string(rl, line)
 -- dequeue
 	cat9.get_message(true)
 
--- build job, special case !! as prefix for 'verbatim string'
 	local commands
-	if string.sub(line, 1, 2) == "!!" then
-		commands = {"!!"}
-		commands[2] = string.sub(line, 3)
-	else
-		commands = tokens_to_commands(tokens, types)
-		if not commands or #commands == 0 then
-			return
-		end
+	commands = tokens_to_commands(tokens, types)
+	if not commands or #commands == 0 then
+		return
 	end
 
+-- could also be popt in order to control input routing, or if it is a
+-- job, setup an explicit data forward / copy
 	local revert = false
 	if type(commands[1]) == "table" then
 		cat9.switch_env(commands[1])
@@ -456,10 +463,7 @@ function cat9.parse_string(rl, line)
 	local lst = string.split(commands[1], "/")
 	table.insert(commands, 2, lst[#lst])
 
-	local job = cat9.setup_shell_job(commands, "re", cat9.env)
-	if job then
-		job.raw = line
-	end
+	local job = cat9.setup_shell_job(commands, "re", cat9.env, line)
 
 -- return to normal
 	if revert then

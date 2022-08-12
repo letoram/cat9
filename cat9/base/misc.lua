@@ -112,13 +112,182 @@ function cat9.run_lut(cmd, tgt, lut, set)
 	end
 end
 
-function cat9.add_job_suggestions(set, allow_hidden)
+local maptype = {
+	s = tostring,
+	n = tonumber,
+	b = function(v) return v == true; end
+}
+
+-- shallow and only simple types
+function cat9.stableb64(tbl)
+	local res = {}
+
+	local typemap = {
+		["string"] = "s",
+		["boolean"] = "b",
+		["number"] = "n"
+	}
+
+	for k,v in pairs(tbl) do
+		local kt = typemap[type(k)]
+		local vt = typemap[type(v)]
+
+		if kt and vt then
+			table.insert(res, cat9.to_b64(kt .. vt .. tostring(k)))
+			table.insert(res, cat9.to_b64(tostring(v)))
+		end
+	end
+
+	return table.concat(res, ":")
+end
+
+function cat9.b64stable(str)
+	local sub = string.split(str, ":")
+	local deq = table.remove
+	local res = {}
+
+	while #sub > 0 do
+		local key = cat9.from_b64(deq(sub, 1))
+		local val = cat9.from_b64(deq(sub, 1))
+
+		if key then
+			local kt = string.sub(key, 1, 1)
+			local vt = string.sub(key, 2, 2)
+			key = string.sub(key, 3)
+
+			if key and val and maptype[kt] and maptype[vt] then
+				res[maptype[kt](key)] = maptype[vt](val)
+			end
+		end
+	end
+
+	return res
+end
+
+-- taken from Ilya Kolbins unlicensed b64 enc/dec
+local function extract(v, from, width)
+	return bit.band(bit.rshift, bit.lshift(1, width) - 1)
+end
+
+-- build LUTs
+local b64enc = {}
+for b64, ch in pairs({[0]='A','B','C','D','E','F','G','H','I','J',
+		'K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y',
+		'Z','a','b','c','d','e','f','g','h','i','j','k','l','m','n',
+		'o','p','q','r','s','t','u','v','w','x','y','z','0','1','2',
+		'3','4','5','6','7','8','9','+','/','='})
+do
+	b64enc[b64] = ch:byte()
+end
+
+local b64dec = {}
+for b64, ch in pairs(b64enc) do
+	b64dec[ch] = b64
+end
+
+function cat9.to_b64(str)
+	local char, concat = string.char, table.concat
+	local encoder = b64enc
+
+	local t, k, n = {}, 1, #str
+	local lastn = n % 3
+
+	for i = 1, n-lastn, 3 do
+		local a, b, c = str:byte( i, i+2 )
+		local v = a*0x10000 + b*0x100 + c
+		local s
+			s = char(
+				encoder[extract(v,18,6)],
+				encoder[extract(v,12,6)],
+				encoder[extract(v,6,6)],
+				encoder[extract(v,0,6)]
+			)
+		t[k] = s
+		k = k + 1
+	end
+
+	if lastn == 2 then
+		local a, b = str:byte( n-1, n )
+		local v = a*0x10000 + b*0x100
+		t[k] = char(
+			encoder[extract(v,18,6)],
+			encoder[extract(v,12,6)],
+			encoder[extract(v,6,6)],
+			encoder[64]
+		)
+	elseif lastn == 1 then
+		local v = str:byte( n )*0x10000
+		t[k] = char(
+			encoder[extract(v,18,6)],
+			encoder[extract(v,12,6)],
+			encoder[64],
+			encoder[64]
+		)
+	end
+
+	return concat(t)
+end
+
+function cat9.from_b64(b64)
+	local char, concat = string.char, table.concat
+	local decoder = b64dec
+	local pattern = '[^%w%+%/%=]'
+	b64 = b64:gsub( pattern, '' )
+
+	local t, k = {}, 1
+	local n = #b64
+	local padding = b64:sub(-2) == '==' and 2 or b64:sub(-1) == '=' and 1 or 0
+
+	for i = 1, padding > 0 and n-4 or n, 4 do
+		local a, b, c, d = b64:byte( i, i+3 )
+		local s
+		local v =
+			decoder[a] * 0x40000 +
+			decoder[b] * 0x1000  +
+			decoder[c] * 0x40    +
+			decoder[d]
+
+		s = char(
+			extract(v,16,8),
+			extract(v, 8,8),
+			extract(v,0,8)
+		)
+		t[k] = s
+		k = k + 1
+	end
+
+	if padding == 1 then
+		local a, b, c = b64:byte( n-3, n-1 )
+		local v =
+			decoder[a]*0x40000 +
+			decoder[b]*0x1000  +
+			decoder[c]*0x40
+
+		t[k] = char(
+			extract(v,16,8),
+			extract(v,8,8)
+		)
+
+	elseif padding == 2 then
+		local a, b = b64:byte( n-3, n-2 )
+		local v =
+			decoder[a]*0x40000 +
+			decoder[b]*0x1000
+
+		t[k] = char(extract(v,16,8))
+	end
+
+	return concat( t )
+end
+
+function cat9.add_job_suggestions(set, allow_hidden, filter)
 	if cat9.selectedjob then
 		table.insert(set, "#csel")
 	end
-
 	for _,v in ipairs(lash.jobs) do
-		if not v.hidden or allow_hidden then
+		if
+			(filter and filter(v)) and
+			(not v.hidden or allow_hidden) then
 			table.insert(set, "#" .. tostring(v.id))
 		end
 	end

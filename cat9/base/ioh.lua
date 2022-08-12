@@ -111,6 +111,7 @@ function handlers.state_in(self, blob)
 -- ...
 		local group = header[1]
 		local count = tonumber(header[2])
+		local added = 0
 
 -- fill out with k[y]
 		local out = {}
@@ -124,45 +125,64 @@ function handlers.state_in(self, blob)
 
 			count = count - 1
 			out[key:gsub("^%s*", "")] = val:gsub("^%s*", "")
+			added = added + 1
 		end
 
 -- and forward to the right module
 		if cat9.state.import[group] then
-			cat9.state.import[group](out)
+			if added > 0 then
+				cat9.state.import[group](out)
+			end
 		else
 			cat9.state.orphan[group] = out
 		end
 	end
 end
 
+local function out_append_table(name, out, set)
+	table.insert(out, "") -- reserve header space
+	local ci = #out
+
+	local count = 0
+	for k,v in pairs(set) do
+		if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then
+			v = tostring(v)
+			if not string.find(v, "\n") then
+				count = count + 1
+				table.insert(out, string.format("\t%s\n", k))
+				table.insert(out, string.format("\t%s\n", v))
+			end
+		end
+	end
+
+	out[ci] = string.format("%s %d\n", name, count)
+end
+
 -- generate a t[group]={k=v} table of all registered state providers
-function handlers.state_out(self, blob)
+function handlers.state_out(self, blob, internal)
 -- run through all state handlers and retrieve their states
 	local out = {"cat9_state_v1\n"}
 
 	for k,v in pairs(cat9.state.export) do
 		local i = 1
+
+-- the exporter can either provide 1:1 or 1:* on import.
 		local set = v()
-
-		table.insert(out, "") -- reserve header space
-		local ci = #out
-
-		local count = 0
-		for k,v in pairs(set) do
-			if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then
-				v = tostring(v)
-				if not string.find(v, "\n") then
-					count = count + 1
-					table.insert(out, string.format("\t%s\n", k))
-					table.insert(out, string.format("\t%s\n", v))
-				end
+		if type(set[1]) == "table" then
+			for _, v in ipairs(set) do
+				out_append_table(k, out, v)
 			end
+		else
+			out_append_table(k, out, set)
 		end
-		out[ci] = string.format("%s %d\n", k, count)
 	end
 
 	blob:write(out)
-	blob:flush()
+
+	if not internal then
+		blob:flush(-1)
+		blob:close()
+	end
 end
 
 --

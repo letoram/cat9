@@ -24,7 +24,35 @@ function()
 	return cat9.config
 end
 
-function builtins.config(key, val)
+local function config_job(job, key, val)
+	if not key or type(key) ~= "string"
+		or not val or type(val) ~= "string" then
+		cat9.add_message("config job: missing/bad key/val")
+		return
+	end
+
+	if not job.factory then
+		cat9.add_message("config job: job does not define a factory")
+		return
+	end
+
+-- Other options would be persisting data / history which can make
+-- the state blob seriously large. This should ultimately not be a
+-- problem, but enable that gradually when we also have signing
+-- and compression as part of the state store (something for lua-tui).
+	if val ~= "off" and val ~= "auto" and val ~= "manual" then
+		cat9.add_message("config job: bad")
+		return
+	end
+
+	job.factory_mode = val
+end
+
+function builtins.config(key, val, opt)
+	if type(key) == "table" then
+		return config_job(key, val, opt)
+	end
+
 	if not key or cat9.config[key] == nil then
 		cat9.add_message("missing / unknown config key")
 		return
@@ -76,8 +104,29 @@ function suggest.config(args, raw)
 		cat9.readline:suggest(set, "word")
 		return
 
+-- filter out the jobs that we can't configure right now
 	elseif #args == 1 then
+		cat9.add_job_suggestions(set, false,
+			function(job)
+				return job.factory ~= nil
+			end
+		)
 		cat9.readline:suggest(set, "insert")
+		return
+	end
+
+-- job configuration needs are rather sparse, persistance?
+	if type(args[2]) == "table" then
+		if #args == 3 then
+			cat9.readline:suggest(cat9.prefix_filter({"persist"}, args[3]), "word")
+
+		elseif #args == 4 then
+			cat9.readline:suggest(cat9.prefix_filter(
+				{"off", "manual", "auto"}, args[4]), "word")
+
+		else
+			cat9.add_message("config: too many arguments")
+		end
 		return
 	end
 
