@@ -53,6 +53,7 @@ local function default_factory(job, tbl)
 --  views, commands (need some id name to rebuild)
 --  command-history
 --  input-buffer
+--  triggers
 	}
 
 -- flatten out env
@@ -739,6 +740,17 @@ function(intbl)
 			tbl.args[tonumber(string.sub(k, 5))] = v
 		else
 			tbl[k] = typemap[k] and typemap[k](v) or v
+		end
+	end
+
+-- To avoid ID conflicts, we either need to rewrite them or delete on
+-- collision or inject a new one.
+	if tbl.id then
+		for i=1,#lash.jobs do
+			if lash.jobs[i].id == tbl.id then
+				tbl.id = nil
+				break
+			end
 		end
 	end
 
