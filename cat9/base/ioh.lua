@@ -62,10 +62,9 @@ function handlers.key(self, sub, keysym, code, mods)
 				end
 			end
 
--- uncertain how to display the help still, just popup at last
--- known cursor position? or as regular popup?
-		elseif keysym == tui.keys.F1 then
---			print("toggle help")
+		elseif cat9.bindings[keysym] then
+			cat9.parse_string(false, cat9.bindings[keysym])
+
 		elseif keysym == tui.keys.R then
 			if cat9.readline then
 				cat9.suggest_history()

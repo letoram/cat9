@@ -17,6 +17,7 @@ local cat9 =  -- vtable for local support functions
 	jobmeta = {},
 	promptmeta = {},
 	aliases = {},
+	bindings = {},
 
 	config = loadfile(string.format("%s/cat9/config/default.lua", lash.scriptdir))(),
 	jobs = lash.jobs,
@@ -99,8 +100,10 @@ local function load_builtins(base)
 	return true
 end
 
-local function load_feature(name)
-	fptr, msg = loadfile(lash.scriptdir .. "./cat9/base/" .. name)
+local function load_feature(name, base)
+	base = base and base or "base"
+	fptr, msg = loadfile(
+		string.format("%s/cat9/%s/%s", lash.scriptdir, base, name))
 	if not fptr then
 		return false, msg
 	end
@@ -120,6 +123,7 @@ load_feature("layout.lua")  -- drawing screen, decorations and related handlers
 load_feature("vt100.lua")   -- state machine to plugin decoding
 load_feature("jobmeta.lua") -- job contextual information providers
 load_feature("promptmeta.lua") --  prompt contextual information providers
+load_feature("keybindings.lua", "config")
 
 -- use mouse-forward mode, implement our own selection / picking
 load_builtins("default")

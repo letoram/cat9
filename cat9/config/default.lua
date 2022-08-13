@@ -99,7 +99,7 @@ return
 
 	readline =
 	{
-		cancellable   = true,   -- cancel removes readline until we starts typing
+		cancellable   = false,  -- cancel removes readline until we starts typing
 		forward_meta  = false,  -- don't need meta-keys, use default rl behaviour
 		forward_paste = true,   -- ignore builtin paste behaviour
 		forward_mouse = true,   -- needed for clicking outside the readline area
