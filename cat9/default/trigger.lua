@@ -52,7 +52,7 @@ function builtins.trigger(job, action, ...)
 
 -- safeguard against unescaped command
 	local cmd = table.remove(opts, 1)
-	if opts[1] then
+	if opts[1] and cmd ~= "alert" then
 		cat9.add_message("trigger job " .. action .. errprefix .. cmd .. " > overflow at " .. opts[1])
 		return
 	end
@@ -102,6 +102,15 @@ function builtins.trigger(job, action, ...)
 
 	if cmd == "flush" then
 		job.hooks[action] = {}
+
+	elseif cmd == "alert" then
+		table.insert(job.hooks[action], function()
+			if action == "on_finish" then
+				root:notification(opts[1] and opts[1] or job.raw)
+			else
+				root:failure(opts[1] and opts[1] or job.raw)
+			end
+		end)
 	else
 		table.insert(job.hooks[action], runfn)
 	end
@@ -120,7 +129,7 @@ function suggest.trigger(args, raw)
 		cat9.readline:suggest(cat9.prefix_filter({"ok", "fail"}, args[3]), "word")
 
 	elseif #args == 4 then
-		cat9.readline:suggest(cat9.prefix_filter({"", "flush", "delay"}, args[4]), "word")
+		cat9.readline:suggest(cat9.prefix_filter({"", "flush", "delay", "alert"}, args[4]), "word")
 -- should recursively resolve the rest of the 4th argument through the
 -- same parser / suggest as we do elsewhere
 	end
