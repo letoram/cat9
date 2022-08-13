@@ -65,8 +65,14 @@ function cat9.xy_to_job(x, y)
 end
 
 function cat9.id_to_job(id)
-	if string.lower(id) == "csel" then
+	local lid = string.lower(id)
+
+	if lid == "csel" then
 		return cat9.selectedjob
+	end
+
+	if lid == "last" then
+		return cat9.latestjob
 	end
 
 	local num = tonumber(id)
