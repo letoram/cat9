@@ -312,10 +312,11 @@ function cat9.process_jobs()
 end
 
 function
-	cat9.setup_shell_job(args, mode, env, line, job, passive)
+	cat9.setup_shell_job(args, mode, env, line, opts)
 	local inf, outf, errf, pid
+	opts = opts and opts or {}
 
-	if not passive then
+	if not opts.passive then
 		inf, outf, errf, pid = root:popen(args, mode, env)
 		if not pid then
 			cat9.add_message(args[1] .. " failed in " .. line)
@@ -323,9 +324,7 @@ function
 		end
 	end
 
-	if not job then
-		job = {}
-	end
+	local job = opts.job and opts.job or {}
 
 -- insert/spawn
 	job.env = env
@@ -339,6 +338,7 @@ function
 	job.err_buffer = {}
 	job.inp_buffer = {}
 	job.short = args[2]
+	job.set_input = input_fn
 
 	if not job.dir then
 		job.dir = root:chdir()
@@ -347,19 +347,33 @@ function
 		job.factory = default_factory
 	end
 
--- allow interactive / copy write into the job, track this as well so that
--- repeat will continue to repeat the input that gets sent to the job
+	local close
+	if opts.close then
+		close =
+		function()
+			job.inp:flush(100)
+			job.inp:close()
+			job.inp = nil
+		end
+	end
+
+-- Allow interactive / copy write into the job, track this as well so that
+-- repeat will continue to repeat the input that gets sent to the job.
 	if inf then
 		job.write =
-		function(self, data)
+		function(self, data, close)
+			job.inp_buffer = {}
 			if type(data) == "table" then
+				if data.slice then
+					data = data:slice()
+				end
 				for _,v in ipairs(data) do
 					table.insert(job.inp_buffer, v)
 				end
 			elseif type(data) == "string" then
 				table.insert(job.inp_buffer, data)
 			end
-			inf:write(data)
+			inf:write(job.inp_buffer, close and close or nil)
 		end
 	end
 
@@ -377,7 +391,7 @@ function
 			end
 		end
 		if job.inp and repeat_input and #job.inp_buffer > 0 then
-			job.inp:write(job.inp_buffer)
+			job.inp:write(job.inp_buffer, close and close or nil)
 		end
 	end
 
@@ -756,7 +770,9 @@ function(intbl)
 
 	local dir = root:chdir(tbl.dir)
 	cat9.setup_shell_job(
-		tbl.args, tbl.mode, tbl.env, tbl.raw, tbl, tbl.factory_mode == "manual")
+		tbl.args, tbl.mode, tbl.env, tbl.raw, tbl,
+		{passive = true}
+	)
 	root:chdir(dir)
 end
 

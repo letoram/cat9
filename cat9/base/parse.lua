@@ -75,9 +75,12 @@ local function flush_pargs(v)
 	local ntc = (stop + 1) - start
 	local set = {}
 
+-- open question is what to do with tables ..
 	while ntc > 0 do
 		local rem = table.remove(v, start)
-		table.insert(set, rem)
+		if tonumber(rem) or type(rem) == "string" then
+			table.insert(set, rem)
+		end
 		ntc = ntc - 1
 	end
 
@@ -153,6 +156,7 @@ end
 
 local function tokens_to_commands(tokens, types, suggest)
 	local res = {}
+	local groups = {res}
 	local cmd = nil
 	local state = nil
 
@@ -167,7 +171,7 @@ local function tokens_to_commands(tokens, types, suggest)
 						lst = lst .. ttable[v[1]] .. " "
 					end
 				end
-				print(lst)
+				print(lst, msg)
 		end
 
 -- adding the message on every parse run would be confusing,
@@ -191,7 +195,16 @@ local function tokens_to_commands(tokens, types, suggest)
 
 	for _,v in ipairs(tokens) do
 		local ttype = v[1] == types.OPERATOR and v[2] or v[1]
-		if not ent then
+
+-- Group operators (and &, pipe | or ||) sets a new res and adds
+-- to the group table with the condition that should be fulfilled.
+-- For now jus deal with pipe.
+		if ttype == types.OP_PIPE then
+			groups[#groups].stdin = true
+			res = {}
+			table.insert(groups, res)
+
+		elseif not ent then
 			ent = ptable[ttype]
 			if not ent then
 				return fail("token not supported")
@@ -226,7 +239,7 @@ local function tokens_to_commands(tokens, types, suggest)
 
 -- when the sequence progress to the execution function that
 -- consumes the queue then reset the state tracking
-		if type(ent[ind]) == "function" then
+		if ent and type(ent[ind]) == "function" then
 			local msg = ent[ind](seq, res, v)
 			if msg then
 				return fail(msg)
@@ -245,11 +258,29 @@ local function tokens_to_commands(tokens, types, suggest)
 		cat9.stop_scanner()
 	end
 
-	return res
+	return groups
 end
 
 local last_count = 0
 local function suggest_for_context(prefix, tok, types)
+-- chunk up into groups based on OP_PIPE
+-- (same can then be done for OP_AND, OP_OR, ...)
+	local last_group = 1
+	for i=1,#tok do
+		if tok[i][1] == types.OPERATOR and tok[i][2] == types.OP_PIPE then
+			last_group = i
+		end
+	end
+
+-- but only completion-concern with the last one
+	if last_group > 1 then
+		local rtok = {}
+		for i=last_group+1,#tok do
+			table.insert(rtok, tok[i])
+		end
+		tok = rtok
+	end
+
 	if #tok == 0 then
 		cat9.readline:suggest(builtin_completion)
 		return
@@ -272,6 +303,10 @@ local function suggest_for_context(prefix, tok, types)
 	if not res then
 		return
 	end
+
+-- we have already jumped to the last group based on cursor for
+-- generating suggestion, so just pick that one already
+	res = res[1]
 
 -- if a job table is used silently remove it and set it as context
 -- empty? just add builtins
@@ -366,6 +401,7 @@ end
 
 function cat9.readline_verify(self, prefix, msg, suggest)
 	if string.sub(prefix, 1, 2) == "!!" then
+		cat9.readline:suggest(true)
 		return
 	end
 
@@ -402,7 +438,9 @@ function cat9.parse_string(rl, line)
 	cat9.laststr = ""
 	cat9.flag_dirty()
 
--- build job, special case !! as prefix for 'verbatim string'
+-- build job, special case !! as prefix for 'verbatim string', this should
+-- be moves to a part of the normal parser so that #id | !!something would
+-- work.
 	if string.sub(line, 1, 2) == "!!" then
 		cat9.setup_shell_job(string.sub(line, 3), "re", cat9.env, line)
 		return
@@ -416,22 +454,38 @@ function cat9.parse_string(rl, line)
 -- dequeue
 	cat9.get_message(true)
 
-	local commands
-	commands = tokens_to_commands(tokens, types)
-	if not commands or #commands == 0 then
+	local groups
+	groups = tokens_to_commands(tokens, types)
+	if not groups or #groups[1] == 0 then
 		return
+	end
+
+-- with multiple processing groups we need to setup a job queue, ignore
+-- that for now and just handle the case of #job | actual_command
+	local inp = nil
+	if #groups > 2 then
+		cat9.add_message("in-shell processing groups incomplete, use !!")
+		return
+	elseif #groups == 2 then
+		if type(groups[1][1]) == "table" then
+			inp = groups[1][1]
+			table.remove(groups, 1)
+		else
+			cat9.add_message("[job | ] cmd expected")
+			return
+		end
 	end
 
 -- could also be popt in order to control input routing, or if it is a
 -- job, setup an explicit data forward / copy
 	local revert = false
-	if type(commands[1]) == "table" then
-		cat9.switch_env(commands[1])
-		table.remove(commands, 1)
-		revert = true
+	local commands = groups[1]
 
+	if type(commands[1]) == "table" then
+		local tbl = table.remove(commands, 1)
 -- just switch context
 		if #commands == 0 then
+			cat9.switch_env(commands[1])
 			return
 		end
 	end
@@ -439,10 +493,12 @@ function cat9.parse_string(rl, line)
 -- this prevents the builtins from being part of a pipeline which might
 -- not be desired - like cat something | process something | open @in vnew
 	if cat9.builtins[commands[1]] then
+		cat9.stdin = inp
 		local res = cat9.builtins[commands[1]](unpack(commands, 2))
 		if revert then
 			cat9.switch_env()
 		end
+		cat9.stdin = nil
 		return res
 	end
 
@@ -463,7 +519,12 @@ function cat9.parse_string(rl, line)
 	local lst = string.split(commands[1], "/")
 	table.insert(commands, 2, lst[#lst])
 
-	local job = cat9.setup_shell_job(commands, "re", cat9.env, line)
+	local job = cat9.setup_shell_job(commands,
+		inp and "wre" or "re", cat9.env, line, {close = true})
+
+	if job.write and inp then
+		job:write(inp)
+	end
 
 -- return to normal
 	if revert then

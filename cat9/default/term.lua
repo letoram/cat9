@@ -2,20 +2,29 @@ return function(cat9, root, builtins, suggest)
 
 local function shc_helper(mode, ...)
 	local args = {...}
-	local argv = string.split(cat9.config.sh_runner)
+	local argv = string.split(cat9.config.sh_runner, " ")
 
 	local str  = ""
 	local env = cat9.table_copy_shallow(cat9.env)
 
 -- check processing directive
 	lastarg = args[1]
+	local opts = {}
+
+	if mode == "pty" then
+		opts.close = false
+	end
 
 	argv[4] = table.concat(args, " ")
-	local job = cat9.setup_shell_job(argv, mode, env)
+	local job = cat9.setup_shell_job(argv, mode, env, nil, opts)
 	if job then
 		job.short = "subshell"
 		job.raw = argv[4]
+		if job.write and cat9.stdin then
+			job:write(cat9.stdin)
+		end
 	end
+
 	return job
 end
 
