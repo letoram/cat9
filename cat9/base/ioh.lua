@@ -283,6 +283,8 @@ function cat9.reset()
 	root:revert()
 	root:set_flags(config.mouse_mode)
 	cat9.setup_readline(root)
+	cat9.flag_dirty()
+	cat9.block_redraw = false
 end
 
 -- use for monotonic scrolling (drag+select on expanded?) and dynamic prompt
