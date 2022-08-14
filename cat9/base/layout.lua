@@ -77,6 +77,11 @@ function cat9.id_to_job(id)
 
 	local num = tonumber(id)
 	if not num then
+		for _,v in ipairs(lash.jobs) do
+			if v.alias and v.alias == id then
+				return v
+			end
+		end
 		return
 	end
 

@@ -114,7 +114,7 @@ By default, commands will get tracked as a 'job'.
 These get numeric identifiers and are referenced by a pound sign:
 
     find /tmp
-		repeat #0 flush
+    repeat #0 flush
 
 Most builtin commands use job references in one way or another. The context of
 these jobs, e.g. environment variables and path is tracked separately. By
@@ -122,9 +122,9 @@ starting a command with a job reference, the current context is temporarily
 set to that of a previous job.
 
     cd /usr/share
-		find . -> becomes job #0
-		cd /tmp
-		#0 pwd -> /usr/share
+    find . -> becomes job #0
+    cd /tmp
+    #0 pwd -> /usr/share
 
 Most strings entered will be executed as non-tty jobs. To run something
 specifically as a tty (ncurses or other 'terminal-tui' like application),
@@ -140,7 +140,7 @@ split):
 To forego any parsing or internal pipelineing and run the entire line verbatim
 (forwarded to sh -c) use !!:
 
-		!!find /usr |grep share
+    !!find /usr |grep share
 
 Certain clients really want a pseudoterminal or they refuse to do anything,
 for those clients, start with p! like so:
@@ -157,8 +157,8 @@ with separate files per builtin command along with a chainloader that match
 the name of the basedir:
 
     cat9/default.lua
-		cat9/default/cd.lua
-		...
+    cat9/default/cd.lua
+    ...
 
 The reason for this structure is to allow lash to be reused for building CLI
 frontends to other tools and maintain a unified look and feel. You can also
@@ -188,7 +188,11 @@ on a process identifier (number).
     config key value
 
 The config options changes the runtime shell behavior configuration. It is
-populated by the keys and values in config/default.lua
+populated by the keys and values in config/default.lua. Certain targets also
+allow properties to set, e.g. persistence or an alias:
+
+    config #id alias myname
+    config #myname persist auto
 
 ### Open
 
@@ -201,10 +205,10 @@ It is also possible to pop it out as a new window or tab.
 ### Forget
 
     forget #job1 #job2
-		forget #job1  .. #job3
-		forget all-bad
-		forget all-passive
-		forget all-hard
+    forget #job1  .. #job3
+    forget all-bad
+    forget all-passive
+    forget all-hard
 
 This will remove the contents and tracking of previous jobs, either by
 specifying one or several distinct jobs, or a range. If any marked job is still
@@ -226,7 +230,7 @@ existing job identifier.
 ### Cd
 
     cd directory
-		cd #job
+    cd #job
 
 Change the current directory to the specified one, with regular absolute or
 relative syntax. It is also possible to cd back into the directory that was
@@ -303,7 +307,7 @@ applied if the job is repeated, or if a new job is derived from the context
 of one:
 
     env #0 LS_COLOR yes
-		#0 ls /tmp
+    #0 ls /tmp
 
 ### Trigger
 

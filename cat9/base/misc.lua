@@ -284,11 +284,17 @@ function cat9.add_job_suggestions(set, allow_hidden, filter)
 	if cat9.selectedjob then
 		table.insert(set, "#csel")
 	end
+	if cat9.latestjob then
+		table.insert(set, "#last")
+	end
 	for _,v in ipairs(lash.jobs) do
 		if
 			(filter and filter(v)) and
 			(not v.hidden or allow_hidden) then
 			table.insert(set, "#" .. tostring(v.id))
+			if v.alias then
+				table.insert(set, "#" .. v.alias)
+			end
 		end
 	end
 end

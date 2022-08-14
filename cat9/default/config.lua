@@ -36,6 +36,15 @@ local function config_job(job, key, val)
 		return
 	end
 
+	if key == "alias" then
+		if tonumber(val) then
+			cat9.add_message("config job: alias must be non-numeric")
+			return
+		end
+		job.alias = val
+		return
+	end
+
 -- Other options would be persisting data / history which can make
 -- the state blob seriously large. This should ultimately not be a
 -- problem, but enable that gradually when we also have signing
@@ -118,9 +127,9 @@ function suggest.config(args, raw)
 -- job configuration needs are rather sparse, persistance?
 	if type(args[2]) == "table" then
 		if #args == 3 then
-			cat9.readline:suggest(cat9.prefix_filter({"persist"}, args[3]), "word")
+			cat9.readline:suggest(cat9.prefix_filter({"persist", "alias"}, args[3]), "word")
 
-		elseif #args == 4 then
+		elseif #args == 4 and arg[3] == "persist" then
 			cat9.readline:suggest(cat9.prefix_filter(
 				{"off", "manual", "auto"}, args[4]), "word")
 
