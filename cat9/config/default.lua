@@ -40,6 +40,11 @@ return
 
 	allow_state = true, -- load/store persistent state at startup or at wm request
 
+-- sh-runner is configurable, will be rebuilt into argv through string.split(" ")
+-- this means that we can have a privileged root default, but default to run
+-- as a targetted user.
+	sh_runner = "/bin/sh sh -c",
+
 -- subtables are ignored for the config builtin
 --
 -- possible job-bar meta entries (cat9/base/jobmeta.lua):
