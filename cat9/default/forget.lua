@@ -14,7 +14,7 @@ local function forget_lines(job, set)
 			return
 		end
 
-		if v ~= ".." then
+		if v ~= ".." and v ~= "-" then
 			local num = tonumber(v)
 			if not num then
 				cat9.add_message("forget job-lines: invalid argument: " .. v)
@@ -54,7 +54,7 @@ local function forget_lines(job, set)
 	for i=1,#set do
 		local v = set[i]
 
-		if v == ".." then
+		if v == ".." or v == "-" then
 			in_range = tonumber(i > 1 and set[i-1] or 1)
 		elseif in_range then
 			local lim = tonumber(v)
@@ -125,9 +125,11 @@ function builtins.forget(...)
 -- loop will discovered the signalled process and then clean/remove
 -- that way
 		if job.pid then
+			print("signalling death to job")
 			root:psignal(job.pid, sig)
-			job.hidden = true
+			job:hide()
 		else
+			print("just get rid of it")
 			cat9.remove_job(job)
 		end
 	end
@@ -174,7 +176,7 @@ function builtins.forget(...)
 			lastid = v.id
 			forget(v, signal)
 		elseif type(v) == "string" then
-			if v == ".." then
+			if v == ".." or v == "-" then
 				in_range = true
 	-- this one is dangerous as it just murders everything, maybe the highlight
 	-- suggestion should indicate it in alert (or the prompt) by setting prompt

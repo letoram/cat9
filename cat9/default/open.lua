@@ -159,14 +159,24 @@ function builtins.open(file, ...)
 		spawn = spawn .. spawn_suffix
 	end
 
--- two options for what to do with parg here:
+-- if we have parg then slice out and treat as individual files,
+-- this should probably result in a chain-open or as a playlist.
 --
--- open #1(1-5) should we treat that as a data slice to "open"
--- in another job or should we treat it as 5 regular 'strings'
--- to open from the context of #1, or make a playlist of the
--- 5 strings and open them sequentially?
---
---
+-- both are somewhat painful to get working so just handle the
+-- first for now.
+	for i=#parg,1,-1 do
+		local num = tonumber(parg[i])
+		if not num and num ~= "-" then
+			table.remove(parg, i)
+		end
+	end
+	if #parg == 1 then
+		file = file:slice(parg)[1]
+		if file then
+			file = string.gsub(file, "\n", "")
+		end
+	end
+
 	if type(file) == "table" and file.view then
 		trigger =
 		function(par, wnd)
@@ -176,8 +186,9 @@ function builtins.open(file, ...)
 					arg[cat9.config.hex_mode] = true
 				end
 			end
+
 			wnd:revert()
-			buf = table.concat(file:view(parg), "")
+			buf = table.concat(file:slice(parg), "")
 
 			if not spawn then
 				cat9.block_redraw = true
