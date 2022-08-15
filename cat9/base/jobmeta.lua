@@ -5,6 +5,11 @@ function(cat9, root, config)
 		return tostring(job.id)
 	end
 
+	cat9.jobmeta["id_or_alias"] =
+	function(job)
+		return job.alias or tostring(job.id)
+	end
+
 	cat9.jobmeta["pid_or_exit"] =
 	function(job)
 		local extid = -1
