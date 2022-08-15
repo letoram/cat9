@@ -1,23 +1,21 @@
-TODO (for first release)
-
--- interesting:
-   realtime feedback for job open $realtime
+TODO (planned)
+p : partial / in progress
 
 CLI help:
 - [p] lastmsg queue rather than one-slot for important bits
-- [ ] track most used directories for execution and expose to cd h [set]
+- [x] track most used directories for execution and expose to cd h [set]
 - [ ] actual helper for keybindings (longpress on ctrl..):
       c+l = reset, d = cancel or delete word, t = swap prev.
 			b - left, f = right, k = cut to eol, u = cut to sol, p step hist b
 			n - step hist f, a home, e eol, w delete last word, tab completion,
 
 Data Processing:
-- [ ] Pipelined  |   implementation
-- [ ] Sequenced (a ; b ; c)
-- [ ] Conditionally sequenced (a && b && c)
+- [p] Pipelined  |   implementation
+- [p] Sequenced (a ; b ; c)
+- [p] Conditionally sequenced (a && b && c)
 - [ ] Pipeline with MiM
 - [p] Copy command (job to clip, to file, to ..)
-- [ ] descriptor-to-pseudofile substitution for jobs
+- [x] descriptor-to-pseudofile substitution for jobs
       eg. diff #0 #1
 - [x] autoprune bad-empty (timer to 0 or ..)
 
@@ -39,11 +37,13 @@ Ui:
 - [x] view #jobid wrap
 - [x] view #jobid unwrap
 - [ ] job history scroll
-- [ ] alias
+- [x] alias
 - [p] multicolumn mode
-- [x] persistence
+- [p] persistence
   - [ ] history
 	- [ ] alias / favorites
+	- [ ] env
+	- [ ] contents
 - [x] keyboard job selected / stepping (escape out of readline)
 - [ ] mouse select in buffer
 - [x] line# column in view

@@ -172,26 +172,18 @@ while root:process() do
 	root:refresh()
 end
 
+-- update config/state persistence, note that the tmp file and dest
+-- need to be on the same filesystem for the atomic rename to work
 if cat9.config.allow_state and cat9.handlers.state_out then
 	local spath = cat9.system_path("state")
 	root:chdir(spath)
-	local tpath, tmp
-
--- mktemp has not been added to arcan-tui yet so work around that though we
--- lack other building blocks as well (proper hash..) to be consistent with
--- other parts of arcan, that should be exposed in the blake3 form.
-	if root.mktemp then
-		tpath, tmp = root:mktemp()
-	else
-		tpath = ".tmp.state." .. tostring(cat9.time) .. tostring(os.time())
-		tmp = root:fopen(tpath, "w")
-	end
+	local tpath, tmp = cat9.mktemp(spath)
 
 	if tmp then
 		cat9.handlers.state_out(root, tmp, true)
 		tmp:flush(-1)
 		tmp:close()
-		root:frename(tpath, "cat9_state.lua")
+		root:frename(tpath, spath .. "/cat9_state.lua")
 		root:funlink(tpath)
 	end
 end

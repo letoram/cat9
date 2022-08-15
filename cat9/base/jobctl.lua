@@ -769,11 +769,19 @@ function(intbl)
 	end
 
 	local dir = root:chdir(tbl.dir)
-	cat9.setup_shell_job(
-		tbl.args, tbl.mode, tbl.env, tbl.raw, tbl,
+	local job2 = cat9.setup_shell_job(
+		tbl.args, tbl.mode, tbl.env, tbl.raw, {job = tbl},
 		{passive = true}
 	)
+
 	root:chdir(dir)
+end
+
+local function hide_job(job)
+	if job.hidden then
+		cat9.activevisibile = cat9.activevisible - 1
+		job.hide = true
+	end
 end
 
 -- make sure the expected fields are in a job, used both when importing from an
@@ -789,6 +797,7 @@ function cat9.import_job(v, noinsert)
 	v.row_offset_relative = true
 	v.col_offset = 0
 	v.job = true
+	v.hide = hide_job
 
 -- save the CLI environment so it can be restored later (or when repeating)
 	v.builtins = cat9.builtins

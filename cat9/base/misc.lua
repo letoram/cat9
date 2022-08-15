@@ -71,6 +71,91 @@ end
 cat9.MESSAGE_WARNING = 0
 cat9.MESSAGE_HELP = 1
 
+-- helper for creating temp files, ideally this should come from the tui-lua
+-- bindings, but that feature is missing so have a fallback safe first
+function cat9.mktemp(prefix)
+	if not prefix then
+		prefix = "/tmp"
+	end
+
+	local tpath, tmp
+	if root.mktemp then
+		tpath, tmp = root:mktemp(prefix .. "/.tmp.cat9state.XXXXXX")
+	else
+		tpath = prefix .. "/.tmp." .. tostring(cat9.time) .. tostring(os.time())
+		tmp = root:fopen(tpath, "w")
+	end
+
+	return tpath, tmp
+end
+
+-- sweeps through args and replaces job references with temp files, return a
+-- closure for unlinking them as well as a trigger for when all writes have
+-- completed.
+function cat9.build_tmpjob_files(args, dispatch, fail)
+-- pre-alloc files so we don't run into fd cap
+	local files = {}
+	local names = {}
+
+	local function
+	closure()
+		for _,v in ipairs(names) do
+			root:funlink(v)
+		end
+		for _,v in ipairs(files) do
+			v:close()
+		end
+	end
+
+	for _,v in ipairs(args) do
+		if type(v) == "table" and v.slice then
+			local tpath, file = cat9.mktemp()
+			if file then
+				table.insert(files, file)
+				table.insert(names, tpath)
+			else
+				cat9.add_message("build tmp-job: couldn't create temporary storage")
+				return closure()
+			end
+		end
+	end
+
+-- nothing to do? just return
+	if #files == 0 then
+		return
+	end
+
+-- now actually queue the transfers, when the last report done, signal
+	local pending = 0
+	local failed = 0
+	local ok = 0
+	local writeh =
+	function(oob, finish_ok)
+		if finish_ok then
+			ok = ok + 1
+		else
+			failed = failed + 1
+		end
+
+		if failed+ok == pending then
+			if failed > 0 then
+				fail()
+			else
+				dispatch()
+			end
+		end
+	end
+
+	for i,v in ipairs(args) do
+		if type(v) == "table" and v.slice then
+			pending = pending + 1
+			files[pos]:write(v:slice(), writeh)
+		end
+	end
+
+	return closure
+end
+
 -- expected to return nil (block_reset) to fit in with expectations of builtins
 function cat9.add_message(msg, use)
 	if type(msg) ~= "string" then
