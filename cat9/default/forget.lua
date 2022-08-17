@@ -1,6 +1,109 @@
 return
 function(cat9, root, builtins, suggest)
 
+-- permitted worst case
+-- 1 2 3 .. 5 1 7 ..
+local function forget_lines(job, set)
+	local in_range
+
+-- verify before building set,
+-- guarantees set only has '..' and valid numbers (tonumber(n) >= 1)
+	for i,v in ipairs(set) do
+		if type(v) ~= "string" then
+			cat9.add_message("forget job-lines: unexpected argument at " .. tostring(i))
+			return
+		end
+
+		if v ~= ".." then
+			local num = tonumber(v)
+			if not num then
+				cat9.add_message("forget job-lines: invalid argument: " .. v)
+			end
+
+			if num <= 0 then
+				cat9.add_message("forget job-lines: linenumber overflow (<= 0)")
+				return
+			end
+		end
+	end
+
+-- sort and add numbers into map,
+--
+-- this is done to handle overlaps (ranges) as well as duplicates
+-- need to sweep this from low to high as well to not leave holes
+-- and update counters (which other parts expect to match).
+	local map = {}
+	local hi = 0
+	local lo = 9999999999
+
+	local add =
+	function(num)
+		if num > job.data.linecount then
+			return
+		end
+		if hi < num then
+			hi = num
+		end
+		if lo > num then
+			lo = num
+		end
+		map[num] = true
+	end
+
+	local in_range
+	for i=1,#set do
+		local v = set[i]
+
+		if v == ".." then
+			in_range = tonumber(i > 1 and set[i-1] or 1)
+		elseif in_range then
+			local lim = tonumber(v)
+			local step = in_range > lim and -1 or 1
+			for j=in_range,lim,step do
+				add(j)
+			end
+			in_range = nil
+		else
+			local num = tonumber(v)
+			add(tonumber(v))
+		end
+	end
+
+-- no-op
+	if hi < lo then
+		return
+	end
+
+-- ended with ., so cut everything above the in_range
+	local data = job.data
+	local bc = data.bytecount
+	local lc = data.linecount
+
+	local drop =
+	function(i)
+		bc = bc - #job.data[i]
+		data[i] = nil
+		lc = lc - 1
+	end
+
+	if in_range then
+		for i=lc,in_range do
+			drop(i)
+		end
+	end
+
+	for i=hi,lo,-1 do
+		if map[i] then
+			drop(i)
+		end
+	end
+
+	data.linecount = lc
+	data.bytecount = bc
+
+	cat9.flag_dirty()
+end
+
 function builtins.forget(...)
 	local forget =
 	function(job, sig)
@@ -46,6 +149,17 @@ function builtins.forget(...)
 	local signal = "hup"
 	local lastid
 	local in_range = false
+
+	if set[1] and set[1] == "lines" then
+		table.remove(set, 1)
+		local job = table.remove(set, 1)
+		if not job or type(job) ~= "table" then
+			cat9.add_message("forget job-lines: missing job argument")
+			return
+		end
+
+		return forget_lines(job, set)
+	end
 
 	for _, v in ipairs(set) do
 		if type(v) == "table" then
@@ -99,6 +213,9 @@ function suggest.forget(args, raw)
 	for _,v in ipairs(lash.jobs) do
 		if not v.pid and not v.hidden then
 			table.insert(set, "#" .. tostring(v.id))
+			if v.alias then
+				table.insert(set, "#" .. v.alias)
+			end
 		end
 	end
 
@@ -106,6 +223,16 @@ function suggest.forget(args, raw)
 		table.insert(set, "all-passive")
 		table.insert(set, "all-bad")
 		table.insert(set, "all-hard")
+		table.insert(set, "lines")
+	end
+
+	if #args == 3 and args[2] == "lines" then
+		cat9.add_job_suggestions(set, false)
+		return
+	elseif #args > 3 and args[2] == "lines" then
+-- add_message for line-number bounds?
+		cat9.readline:suggest({})
+		return
 	end
 
 -- this is messier than other job- targetting suggestions due to the
