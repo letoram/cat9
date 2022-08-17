@@ -95,21 +95,17 @@ function builtins.config(key, val, opt)
 end
 
 function suggest.config(args, raw)
-	if not cat9.config_cache then
-		cat9.config_cache = {}
-		for k,v in pairs(cat9.config) do
-			if type(v) ~= "table" then
-				table.insert(cat9.config_cache, k)
-			end
+	local set = {}
+	for k,v in pairs(cat9.config) do
+		if type(v) ~= "table" then
+			table.insert(set, k)
 		end
-		table.sort(cat9.config_cache)
 	end
-
-	local set = cat9.config_cache
+	table.sort(set)
 
 	if #args == 2 then
 -- actually finished with the argument but hasn't begun on the next
-		set = cat9.prefix_filter(cat9.config_cache, args[2])
+		set = cat9.prefix_filter(set, args[2])
 		cat9.readline:suggest(set, "word")
 		return
 
@@ -129,7 +125,7 @@ function suggest.config(args, raw)
 		if #args == 3 then
 			cat9.readline:suggest(cat9.prefix_filter({"persist", "alias"}, args[3]), "word")
 
-		elseif #args == 4 and arg[3] == "persist" then
+		elseif #args == 4 and (args[3] == "persist" or args[3] == "alias") then
 			cat9.readline:suggest(cat9.prefix_filter(
 				{"off", "manual", "auto"}, args[4]), "word")
 

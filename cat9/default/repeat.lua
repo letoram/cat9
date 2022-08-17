@@ -58,10 +58,11 @@ function(job, ...)
 -- this can come asynch due to arguments not resolving immediately, so let
 -- setup_shell_job chaining do the old release
 		cat9.setup_shell_job =
-		function(args, mode, env)
+		function(args, mode, env, line)
 			cat9.setup_shell_job = old_setup
 			job.args = args
 			job.mode = mode
+			job.raw = line
 			run()
 		end
 
