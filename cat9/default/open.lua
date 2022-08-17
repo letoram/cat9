@@ -180,6 +180,7 @@ function builtins.open(file, ...)
 			buf = table.concat(file:view(parg), "")
 
 			if not spawn then
+				cat9.block_redraw = true
 				wnd:bufferview(buf, cat9.reset, arg)
 				return true
 			else

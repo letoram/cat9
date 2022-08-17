@@ -232,21 +232,26 @@ local function draw_job(job, x, y, cols, rows, cc)
 	y = y + 1
 	rows = rows - 1
 
---- some cache event to block the event+resize propagation might be useful,
--- another detail here is that wrapping at smaller than width and offsetting
--- col anchor if the job has stdio tracked (to show both graphical and text
--- output which is kindof useful for testing / developing graphical apps)
 	if job.wnd then
-		job.wnd:hint(root,
-		{
-			anchor_row = y,
-			anchor_col = x,
-			max_rows = rows - 1,
-			max_cols = cols,
-			hidden = false -- set if the job is actually out of view
-		}
-		)
-		return rows
+		local lh = job.lasthint
+		if not lh then
+			set = true
+			lh = {hidden = false}
+			job.lasthint = lh
+			job.wnd:hint(root, lh)
+		elseif
+			lh.anchor_col ~= x or lh.anchor_row ~= y or
+			lh.max_rows ~= rows or max_cols ~= cols then
+			set = true
+		end
+
+		if set then
+			lh.anchor_row = y
+			lh.anchor_col = x
+			lh.max_rows = rows - 1
+			lh.max_cols = cols
+			job.wnd:hint(root, lh)
+		end
 	end
 
 -- the default 'raw' view is defined inside jobctl, cap rows
@@ -301,6 +306,9 @@ end
 
 local draw_cookie = 0
 function cat9.redraw()
+	if cat9.block_redraw then
+		return
+	end
 	local cols, rows = root:dimensions()
 	draw_cookie = draw_cookie + 1
 	root:erase()
