@@ -52,6 +52,7 @@ builtin_completion = {}
 
 local function load_builtins(base)
 	cat9.builtins = {}
+	cat9.builtin_name = base
 	cat9.suggest = {}
 	cat9.views = {}
 

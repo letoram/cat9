@@ -134,6 +134,15 @@ function()
 	return string.format("%.0f",num)
 end
 
+cat9.promptmeta["builtin_name"] =
+function()
+	if not cat9.builtin_name or cat9.builtin_name == "default" then
+		return ""
+	else
+		return cat9.builtin_name
+	end
+end
+
 cat9.promptmeta["battery_charging"] =
 function()
 	battery:synch()
