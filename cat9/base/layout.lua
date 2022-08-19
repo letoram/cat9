@@ -206,7 +206,10 @@ end
 local function rows_for_job(job, cols, rows)
 	if job.wnd then
 		if job.expanded then
-			local _, rows = job.wnd:dimensions()
+			local _, wrows = job.wnd:dimensions()
+			if wrows <= 1 then
+				return rows + 1
+			end
 			return rows + 1
 		end
 		return config.open_embed_collapsed_rows + 1
@@ -232,29 +235,63 @@ local function draw_job(job, x, y, cols, rows, cc)
 	y = y + 1
 	rows = rows - 1
 
+-- the default 'raw' view is defined inside jobctl, cap rows
 	if job.wnd then
-		local lh = job.lasthint
-		if not lh then
+		if not job.expanded then
+			rows = rows >
+				config.open_embed_collapsed_rows and
+				config.open_embed_collapsed_rows or rows
+		end
+
+		local set = false
+		if not job.lasthint then
+			job.lasthint =
+			{
+				hidden = false,
+				max_rows = rows,
+				anchor_col = x,
+				anchor_row = y,
+				max_cols = cols - 1
+			}
 			set = true
-			lh = {hidden = false}
-			job.lasthint = lh
-			job.wnd:hint(root, lh)
-		elseif
+		end
+
+		local lh = job.lasthint
+
+-- likely the most complex flow in all of this.
+-- in the expanded for we hint the dimensions, display server forwards
+-- to the client that resizes to the best of its effort, display server
+-- hints presented size and we adjust the number of rows consumed.
+		local scale
+		if not job.expanded then
+			scale = true
+		else
+			scale = false
+			rows = rows - 1
+		end
+
+-- only update if things have actually changed
+		if
 			lh.anchor_col ~= x or lh.anchor_row ~= y or
-			lh.max_rows ~= rows or max_cols ~= cols then
+			lh.max_rows ~= rows or lh.max_cols ~= cols or
+			lh.scale ~= scale then
 			set = true
 		end
 
 		if set then
+			lh.scale = scale
 			lh.anchor_row = y
 			lh.anchor_col = x
-			lh.max_rows = rows - 1
+			lh.max_rows = rows
 			lh.max_cols = cols
 			job.wnd:hint(root, lh)
 		end
+
+		y = y + rows
+		job.region[4] = y
+		return y + 1
 	end
 
--- the default 'raw' view is defined inside jobctl, cap rows
 	if not job.expanded then
 		rows = rows > job.collapsed_rows and job.collapsed_rows or rows
 	end
