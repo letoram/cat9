@@ -22,6 +22,12 @@ end
 function battery.percent(self)
 	local now = tonumber(self.state.charge_now)
 	local tot = tonumber(self.state.charge_full)
+
+	if not now then
+		now = tonumber(self.state.energy_now)
+		tot = tonumber(self.state.energy_full)
+	end
+
 	if now and tot and now > 0 and tot > 0 then
 		return math.min(math.ceil(now / tot * 100), 100)
 	end
@@ -74,14 +80,20 @@ function battery.charging(self)
 end
 
 function battery.synch(self)
--- update uevent
+-- update uevent every second
+	if self.state.last and cat9.time - self.state.last < 25 then
+		return
+	end
+
 	local dev = self:device("/uevent")
 	if not dev then
 		return ""
 	end
 
 	local line = true
-	local state = self.state
+	local state = {
+		last = cat9.time
+	}
 	alive = true
 
 -- spin/read everything and split out the k/v into a table
@@ -101,6 +113,17 @@ function battery.synch(self)
 		state.voltage_now = tonumber(state.voltage_now) * 1e-6
 		state.current_now = tonumber(state.current_now) * 1e-6
 		state.power_now = state.current_now * state.voltage_now
+		self.state = state
+
+	elseif state.voltage_now and state.power_now then
+		state.voltage_now = tonumber(state.voltage_now) * 1e-6
+		state.power_now = tonumber(state.power_now) * 1e-6
+		state.current_now = state.power_now / state.voltage_now
+		self.state = state
+	else
+		state.voltage_now = 0
+		state.power_now = 0
+		state.current_now = 0
 	end
 end
 
