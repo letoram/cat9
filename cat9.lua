@@ -39,6 +39,39 @@ if not cat9.config then
 	return false
 end
 
+-- avoid using the config.lua provided scanner argument as some might want to
+-- switch that to fuzzy finder and similar tools
+local function glob_builtins(dst)
+local arg =
+{
+	"/usr/bin/find",
+	"find",
+	lash.scriptdir .. "cat9/",
+	"-maxdepth", "1",
+	"-type", "f"
+}
+local _, scan, _, pid = lash.root:popen(arg, "r", lash.root:getenv())
+if scan then
+	scan:lf_strip(true)
+	scan:data_handler(
+		function()
+			local msg, ok = scan:read()
+			if msg then
+				local base = string.match(msg, "[^/]*.lua$")
+				local name = base and string.sub(base, 0, #base - 4) or nil
+				if name == "default" then
+					table.insert(dst, 1, name)
+				else
+					table.insert(dst, name)
+				end
+			end
+			return ok
+		end
+	)
+	lash.root:pwait(pid)
+end
+end
+
 -- zero env out so our launch properties doesn't propagate
 cat9.env["ARCAN_ARG"] = nil
 cat9.env["ARCAN_CONNPATH"] = nil
@@ -55,7 +88,6 @@ local function load_builtins(base)
 	cat9.builtin_name = base
 	cat9.suggest = {}
 	cat9.views = {}
-
 	local fptr, msg = loadfile(string.format("%s/cat9/%s.lua", lash.scriptdir, base))
 
 	if not fptr then
@@ -75,18 +107,32 @@ local function load_builtins(base)
 		end
 	end
 
+-- rescan builtins for the base command
+	local set = {}
+	glob_builtins(set)
+	cat9.suggest["builtin"] =
+	function(args, raw)
+		if #args > 2 then
+			cat9.add_message("builtin [set]: too many arguments")
+			return
+		end
+		cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
+	end
+
 -- force-inject loading builtin set so swapping works ok
 	cat9.builtins["builtin"] =
 	function(a)
 		if not a or #a == 0 then
 			a = "default"
-			return
 		end
 
+-- and we cache the one used initially so hot-reloading a bad new builtin set
+-- won't actually break the previous one
 		if not load_builtins(a) then
 			cat9.add_message(string.format(
 				"missing requested builtin set [%s] - revert to default.", a))
 			cat9.builtins = safe_builtins
+			cat9.builtin_name = "default"
 			cat9.suggest = safe_suggest
 			cat9.views = safe_views
 		end
@@ -115,6 +161,7 @@ end
 
 -- treat config overloading as injecting additional state
 -- (builtin/config config =save/=load maps)
+function cat9.reload()
 load_feature("misc.lua")    -- support functions that doesn't fit anywhere else
 load_feature("ioh.lua")     -- event handlers for display server device/state io
 load_feature("scanner.lua") -- running hidden jobs that collect information
@@ -125,11 +172,13 @@ load_feature("vt100.lua")   -- state machine to plugin decoding
 load_feature("jobmeta.lua") -- job contextual information providers
 load_feature("promptmeta.lua") --  prompt contextual information providers
 load_feature("keybindings.lua", "config")
-
--- use mouse-forward mode, implement our own selection / picking
 load_builtins("default")
+cat9.path_set = nil -- binary completion for exec is statically cached
 safe_builtins = cat9.builtins
 safe_suggest = cat9.suggest
+safe_views = cat9.views
+end
+cat9.reload()
 
 -- now that the builtins are available, load the ingoing state groups
 if cat9.config.allow_state and cat9.handlers.state_in then
@@ -148,6 +197,17 @@ lash.root:set_handlers(cat9.handlers)
 cat9.reset()
 cat9.update_lastdir()
 cat9.flag_dirty()
+
+-- make sure :revert() calls always cleans the readline state, this is enough
+-- of an annoying thing to debug that this workaround is the least painful
+-- option
+local old_revert = lash.root.revert
+lash.root.revert =
+function(...)
+	cat9.last_revert = debug.traceback()
+	cat9.readline = nil
+	return old_revert(...)
+end
 
 -- import job-table and add whatever metadata we want to track
 local old = lash.jobs

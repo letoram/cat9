@@ -125,11 +125,9 @@ function builtins.forget(...)
 -- loop will discovered the signalled process and then clean/remove
 -- that way
 		if job.pid then
-			print("signalling death to job")
 			root:psignal(job.pid, sig)
 			job:hide()
 		else
-			print("just get rid of it")
 			cat9.remove_job(job)
 		end
 	end

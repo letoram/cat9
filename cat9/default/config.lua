@@ -63,6 +63,14 @@ function builtins.config(key, val, opt)
 	end
 
 	if not key or cat9.config[key] == nil then
+		if key == "=reload" then
+			local ok, msg = pcall(cat9.reload)
+			if not ok then
+				cat9.add_message("reload failed: " .. msg)
+			end
+			return
+		end
+
 		cat9.add_message("missing / unknown config key")
 		return
 	end
@@ -95,7 +103,7 @@ function builtins.config(key, val, opt)
 end
 
 function suggest.config(args, raw)
-	local set = {}
+	local set = {"=reload"}
 	for k,v in pairs(cat9.config) do
 		if type(v) ~= "table" then
 			table.insert(set, k)
