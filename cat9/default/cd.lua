@@ -128,8 +128,7 @@ function suggest.cd(args, raw)
 	local argv, prefix, flt, offset =
 		cat9.file_completion(args[2], cat9.config.glob.dir_argv)
 
-	local cookie = "cd" .. tostring(cat9.idcounter)
-	cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+	cat9.filedir_oracle(argv,
 		function(set)
 			if #raw == 3 then
 				table.insert(set, 1, "..")

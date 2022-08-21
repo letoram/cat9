@@ -99,8 +99,7 @@ local function binarg_select(args, raw, sz, pref)
 	local argv, prefix, flt, offset =
 		cat9.file_completion(carg, cat9.config.glob.file_argv)
 
-	local cookie = "term " .. tostring(cat9.idcounter)
-	cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+	cat9.filedir_oracle(argv,
 		function(set)
 			if flt then
 				set = cat9.prefix_filter(set, flt, offset)

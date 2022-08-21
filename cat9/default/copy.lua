@@ -161,7 +161,6 @@ function builtins.copy(src, opt1, opt2, opt3)
 		srclbl = "(job: " .. tostring(src.id) .. ")"
 		src = src:slice(srcarg)
 
--- interesting popt: view (err, std), line-ranges, relative lines, keep-on-success
 	elseif type(src) == "string" then
 		if string.sub(src, 1, 5) == "pick:" then
 			local idstr = string.sub(src, 6)
@@ -324,8 +323,7 @@ local function suggest_for_src(args, raw)
 	if ch and (ch == "." or ch == "/") then
 		local argv, prefix, flt, offset =
 			cat9.file_completion(args[2], cat9.config.glob.file_argv)
-		local cookie = "copy " .. tostring(cat9.idcounter)
-		cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+		cat9.filedir_oracle(argv,
 			function(set)
 				if flt then
 					set = cat9.prefix_filter(set, flt, offset)
@@ -397,8 +395,7 @@ function suggest.copy(args, raw)
 	if ch and (ch == "." or ch == "/") then
 		local argv, prefix, flt, offset =
 			cat9.file_completion(carg, cat9.config.glob.file_argv)
-		local cookie = "copy " .. tostring(cat9.idcounter)
-		cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+		cat9.filedir_oracle(argv,
 			function(set)
 				if flt then
 					set = cat9.prefix_filter(set, flt, offset)
