@@ -426,6 +426,37 @@ function cat9.expand_arg(dst, str)
 	return str
 end
 
+function cat9.default_fallthrough(commands, inp)
+-- validation, all entries in commands should be strings now - otherwise the
+-- data needs to be extracted as argument (with certain constraints on length,
+-- ...)
+	for _,v in ipairs(commands) do
+		if type(v) ~= "string" then
+			cat9.add_message("parsing error in commands, non-string in argument list")
+			if revert then
+				cat9.switch_env()
+			end
+			return
+		end
+	end
+
+-- throw in that awkward and uncivilised unixy 'application name' in argv
+	local lst = string.split(commands[1], "/")
+	table.insert(commands, 2, lst[#lst])
+
+	local job = cat9.setup_shell_job(commands,
+		inp and "wre" or "re", cat9.env, line, {close = true})
+
+	if job and job.write and inp then
+		job:write(inp)
+	end
+
+-- return to normal
+	if revert then
+		cat9.switch_env()
+	end
+end
+
 function cat9.parse_string(rl, line)
 	if rl then
 		cat9.readline = nil
@@ -492,44 +523,23 @@ function cat9.parse_string(rl, line)
 
 -- this prevents the builtins from being part of a pipeline which might
 -- not be desired - like cat something | process something | open @in vnew
+	local res
 	if cat9.builtins[commands[1]] then
 		cat9.stdin = inp
-		local res = cat9.builtins[commands[1]](unpack(commands, 2))
-		if revert then
-			cat9.switch_env()
-		end
+		res = cat9.builtins[commands[1]](unpack(commands, 2))
 		cat9.stdin = nil
 		return res
+	elseif cat9.builtins["_default"] then
+		res = cat9.builtins["_default"](commands, inp)
+	else
+		res = cat9.default_fallthrough(commands, inp)
 	end
 
--- validation, all entries in commands should be strings now - otherwise the
--- data needs to be extracted as argument (with certain constraints on length,
--- ...)
-	for _,v in ipairs(commands) do
-		if type(v) ~= "string" then
-			cat9.add_message("parsing error in commands, non-string in argument list")
-			if revert then
-				cat9.switch_env()
-			end
-			return
-		end
-	end
-
--- throw in that awkward and uncivilised unixy 'application name' in argv
-	local lst = string.split(commands[1], "/")
-	table.insert(commands, 2, lst[#lst])
-
-	local job = cat9.setup_shell_job(commands,
-		inp and "wre" or "re", cat9.env, line, {close = true})
-
-	if job.write and inp then
-		job:write(inp)
-	end
-
--- return to normal
 	if revert then
 		cat9.switch_env()
 	end
+
+	return res
 end
 
 end

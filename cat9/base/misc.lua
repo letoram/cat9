@@ -406,7 +406,7 @@ function cat9.template_to_str(template, helpers, ...)
 				table.insert(res, v)
 			end
 		elseif type(v) == "function" then
-			table.insert(res, v())
+			table.insert(res, v(cat9))
 		else
 			cat9.add_message("bad member in prompt")
 		end
@@ -430,6 +430,7 @@ function cat9.switch_env(job, force_prompt)
 		cat9.builtins = cat9.job_stash.builtins
 		cat9.views = cat9.job_stash.views
 		cat9.suggest = cat9.job_stash.suggest
+		cat9.builtin_name = cat9.job_stash.builtin_name
 		cat9.job_stash = nil
 	end
 
@@ -444,6 +445,7 @@ function cat9.switch_env(job, force_prompt)
 		get_prompt = cat9.get_prompt,
 		views = job.views,
 		builtins = job.builtins,
+		builtin_name = job.builtin_name,
 		suggest = job.suggest
 	}
 
@@ -464,7 +466,6 @@ function cat9.hide_readline(root)
 	end
 	cat9.laststr = cat9.readline:get()
 	root:revert()
-	cat9.readline = nil
 end
 
 function cat9.setup_readline(root)
