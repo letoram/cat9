@@ -43,6 +43,21 @@ function cat9.remove_match(tbl, ent)
 	end
 end
 
+function table.equal(tbl1, tbl2)
+	if not tbl1 or not tbl2 then
+		return false
+	end
+	if #tbl1 ~= #tbl2 then
+		return false
+	end
+	for i,v in ipairs(tbl1) do
+		if v ~= tbl2[i] then
+			return false
+		end
+	end
+	return true
+end
+
 function cat9.system_path(ns)
 	local base = lash.scriptdir .. "/cat9/config"
 	if cat9.env["XDG_STATE_HOME"] then
@@ -453,6 +468,9 @@ function cat9.switch_env(job, force_prompt)
 		cat9.get_prompt =
 		function()
 			return force_prompt
+		end
+		if cat9.readline then
+			cat9.readline:set(job.raw)
 		end
 	end
 

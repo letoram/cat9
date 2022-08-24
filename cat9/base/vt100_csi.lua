@@ -57,14 +57,14 @@ local sgr_attr_lut =
 
 local function sgr(state, dst, ch, val)
 	local p = state.csi.param
+-- set format at character index
+	local di = #dst + 1
 
 	if #p == 0 then
-		state.buffer_fmt[#dst] = state.default_attr
+		state.buffer_fmt[di] = state.default_attr
 		return
 	end
 
--- set format at character index
-	local di = #dst + 1
 	if not state.buffer_fmt[di] then
 		state.buffer_fmt[di] = {}
 	end

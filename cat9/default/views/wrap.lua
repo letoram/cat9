@@ -9,7 +9,8 @@ local function walk_fmt(dst, msg, start, stop, fmt)
 	for i=start,stop do
 		if fmt[i] then
 			if i > start then
-				local pre = string.sub(msg, last, i)
+				local pre = string.sub(msg, last, i-1)
+
 				if #pre > 0 then
 					table.insert(dst, pre)
 					last = i
@@ -19,9 +20,7 @@ local function walk_fmt(dst, msg, start, stop, fmt)
 		end
 	end
 
-	if last ~= stop then
-		table.insert(dst, string.sub(msg, last, stop))
-	end
+	table.insert(dst, string.sub(msg, last, stop))
 end
 
 -- greedy / naive / compacting:
@@ -88,6 +87,29 @@ local function break_line(dst, msg, prefix, cap, offset, raw, fmt)
 	return newl
 end
 
+local function slice_view(job, lines)
+	local res = {bytecount = 0, linecount = 0}
+	local set = job[job.view_state.stream]
+
+	if job.view_state.vt100 then
+		return cat9.resolve_lines(
+		res, lines,
+			function(i)
+				local rc = job.view_state.row_cache
+				if not i then
+					return rc
+				end
+				if rc[i] then
+					return rc[i], #rc[i], 1
+				else
+					return nil, 0, 0
+				end
+			end
+		)
+	end
+	return cat9.default_slice(job, lines, set)
+end
+
 local function reduce_fmt(job, set, lc, ofs, cols, raw)
 	local res = {}
 	local ind = 0
@@ -133,16 +155,17 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 
 -- if we enable state decoding, the wrapping need to process the annotated
 -- output while tracking the atttribute correctly as well
-		if job.view_state.consume then
+		if job.view_state.vt100 then
 			local cached = job.view_state.row_cache[ind]
 			if cached then
-				row = cached[1]
-				attr = cached[2]
+				row = cached
+				attr = job.view_state.fmt_cache[ind]
 			else
 -- if another data filter has been attached ..
-				if job.view_state.consume then
-					row, attr = job.view_state:consume(row)
-					job.view_state.row_cache[i] = {row, attr}
+				if job.view_state.vt100.consume then
+					row, attr = job.view_state.vt100:consume(row)
+					job.view_state.row_cache[i] = row
+					job.view_state.fmt_cache[i] = attr
 				end
 			end
 		end
@@ -174,7 +197,7 @@ end
 
 local
 function job_wrap(job, x, y, cols, rows, probe, hidden)
-	local set = job.data
+	local set = job[job.view_state.stream]
 
 	if not x or not cols or not rows then
 		return set
@@ -256,9 +279,11 @@ end
 function views.wrap(job, suggest, args, raw)
 	if not suggest then
 		job.view = job_wrap
+		job.slice = slice_view
 		job.view_state = {}
 		job.wrap_cache = nil
 		job.view_name = "wrap"
+		job.view_state.stream = "data"
 
 		if not args[2] then
 			return
@@ -266,20 +291,26 @@ function views.wrap(job, suggest, args, raw)
 
 		for _,v in ipairs(args) do
 			if v == "vt100" then
-				job.view_state = cat9.vt100_state()
+				job.view_state.vt100 = cat9.vt100_state()
 				job.view_state.row_cache = {}
+				job.view_state.fmt_cache = {}
+
+-- need  to swap out slice so we can get the contents post formatting
+			elseif v == "err" then
+				job.view_state.stream = "err_buffer"
+			elseif v == "data" then
+				job.view_state.stream = "data"
 			elseif tonumber(v) then
 				job.view_state.cap = tonumber(v)
 			end
 		end
-
 		return
 	end
 
--- vt100 and column- count can come in any order, we don't yet have the
--- option to hint about args that won't get "expanded" (limitation in
--- readline)
-	local set = {"vt100"}
+-- vt100, err and other attributes and column- count can come in any order,
+-- we don't yet have the option to hint about args that won't get "expanded"
+-- (limitation in readline)
+	local set = {"vt100", "err"}
 	for i,v in ipairs(args) do
 		if v == "vt100" then
 			table.remove(set, 1)

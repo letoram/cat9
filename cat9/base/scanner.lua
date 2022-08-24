@@ -28,7 +28,7 @@ function(cat9, root, config)
 -- should only be used for singleton short-lived, line-separated fast commands
 -- used for tab completion
 --
-function cat9.set_scanner(path, cookie, closure)
+function cat9.set_scanner(path, closure)
 	cat9.stop_scanner()
 	cat9.scanner.active = path
 	local _, out, _, pid = root:popen(path, "r")
@@ -44,7 +44,6 @@ function cat9.set_scanner(path, cookie, closure)
 -- the pid will be wait():ed / killed as part of job control
 	cat9.scanner.pid = pid
 	cat9.scanner.closure = closure
-	cat9.scanner.cookie = cookie
 
 -- mark as hidden so it doesn't clutter the UI or consume job IDs but can still
 -- re-use event triggers an asynch processing
@@ -88,7 +87,6 @@ function cat9.stop_scanner()
 		cat9.scanner.closure()
 	end
 
-	cat9.scanner.cookie = nil
 	cat9.scanner.closure = nil
 	cat9.scanner.active = nil
 end
@@ -117,16 +115,11 @@ end
 --
 -- for both / ../ ./ and implicit 'current directory'
 --
-function cat9.filedir_oracle(path, prefix, flt, offset, cookie, closure)
--- cancel anything ongoing unless it is for the same path from the same source
-	if cat9.scanner.active and cat9.scanner.cookie ~= cookie then
+function cat9.filedir_oracle(path, closure)
+	local same = table.equal(path, cat9.scanner.active)
+	if not same then
 		cat9.stop_scanner()
-	end
-
--- if the path is new it is time to rescan
-	if not cat9.scanner.active then
-		if not cat9.scanner.cookie or cat9.scanner.cookie ~= cookie then
-			cat9.set_scanner(path, cookie,
+		cat9.set_scanner(path,
 			function(res)
 				if res then
 					cat9.scanner.last = res
@@ -134,9 +127,9 @@ function cat9.filedir_oracle(path, prefix, flt, offset, cookie, closure)
 				end
 			end
 		)
-		end
 	end
 
+	cat9.scanner.active = path
 	if cat9.scanner.last then
 		closure(cat9.scanner.last)
 	end
@@ -154,7 +147,7 @@ function cat9.pathexec_oracle()
 	table.insert(argv, "-executable")
 	local dupcheck = {}
 	cat9.path_set = {}
-	cat9.filedir_oracle(argv, nil, nil, nil, "pathexec",
+	cat9.filedir_oracle(argv,
 -- add with both implicit path in search order and explicit path
 		function(set)
 			for _,v in ipairs(set) do

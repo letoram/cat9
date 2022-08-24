@@ -657,55 +657,74 @@ function cat9.view_err(job, ...)
 	return raw_view(job, job.err_buffer, ...)
 end
 
--- create a job of job data based on a set of coordinate references (here, line-numbers)
-local function slice_view(job, lines)
-	local res =
-	{
-		linecount = 0,
-		bytecount = 0
-	}
-
-	local data = job.data
-
-	if job.view == cat9.view_err then
-		data = job.err_buffer
-	end
-
+function cat9.resolve_lines(dst, lines, lookup)
 	if not lines or #lines == 0 then
-		return data
+		return lookup()
 	end
 
-	for _,v in ipairs(lines) do
+	for _, v in ipairs(lines) do
 		local num = tonumber(v)
 		if num then
-			if data[num] then
-				table.insert(res, data[num])
-			end
+			local line, bc, lc = lookup(num)
+			table.insert(dst, line)
+			dst.bytecount = dst.bytecount + bc
+			dst.linecount = dst.linecount + lc
+
 		elseif type(v) == "string" then
+
 			local set = string.split(v, "-")
 			local err = "bad / malformed range"
 			if #set ~= 2 then
 				return nil, err
 			end
+
 			local a = tonumber(set[1])
 			local b = tonumber(set[2])
+
 			if not a or not b then
 				return nil, err
 			end
+
 			local step = a > b and -1 or 1
 			for i=a,b,step do
-				if not data[i] then
-					break
-				end
-				table.insert(res, data[i])
+				local line, bc, lc = lookup(i)
+				table.insert(dst, line)
+				dst.bytecount = dst.bytecount + bc
+				dst.linecount = dst.linecount + lc
 			end
 		end
-
-		res.linecount = res.linecount + 1
-		res.bytecount = res.bytecount + #(res[#res])
 	end
 
-	return res
+	return dst
+end
+
+-- create a job of job data based on a set of coordinate references (here, line-numbers)
+cat9.default_slice =
+function(job, lines, set)
+	local data = set and set or job.data
+	local res =
+	{
+		bytecount = 0,
+		linecount = 0
+	}
+
+	if job.view == cat9.view_err then
+		data = job.err_buffer
+	end
+
+	return
+	cat9.resolve_lines(
+		res, lines,
+		function(i)
+			if not i then
+				return data
+			end
+			if data[i] then
+				return data[i], #data[i], 1
+			else
+				return nil, 0, 0
+			end
+		end)
 end
 
 local function find_lowest_free()
@@ -805,7 +824,7 @@ function cat9.import_job(v, noinsert)
 	v.suggest = cat9.suggest
 
 	v.show_line_number = config.show_line_number
-	v.slice = slice_view
+	v.slice = cat9.default_slice
 	v.region = {0, 0, 0, 0}
 
 	if v.unbuffered == nil then
@@ -844,7 +863,10 @@ function cat9.import_job(v, noinsert)
 		}
 		local oe = v.err_buffer
 
-		v.err_buffer = {}
+		v.err_buffer = {
+			bytecount = 0,
+			linecount = 0
+		}
 	end
 
 	v.view = cat9.view_raw

@@ -339,8 +339,7 @@ local function suggest_for_context(prefix, tok, types)
 	local argv, prefix, flt, offset =
 		cat9.file_completion(carg, cat9.config.glob.file_argv)
 
-	local cookie = "gen " .. tostring(cat9.idcounter)
-	cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+	cat9.filedir_oracle(argv,
 		function(set)
 			if flt then
 				set = cat9.prefix_filter(set, flt, offset)
@@ -426,7 +425,7 @@ function cat9.expand_arg(dst, str)
 	return str
 end
 
-function cat9.default_fallthrough(commands, inp)
+function cat9.default_fallthrough(commands, inp, line)
 -- validation, all entries in commands should be strings now - otherwise the
 -- data needs to be extracted as argument (with certain constraints on length,
 -- ...)
@@ -530,9 +529,9 @@ function cat9.parse_string(rl, line)
 		cat9.stdin = nil
 		return res
 	elseif cat9.builtins["_default"] then
-		res = cat9.builtins["_default"](commands, inp)
+		res = cat9.builtins["_default"](commands, inp, line)
 	else
-		res = cat9.default_fallthrough(commands, inp)
+		res = cat9.default_fallthrough(commands, inp, line)
 	end
 
 	if revert then
