@@ -142,6 +142,10 @@ To forego any parsing or internal pipelineing and run the entire line verbatim
 
     !!find /usr |grep share
 
+This is also useful when you need to do shell expansions:
+
+    !!rm -rf *
+
 Certain clients really want a pseudoterminal or they refuse to do anything,
 for those clients, start with p! like so:
 
