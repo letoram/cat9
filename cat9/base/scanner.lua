@@ -31,7 +31,6 @@ function(cat9, root, config)
 function cat9.set_scanner(path, cookie, closure)
 	cat9.stop_scanner()
 	cat9.scanner.active = path
-
 	local _, out, _, pid = root:popen(path, "r")
 
 	if not pid then
@@ -45,7 +44,7 @@ function cat9.set_scanner(path, cookie, closure)
 -- the pid will be wait():ed / killed as part of job control
 	cat9.scanner.pid = pid
 	cat9.scanner.closure = closure
-	cat9.scanner.pathcookie = cookie
+	cat9.scanner.cookie = cookie
 
 -- mark as hidden so it doesn't clutter the UI or consume job IDs but can still
 -- re-use event triggers an asynch processing
@@ -155,7 +154,7 @@ function cat9.pathexec_oracle()
 	table.insert(argv, "-executable")
 	local dupcheck = {}
 	cat9.path_set = {}
-	cat9.filedir_oracle(argv, prefix, flt, offset, cookie,
+	cat9.filedir_oracle(argv, nil, nil, nil, "pathexec",
 -- add with both implicit path in search order and explicit path
 		function(set)
 			for _,v in ipairs(set) do
@@ -262,6 +261,7 @@ end
 
 function cat9.prefix_filter(intbl, prefix, offset)
 	local res = {}
+	prefix = prefix and prefix or ""
 
 	for _,v in ipairs(intbl) do
 		if string.sub(v, 1, #prefix) == prefix then
