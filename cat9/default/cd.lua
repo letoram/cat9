@@ -6,11 +6,12 @@ function(cat9, root, builtins, suggest)
 -- the state store more complex so something for later.
 local last_dir = root:chdir()
 local hist = {}
+local hist_cutoff = 2
 
 local function linearize(hist)
 	local res = {}
 	for k,v in pairs(hist) do
-		if v > 1 then
+		if v > hist_cutoff then
 			table.insert(res, k)
 		end
 	end
@@ -55,7 +56,7 @@ function builtins.cd(step, opt)
 		return
 	end
 
-	if not step then
+	if not step or step == "~" then
 		cat9.chdir(root:getenv("HOME"))
 		last_dir = root:chdir()
 		return
@@ -66,11 +67,17 @@ function builtins.cd(step, opt)
 	end
 
 	if type(opt) == "string" then
-		if step == "F-" then
+		if step == "f" then
+			step = opt
+		elseif step == "f-" then
 			hist[opt] = nil
 			return
-		elseif step == "f" then
-			step = opt
+		elseif step == "f+" then
+			if opt == "." then
+				opt = root:chdir()
+			end
+			hist[opt] = hist_cutoff + 1
+			return
 		end
 	end
 
@@ -86,8 +93,10 @@ function suggest.cd(args, raw)
 	if #args > 2 then
 
 		if type(args[2]) == "string" then
-			if args[2] == "f" or args[2] == "F-" then
+			if args[2] == "f" or args[2] == "f-" then
 				cat9.readline:suggest(cat9.prefix_filter(linearize(hist), args[3]), "word")
+				return
+			elseif args[2] == "f+" then
 				return
 			end
 		end
