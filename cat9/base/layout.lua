@@ -343,9 +343,6 @@ end
 
 local draw_cookie = 0
 function cat9.redraw()
-	if cat9.block_redraw then
-		return
-	end
 	local cols, rows = root:dimensions()
 	draw_cookie = draw_cookie + 1
 	root:erase()
@@ -450,7 +447,6 @@ function cat9.redraw()
 			cat9.readline:bounding_box(0, last_row, cols, last_row)
 			cat9.readline:set_prompt(cat9.get_prompt())
 		end
-
 		return
 	end
 

@@ -32,7 +32,7 @@ local function fname_to_decode(cat9, dstenv, fn, closure)
 	end
 
 	cat9.set_scanner(
-		{"/usr/bin/file", "file", "-b", "--mime-type", fn}, "open" .. fn,
+		{"/usr/bin/file", "file", "-b", "--mime-type", fn},
 		function(res)
 			local proto
 			if res and res[1] then
@@ -68,16 +68,11 @@ local function spawn_trigger(cat9, root, wndtype, spawn, trigger)
 					cat9.add_message("window request rejected")
 					return
 				end
-				return trigger(par, wnd)
+				local res = trigger(par, wnd)
 			end, spawn
 		)
-		return false
-
--- it is now in the hand of the display server
 	else
-		cat9.readline = nil
 		trigger(root, root)
-		return true
 	end
 end
 
@@ -116,7 +111,6 @@ local function open_string(file, spawn)
 		end
 		cat9.import_job(job)
 		job.collapsed_rows = cat9.config.open_embed_collapsed_rows
-
 		return true
 	end
 
@@ -129,7 +123,6 @@ local function open_string(file, spawn)
 			spawn_trigger(cat9, root, "handover", spawn, trigger)
 		end
 	)
-	return
 end
 
 function suggest.open(args, raw)
@@ -187,13 +180,26 @@ function builtins.open(file, ...)
 				end
 			end
 
-			wnd:revert()
 			buf = table.concat(file:slice(parg), "")
 
 			if not spawn then
-				cat9.block_redraw = true
-				wnd:bufferview(buf, cat9.reset, arg)
-				return true
+				cat9:block_readline(true)
+				local old_reset = cat9.reset
+				local old_redraw = cat9.redraw
+				cat9.reset = function() end
+				cat9.redraw = function() end
+				wnd:revert()
+
+				wnd:bufferview(
+				buf,
+					function()
+						cat9:block_readline(false)
+						cat9.reset = old_reset
+						cat9.redraw = old_redraw
+						cat9:reset()
+					end,
+					arg
+				)
 			else
 				wnd:bufferview(buf,
 					function()
@@ -203,7 +209,7 @@ function builtins.open(file, ...)
 			end
 		end
 
-		return spawn_trigger(cat9, root, "tui", spawn, trigger)
+		spawn_trigger(cat9, root, "tui", spawn, trigger)
 
 	elseif type(file) == "string" then
 		open_string(file, spawn)

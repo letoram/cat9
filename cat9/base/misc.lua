@@ -482,14 +482,28 @@ function cat9.hide_readline(root)
 	if not cat9.readline then
 		return
 	end
+
 	cat9.laststr = cat9.readline:get()
 	root:revert()
 end
 
+function cat9.set_readline(rl, src)
+	cat9.readline = rl
+	cat9.readline_src = src
+end
+
+function cat9.block_readline(root, on)
+	cat9.readline_block = on
+end
+
 function cat9.setup_readline(root)
+	if cat9.readline_block then
+		return cat9.hide_readline(root)
+	end
+
 	local rl = root:readline(
 		function(self, line)
-			cat9.readline = nil
+			cat9.set_readline(nil, "readline_cb")
 
 			if not line or #line == 0 then
 				local on_cancel = cat9.on_cancel
@@ -512,7 +526,7 @@ function cat9.setup_readline(root)
 				end
 			end
 
-			local block_reset = cat9.parse_string(self, line)
+			cat9.parse_string(self, line)
 
 -- ensure that we do not have duplicates, but keep the line as most recent
 			if not lash.history[line] then
@@ -527,13 +541,10 @@ function cat9.setup_readline(root)
 			end
 
 			table.insert(lash.history, 1, line)
-
-			if not block_reset then
-				cat9.reset()
-			end
+			cat9.reset()
 		end, config.readline)
 
-	cat9.readline = rl
+	cat9.set_readline(rl, "setup_readline")
 	rl:set(cat9.laststr)
 	rl:set_prompt(cat9.get_prompt())
 	rl:set_history(lash.history)

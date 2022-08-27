@@ -10,14 +10,6 @@ return
 	autosuggest = true, -- start readline with tab completion enabled
 	debug = true, -- dump parsing output / data to the command-line
 
--- generic mouse handlers for any job, specific actions can be dynamically
--- defined by the job creator, as well as the job-bar mouse handler below.
-	m1_click = "view #csel toggle",
-	m2_click = "open #csel tab hex",
-	m3_click = "open #csel hex",
-	m4_data_click = "view #csel scroll -1",
-	m5_data_click = "view #csel scroll +1",
-
 	hex_mode = "hex_detail_meta", -- hex, hex_detail hex_detail_meta
 
 	content_offset = 1, -- columns to skip when drawing contents
@@ -114,6 +106,7 @@ return
 	{
 		line_number = {fc = tui.colors.label, bc = tui.colors.label},
 		data = {fc = tui.colors.text, bc = tui.colors.text},
+		data_highlight = {fc = tui.colors.alert, bc = tui.colors.alert},
 	},
 
 	glob =

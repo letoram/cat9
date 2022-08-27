@@ -30,6 +30,30 @@ local function show_ptn(job, ...)
 	return rc
 end
 
+local function slice_ptn(job, lines, set)
+	local data = set or job.data
+	local res =
+	{
+		bytecount = 0,
+		linecount = 0
+	}
+
+	return cat9.resolve_lines(
+		res, lines,
+		function(i)
+			if not i then
+				return job.view_state
+			end
+			local line = job.view_state[i]
+			if line then
+				return line, #line, 1
+			else
+				return nil, 0, 0
+			end
+		end
+	)
+end
+
 local opmap = {}
 opmap["or"] = true
 opmap["not"] =
@@ -139,18 +163,21 @@ function views.filter(job, suggest, args)
 	if not suggest then
 		if not args[2] then
 			cat9.add_message("view(match): empty pattern/string")
-			job.view = cat9.view_raw
-			job.view_state = nil
+			job:set_view(cat9.view_raw, nil, nil, "match")
 			return
 		end
 
-		job.view = show_ptn
-		job.slice = slice_ptn
-		job.view_state = {data_linecount = 0, linecount = 0}
-
 		table.remove(args, 1)
-		job.view_name = "filter(" .. table.concat(args, "") .. ")"
-		job.view_state.filter = build_chain(job, args)
+		local state =
+			{
+				data_linecount = 0,
+				linecount = 0,
+				bytecount = 0,
+				filter = build_chain(job, args)
+			}
+		local name = "filter(" .. table.concat(args, "") .. ")"
+		job:set_view(show_ptn, slice_ptn, state, name)
+
 		return
 	end
 
