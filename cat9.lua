@@ -171,7 +171,7 @@ load_feature("layout.lua")  -- drawing screen, decorations and related handlers
 load_feature("vt100.lua")   -- state machine to plugin decoding
 load_feature("jobmeta.lua") -- job contextual information providers
 load_feature("promptmeta.lua") --  prompt contextual information providers
-load_feature("keybindings.lua", "config")
+load_feature("bindings.lua", "config")
 load_builtins("default")
 cat9.path_set = nil -- binary completion for exec is statically cached
 safe_builtins = cat9.builtins

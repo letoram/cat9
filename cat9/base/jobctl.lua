@@ -587,12 +587,18 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 -- the rows will naturally be capped to what we claimed to support
 	local dataattr = config.styles.data
+	local datahiattr = config.styles.data_highlight
 	local lineattr = config.styles.line_number
 	local digits = #tostring(set.linecount)
 	local ofs = job.row_offset
 
 	if lc >= set.linecount then
 		ofs = 0
+	end
+
+	if job.mouse then
+		job.mouse.on_row = false
+		job.mouse.on_col = false
 	end
 
 	for i=1,lc do
@@ -619,6 +625,16 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		local cx = x + config.content_offset
 		local ccols = cols
 
+-- updated on motion
+		local on_col = false
+		local on_row = false
+		if job.mouse and job.mouse[2] == y+i-1 then
+			on_row = true
+			job.mouse.on_row = ind
+			job.mouse.on_col = (job.mouse[1] <= cx + #row) and 2
+			on_col = true
+		end
+
 -- printing line numbers?
 		if job.show_line_number then
 
@@ -626,6 +642,17 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			local num = tostring(ind)
 			if #num < digits then
 				num = string.rep(" ", digits - #num) .. num
+			end
+
+-- set inverse attribute if mouse cursor is on top of it
+			lineattr.inverse = job.mouse and
+				                 on_row    and
+				                 on_col    and
+				                 job.mouse[1] <= cx + 3 + digits
+
+--  then we're actually on the first column
+			if lineattr.inverse then
+				job.mouse.on_col = 1
 			end
 
 			root:write_to(cx, y+i-1, num, lineattr)
@@ -642,7 +669,10 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		if #row > ccols then
 			row = string.sub(row, 1, ccols)
 		end
-		root:write_to(cx, y+i-1, row, dataattr)
+
+-- finally print it, hightlight any manually selected lines
+		root:write_to(cx, y+i-1, row,
+			            job.selections[ind] and datahiattr or dataattr)
 	end
 
 	return lc
@@ -701,13 +731,15 @@ end
 -- create a job of job data based on a set of coordinate references (here, line-numbers)
 cat9.default_slice =
 function(job, lines, set)
-	local data = set and set or job.data
+	local data = set or job.data
 	local res =
 	{
 		bytecount = 0,
 		linecount = 0
 	}
 
+-- fixme: if we are viewing historical data, the right buffer needs to be picked and
+-- a buffer ID needs to be presented so higher level formats can cache correctly
 	if job.view == cat9.view_err then
 		data = job.err_buffer
 	end
@@ -803,6 +835,16 @@ local function hide_job(job)
 	end
 end
 
+local function view_set(job, view, slice, state, name)
+	job.view = view
+	job.view_state = state or {linecount = 0, bytecount = 0}
+	job.view_name = name or "unknown"
+	job.selections = {}
+	job.slice = slice or cat9.default_slice
+	job.row_offset = 0
+	job.col_offset = 0
+end
+
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
@@ -817,6 +859,7 @@ function cat9.import_job(v, noinsert)
 	v.col_offset = 0
 	v.job = true
 	v.hide = hide_job
+	v.set_view = view_set
 
 -- save the CLI environment so it can be restored later (or when repeating)
 	v.builtins = cat9.builtins
@@ -857,6 +900,7 @@ function cat9.import_job(v, noinsert)
 		v.row_offset = 0
 		v.col_offset = 0
 		v.row_offset_relative = true
+		v.selections = {}
 		v.data = {
 			bytecount = 0,
 			linecount = 0,

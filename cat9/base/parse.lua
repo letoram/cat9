@@ -39,8 +39,19 @@ return
 function(cat9, root, config)
 
 local function lookup_res(s, v)
--- first major use: $env
 	local base = s[2][2]
+-- special: $=row
+	if base == "=crow" or base == "=crow:" then
+		if not cat9.selectedjob or
+			 not cat9.selectedjob.mouse or
+			 not cat9.selectedjob.mouse.on_row then
+			return "cursor not on job row"
+		end
+		table.insert(v, cat9.selectedjob.mouse.on_row)
+		return
+	end
+
+-- fallback use: $env
 	local split_i = string.find(base, "/")
 	local split = ""
 
@@ -298,7 +309,10 @@ local function suggest_for_context(prefix, tok, types)
 	end
 
 -- clear suggestion by default first
-	cat9.readline:suggest({})
+	if cat9.readline then
+		cat9.readline:suggest({})
+	end
+
 	local res, err = tokens_to_commands(tok, types, true)
 	if not res then
 		return
@@ -344,7 +358,9 @@ local function suggest_for_context(prefix, tok, types)
 			if flt then
 				set = cat9.prefix_filter(set, flt, offset)
 			end
-			cat9.readline:suggest(set, "word", prefix)
+			if cat9.readline then
+				cat9.readline:suggest(set, "word", prefix)
+			end
 		end
 	)
 
@@ -365,15 +381,15 @@ function cat9.suggest_history()
 	if cat9.readline then
 		cat9.laststr = cat9.readline:get()
 		root:revert()
-		cat9.readline = nil
+		cat9.set_readline(nil, "history")
 	end
 
 	local old_prompt = cat9.get_prompt
 
-	cat9.readline =
+	cat9.set_readline(
 	root:readline(
 		function(self, line)
-			cat9.readline = nil
+			cat9.set_readline(nil, "history_cb")
 			cat9.get_prompt = old_prompt
 			if line then
 				cat9.laststr = line
@@ -389,7 +405,7 @@ function cat9.suggest_history()
 			function(self, prefix, msg, suggest)
 				self:suggest(cat9.prefix_filter(lash.history, msg, 0, "replace"))
 			end
-		})
+		}))
 	cat9.get_prompt = function()
 		return "(history)"
 	end
@@ -457,10 +473,6 @@ function cat9.default_fallthrough(commands, inp, line)
 end
 
 function cat9.parse_string(rl, line)
-	if rl then
-		cat9.readline = nil
-	end
-
 	if not line or #line == 0 then
 		return
 	end
@@ -540,5 +552,4 @@ function cat9.parse_string(rl, line)
 
 	return res
 end
-
 end

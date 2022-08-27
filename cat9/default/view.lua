@@ -8,6 +8,15 @@ function viewlut.out(set, i, job)
 	return i + 1
 end
 
+function viewlut.select(set, i, job)
+	local ind = set[i+1]
+	if type(ind) == "number" then
+		job.selections[ind] = not job.selections[ind]
+	end
+
+	return i + 2
+end
+
 function viewlut.err(set, i, job)
 	job.view = cat9.view_err
 	job.row_offset = 0
@@ -26,6 +35,7 @@ function viewlut.toggle(set, i, job)
 	else
 		job.expanded = -1
 	end
+	return i + 1
 end
 
 function viewlut.linenumber(set, i, job)
@@ -127,6 +137,46 @@ local function view_monitor()
 	return
 end
 
+local function view_colour()
+	local job =
+	{
+		short = "Colors",
+		raw = "Monitor: colors",
+		check_status = function() return true; end
+	}
+	local job = cat9.import_job(job)
+
+-- just step through the colors and draw a line with their respective
+-- labels
+	local set = {
+		"primary", "secondary", "background",
+		"text", "cursor", "altcursor", "highlight",
+		"label", "warning", "error", "alert", "inactive",
+		"reference", "ui", "16", "17", "18", "19", "20",
+		"21", "22", "23", "24", "25", "26", "27", "28",
+		"29", "30", "31", "32"
+	}
+
+	job.view =
+	function(job, x, y, cols, rows, probe)
+		local lim = #set - 1 < rows and #set - 1 or rows
+		if probe then
+			return lim
+		end
+
+		for i=y,y+lim do
+			local lbl = set[i-y+1]
+			local col = tui.colors[lbl]
+			if not col then
+				col = tonumber(lbl)
+			end
+			local attr = {fc = col, bc = col}
+			root:write_to(x, i, lbl, attr)
+		end
+		return lim
+	end
+end
+
 function builtins.view(job, ...)
 -- special case, assign messages and 'print' calls into a job
 	if type(job) == "string" then
@@ -136,43 +186,7 @@ function builtins.view(job, ...)
 -- help theming and testing viewing, jack in a coloriser for the data
 -- and set a custom view handler for the task
 		elseif job == "colour" or job == "color" then
-			local job =
-			{
-				short = "Colors",
-				raw = "Monitor: colors",
-				check_status = function() return true; end
-			}
-			local job = cat9.import_job(job)
-
--- just step through the colors and draw a line with their respective
--- labels
-			local set = {
-				"primary", "secondary", "background",
-				"text", "cursor", "altcursor", "highlight",
-				"label", "warning", "error", "alert", "inactive",
-				"reference", "ui", "16", "17", "18", "19", "20",
-				"21", "22", "23", "24", "25", "26", "27", "28",
-				"29", "30", "31", "32"
-			}
-
-			job.view =
-			function(job, x, y, cols, rows, probe)
-				local lim = #set - 1 < rows and #set - 1 or rows
-				if probe then
-					return lim
-				end
-
-				for i=y,y+lim do
-					local lbl = set[i-y+1]
-					local col = tui.colors[lbl]
-					if not col then
-						col = tonumber(lbl)
-					end
-					local attr = {fc = col, bc = col}
-					root:write_to(x, i, lbl, attr)
-				end
-				return lim
-			end
+			view_colour()
 		end
 		return
 	end

@@ -18,9 +18,16 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 -- deselect current unless the same
 	if cat9.selectedjob then
 		if job and cat9.selectedjob == job then
+			if job.mouse then
+				if job.mouse[1] ~= x or job.mouse[2] ~= y then
+					cat9.flag_dirty()
+				end
+			end
+			job.mouse = {x, y}
 			return
 		end
 
+		cat9.selectedjob.mouse = nil
 		cat9.selectedjob.selected = nil
 		cat9.selectedjob = nil
 		cat9.flag_dirty()
@@ -34,10 +41,11 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 		return
 	end
 
--- select new
+-- select new, we keep the mouse coordinates in global space and
+-- let whatever job renderer that can leverage the information work
 	job.selected = true
 	cat9.selectedjob = job
-	job.mouse_x = x
+	job.mouse = {x, y}
 	cat9.flag_dirty()
 end
 
@@ -50,6 +58,7 @@ function handlers.key(self, sub, keysym, code, mods)
 			if cat9.readline then
 				cat9.hide_readline(root)
 			else
+				cat9.block_readline(root, false)
 				cat9.setup_readline(root)
 			end
 			return
@@ -236,46 +245,60 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		return
 	end
 
--- track for drag
-	if not active and mstate[index] then
-		mstate[index] = nil
-		local cols, _ = root:dimensions()
+	if active then
+		mstate[index] = active
+		return
+	end
 
-		local try =
-		function(...)
-			local str = string.format(...)
-			if config[str] then
-				cat9.parse_string(nil, config[str])
-				return true
-			end
+-- ghost release
+	if not mstate[index] then
+		return
+	end
+
+-- completed click? (trigger on falling edge)
+	mstate[index] = nil
+	local cols, _ = root:dimensions()
+
+	local try =
+	function(...)
+		local str = string.format(...)
+		if cat9.bindings[str] then
+			cat9.parse_string(nil, cat9.bindings[str])
+			return true
 		end
+	end
 
 -- first check if we are on the job bar, and the bar handler for the job
 -- has a mouse action assigned to the group index at the cursor position
-		local id, job = cat9.xy_to_hdr(x, y)
-		if job and id > 0 then
-			local mind = "m" .. tostring(index)
-			local cfgrp = config[job.last_key][mind]
+	local id, job = cat9.xy_to_hdr(x, y)
+	if job and id > 0 then
+		local mind = "m" .. tostring(index)
+		local cfgrp = config[job.last_key][mind]
 
-			if cfgrp and cfgrp[id] then
-				cat9.parse_string(nil, cfgrp[id])
-				return
-			end
-		end
-
--- here is a possible spot for forwarding to the active view on the job
--- in order to have better click-action handlers (e.g. open or select per line)
-
--- then check if we should act special on the data (e.g. scroll) or
--- fallback to a more generic mouse handler
-		if (
-			(cat9.xy_to_data(x, y) ~= nil and try("m%d_data_click", index)) or
-			try("m%d_click", index)) then
+		if cfgrp and cfgrp[id] then
+			cat9.parse_string(nil, cfgrp[id])
 			return
 		end
+	end
 
-	elseif active then
-		mstate[index] = active
+-- here is a possible spot for forwarding to the active view on the job
+-- in order to have better click-action handlers
+
+-- Then check if we should act special on the data region of a job,
+-- first try a specific column (1 is line-number/meta, 2 is data).
+	local in_data = cat9.xy_to_data(x, y)
+	if not in_data then
+		return
+	end
+
+	if job.mouse and job.mouse.on_col then
+		if try("m%d_data_col%d_click", index, job.mouse.on_col) then
+			return
+		end
+	end
+
+-- if that doesn't yield anything, a generic 'on data' one
+	if try("m%d_data_click", index) or try("m%d_click", index) then
 	end
 end
 
@@ -284,7 +307,6 @@ function cat9.reset()
 	root:set_flags(config.mouse_mode)
 	cat9.setup_readline(root)
 	cat9.flag_dirty()
-	cat9.block_redraw = false
 end
 
 -- use for monotonic scrolling (drag+select on expanded?) and dynamic prompt

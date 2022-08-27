@@ -89,13 +89,14 @@ end
 
 local function slice_view(job, lines)
 	local res = {bytecount = 0, linecount = 0}
-	local set = job[job.view_state.stream]
+	local state = job.view_state
+	local set = job[state.stream]
 
-	if job.view_state.vt100 then
+	if state.vt100 then
 		return cat9.resolve_lines(
 		res, lines,
 			function(i)
-				local rc = job.view_state.row_cache
+				local rc = state.row_cache
 				if not i then
 					return rc
 				end
@@ -112,6 +113,8 @@ end
 
 local function reduce_fmt(job, set, lc, ofs, cols, raw)
 	local res = {}
+	local state = job.view_state
+
 	local ind = 0
 
 	local dataattr = cat9.config.styles.data
@@ -155,17 +158,17 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 
 -- if we enable state decoding, the wrapping need to process the annotated
 -- output while tracking the atttribute correctly as well
-		if job.view_state.vt100 then
-			local cached = job.view_state.row_cache[ind]
+		if state.vt100 then
+			local cached = state.row_cache[ind]
 			if cached then
 				row = cached
-				attr = job.view_state.fmt_cache[ind]
+				attr = state.fmt_cache[ind]
 			else
 -- if another data filter has been attached ..
-				if job.view_state.vt100.consume then
-					row, attr = job.view_state.vt100:consume(row)
-					job.view_state.row_cache[i] = row
-					job.view_state.fmt_cache[i] = attr
+				if state.vt100.consume then
+					row, attr = state.vt100:consume(row)
+					state.row_cache[i] = row
+					state.fmt_cache[i] = attr
 				end
 			end
 		end
@@ -197,7 +200,8 @@ end
 
 local
 function job_wrap(job, x, y, cols, rows, probe, hidden)
-	local set = job[job.view_state.stream]
+	local state = job.view_state
+	local set = job[state.stream]
 
 	if not x or not cols or not rows then
 		return set
@@ -216,8 +220,8 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 		ofs = 0
 	end
 
-	if job.view_state.cap and job.view_state.cap < cols then
-		cols = job.view_state.cap
+	if state.cap and state.cap < cols then
+		cols = state.cap
 	end
 
 -- if set.linecount and presentation offsets are the same as cached,
@@ -278,12 +282,7 @@ end
 -- cap is exceeded.
 function views.wrap(job, suggest, args, raw)
 	if not suggest then
-		job.view = job_wrap
-		job.slice = slice_view
-		job.view_state = {}
-		job.wrap_cache = nil
-		job.view_name = "wrap"
-		job.view_state.stream = "data"
+		local state = {stream = "data"}
 
 		if not args[2] then
 			return
@@ -291,19 +290,21 @@ function views.wrap(job, suggest, args, raw)
 
 		for _,v in ipairs(args) do
 			if v == "vt100" then
-				job.view_state.vt100 = cat9.vt100_state()
-				job.view_state.row_cache = {}
-				job.view_state.fmt_cache = {}
+				state.vt100 = cat9.vt100_state()
+				state.row_cache = {}
+				state.fmt_cache = {}
 
 -- need  to swap out slice so we can get the contents post formatting
 			elseif v == "err" then
-				job.view_state.stream = "err_buffer"
+				state.stream = "err_buffer"
 			elseif v == "data" then
-				job.view_state.stream = "data"
+				state.stream = "data"
 			elseif tonumber(v) then
-				job.view_state.cap = tonumber(v)
+				state.cap = tonumber(v)
 			end
 		end
+
+		job:set_view(job_wrap, slice_view, state, "wrap")
 		return
 	end
 

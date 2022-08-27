@@ -43,6 +43,9 @@ function cat9.set_scanner(path, closure)
 
 -- the pid will be wait():ed / killed as part of job control
 	cat9.scanner.pid = pid
+	if type(closure) ~= "function" then
+		print(debug.traceback())
+	end
 	cat9.scanner.closure = closure
 
 -- mark as hidden so it doesn't clutter the UI or consume job IDs but can still

@@ -13,19 +13,13 @@ function builtins.input(job, action)
 		return
 	end
 
-	if cat9.readline then
-		cat9.hide_readline(root)
-	end
-
 	if cat9.selectedjob then
 		cat9.selectedjob.selected = false
 	end
 
 	cat9.selectedjob = job
 	job.selected = true
-
--- don't re-enable readline
-	return true
+	cat9.block_readline(root, true)
 end
 
 function suggest.input(args, raw)
