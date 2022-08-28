@@ -39,7 +39,7 @@ local function slice_ptn(job, lines, set)
 	}
 
 	return cat9.resolve_lines(
-		res, lines,
+		job, res, lines,
 		function(i)
 			if not i then
 				return job.view_state
