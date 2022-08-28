@@ -687,9 +687,25 @@ function cat9.view_err(job, ...)
 	return raw_view(job, job.err_buffer, ...)
 end
 
-function cat9.resolve_lines(dst, lines, lookup)
+function cat9.resolve_lines(job, dst, lines, lookup)
 	if not lines or #lines == 0 then
 		return lookup()
+	end
+
+-- special case, grab the current picking selection
+	if #lines == 1 and lines[1] == "sel" then
+		local set = {}
+		for k,v in pairs(job.selections) do
+			table.insert(set, k)
+		end
+		table.sort(set)
+		for i,v in ipairs(set) do
+			local line, bc, lc = lookup(v)
+			table.insert(dst, line)
+			dst.bytecount = dst.bytecount + bc
+			dst.linecount = dst.linecount + lc
+		end
+		return dst
 	end
 
 	for _, v in ipairs(lines) do
@@ -746,7 +762,7 @@ function(job, lines, set)
 
 	return
 	cat9.resolve_lines(
-		res, lines,
+		job, res, lines,
 		function(i)
 			if not i then
 				return data

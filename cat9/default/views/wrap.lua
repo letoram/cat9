@@ -94,7 +94,7 @@ local function slice_view(job, lines)
 
 	if state.vt100 then
 		return cat9.resolve_lines(
-		res, lines,
+		job, res, lines,
 			function(i)
 				local rc = state.row_cache
 				if not i then
