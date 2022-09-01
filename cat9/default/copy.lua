@@ -3,7 +3,7 @@ local function copy_tbl_ud(cat9, root, job)
 	job.src,
 		function(ok)
 			if not ok then
-				job.code = 1
+				job.exit = 1
 				job.short = "(failed) " .. job.short
 			else
 				cat9.remove_job(job)

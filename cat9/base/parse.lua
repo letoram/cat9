@@ -165,7 +165,7 @@ local function build_ptable(t)
 	end
 end
 
-local function tokens_to_commands(tokens, types, suggest)
+function cat9.parse_resolve(tokens, types, suggest)
 	local res = {}
 	local groups = {res}
 	local cmd = nil
@@ -313,7 +313,7 @@ local function suggest_for_context(prefix, tok, types)
 		cat9.readline:suggest({})
 	end
 
-	local res, err = tokens_to_commands(tok, types, true)
+	local res, err = cat9.parse_resolve(tok, types, true)
 	if not res then
 		return
 	end
@@ -497,7 +497,7 @@ function cat9.parse_string(rl, line)
 	cat9.get_message(true)
 
 	local groups
-	groups = tokens_to_commands(tokens, types)
+	groups = cat9.parse_resolve(tokens, types)
 	if not groups or #groups[1] == 0 then
 		return
 	end
@@ -525,11 +525,14 @@ function cat9.parse_string(rl, line)
 
 	if type(commands[1]) == "table" then
 		local tbl = table.remove(commands, 1)
+		cat9.switch_env(tbl)
+
 -- just switch context
 		if #commands == 0 then
-			cat9.switch_env(commands[1])
 			return
 		end
+
+		revert = true
 	end
 
 -- this prevents the builtins from being part of a pipeline which might

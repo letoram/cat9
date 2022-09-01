@@ -73,6 +73,7 @@ function handlers.key(self, sub, keysym, code, mods)
 
 		elseif cat9.bindings[keysym] then
 			cat9.parse_string(false, cat9.bindings[keysym])
+			cat9.flag_dirty()
 
 		elseif keysym == tui.keys.R then
 			if cat9.readline then
