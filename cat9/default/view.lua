@@ -110,6 +110,11 @@ local function view_monitor()
 	function(...)
 		local tbl = {...}
 		local fmtstr = string.rep("%s\t", #tbl)
+		for i,v in ipairs(tbl) do
+			if type(v) == "userdata" then
+				tbl[i] = "userdata"
+			end
+		end
 		local msg = string.format(fmtstr, ...)
 		local lst = string.split(msg, "\n")
 		for _,v in ipairs(lst) do
@@ -127,7 +132,7 @@ local function view_monitor()
 			end
 		end
 		cat9.flag_dirty()
-		oldam(msg)
+--		oldam(msg)
 	end
 	table.insert(job.hooks.on_destroy,
 	function()
@@ -201,7 +206,6 @@ function builtins.view(job, ...)
 	local viewer = cat9.views[arg[1]]
 	if viewer then
 		viewer(job, false, arg)
-		return
 	end
 
 	cat9.run_lut("view #job", job, viewlut, arg)
