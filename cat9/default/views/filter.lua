@@ -159,11 +159,80 @@ local function build_chain(job, args)
 	end
 end
 
+local function set_interactive(job)
+	local oprompt = cat9.get_prompt
+
+	if cat9.readline then
+		root:revert()
+	end
+
+-- This repeats basically what parse_string does, without the execution or
+-- suggestion set. Instead, the suggestion is treated as the full command
+-- applied as the new filter.
+	local last_set
+	local verify =
+	function(self, prefix, msg, suggest)
+		local tokens, err, ofs, types =
+			lash.tokenize_command(msg, true,
+				{["+"] = true, ["-"] = true, ["/"] = true, ["="] = true})
+		if err then
+			cat9.add_message(err, cat9.MESSAGE_HELP)
+			last_set = nil
+				return ofs
+			end
+		last_set = cat9.parse_resolve(tokens, types, true)
+		if not last_set then
+			return ofs
+		end
+
+-- run set through regular filter and update view
+		local state =
+			{
+				data_linecount = 0,
+				linecount = 0,
+				bytecount = 0,
+				filter = build_chain(job, last_set[1])
+			}
+		local name = "filter(" .. msg .. ")"
+		job:set_view(show_ptn, slice_ptn, state, name)
+	end
+
+-- just re-use the verification result
+	local rlover =
+	function(self, line)
+		cat9.get_prompt = oprompt
+		cat9.block_readline(root, false, false)
+		cat9.reset()
+	end
+
+-- hijack readline
+	cat9.set_readline(
+		root:readline(rlover,
+			{
+				cancellable = true,
+				forward_meta = false,
+				forward_paste = false,
+				forward_mouse = false,
+-- same as the normal parse /verify
+				verify = verify
+			}), "view:filter"
+	)
+
+	cat9.block_readline(root, true, true)
+
+	cat9.readline:suggest({})
+	cat9.get_prompt =
+	function()
+		return "(filter)"
+	end
+	cat9:flag_dirty()
+end
+
 function views.filter(job, suggest, args)
 	if not suggest then
 		if not args[2] then
-			cat9.add_message("view(match): empty pattern/string")
-			job:set_view(cat9.view_raw, nil, nil, "match")
+			cat9.add_message("view(match): empty pattern/string, setting interactive")
+			set_interactive(job)
 			return
 		end
 
