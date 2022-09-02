@@ -913,9 +913,12 @@ function cat9.import_job(v, noinsert)
 	v.reset =
 	function(v)
 		v.wrap = true
+		v.exit = nil
 		v.row_offset = 0
 		v.col_offset = 0
 		v.row_offset_relative = true
+		v.bar_color = tui.colors.ui
+		v.view = cat9.view_raw
 		v.selections = {}
 		v.data = {
 			bytecount = 0,
@@ -959,8 +962,6 @@ function cat9.import_job(v, noinsert)
 		if not v.hidden then
 			cat9.activevisible = cat9.activevisible + 1
 		end
-	elseif not v.code then
-		v.code = 0
 	end
 
 	if not v.id and not v.hidden then

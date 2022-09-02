@@ -492,13 +492,17 @@ function cat9.set_readline(rl, src)
 	cat9.readline_src = src
 end
 
-function cat9.block_readline(root, on)
+function cat9.block_readline(root, on, hide)
 	cat9.readline_block = on
+	cat9.readline_block_hide = hide
 end
 
 function cat9.setup_readline(root)
 	if cat9.readline_block then
-		return cat9.hide_readline(root)
+		if not cat9.readline_block_hide then
+			cat9.hide_readline(root)
+		end
+		return
 	end
 
 	local rl = root:readline(
@@ -541,7 +545,9 @@ function cat9.setup_readline(root)
 			end
 
 			table.insert(lash.history, 1, line)
-			cat9.reset()
+			if not cat9.readline_block then
+				cat9.reset()
+			end
 		end, config.readline)
 
 	cat9.set_readline(rl, "setup_readline")
