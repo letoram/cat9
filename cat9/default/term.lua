@@ -28,6 +28,11 @@ local function shc_helper(mode, ...)
 	return job
 end
 
+local function spawn_arcan(...)
+-- setup with a monitor channel so we can do things to it later
+-- monitor-ctrl
+end
+
 -- alias for handover into vt100
 builtins["!"] =
 function(...)
@@ -37,6 +42,37 @@ end
 builtins["!!"] =
 function(...)
 	shc_helper("rwe", ...)
+end
+
+builtins["a!"] =
+function(...)
+	local args = {...}
+	local cmode = "join-r"
+	local omode = ""
+	omode, cmode = cat9.misc_resolve_mode(args, cmode)
+	if not omode then
+		return
+	end
+
+-- ensure that we actually inherit
+	local env = cat9.table_copy_shallow(root:getenv())
+	env["ARCAN_CONNPATH"] = nil
+
+-- should probe to determine if we need:
+--   a. arcan-lwa (arg indicates appl)
+--   b. arcan-wayland
+--   c. Xarcan
+--   d. generic-shmif (try ldd and look for shmif)
+	cat9.shmif_handover(cmode, omode, args[1], root:getenv(), args)
+end
+
+builtins["l!"] =
+function(...)
+-- lash helper, just retain ARCAN_... args for now.
+-- RESET would be best collaboratively so the right event gets sent. Again
+-- the problem if the display server should forward or we should add a
+-- separate channel for event injection.
+	cat9.term_handover("join-r", ...)
 end
 
 builtins["p!"] =
@@ -109,6 +145,19 @@ local function binarg_select(args, raw, sz, pref)
 	)
 end
 
+suggest["a!"] =
+function(args, raw)
+-- First we need to check applbase, then scan current directories for the
+-- pattern name/name.lua with grep on function name. It is probably time to
+-- accept the fact that we need a manifest file.
+--
+-- a12 should have its own here so that arcan-net isn't activated in
+-- discovery mode unnecessarily.
+--
+-- Lastly we can check secondary / known dependencies, or better yet, let
+-- arcan-wayland and xarcan themselves expose probe methods.
+end
+
 suggest["!"] =
 function(args, raw)
 	return binarg_select(args, raw, 2)
@@ -121,4 +170,5 @@ end
 suggest["!!"] = wrap
 suggest["v!"] = wrap
 suggest["p!"] = wrap
+suggest["a!"] = wrap
 end

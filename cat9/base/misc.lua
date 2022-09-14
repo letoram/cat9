@@ -437,6 +437,49 @@ function cat9.table_copy_shallow(intbl)
 	return outtbl
 end
 
+-- this also takes parg on table with slicing into account
+function cat9.expand_string_table(intbl, cap)
+-- treat as a FIFO
+	local out = {}
+	while #intbl > 0 do
+		local item = table.remove(intbl, 1)
+
+-- just a simple literal?
+		if type(item) == "string" or tostring(item) then
+			table.insert(out, tostring(item))
+
+-- a job that needs to be sliced out
+		elseif type(item) == "table" and item.slice then
+			local arg = nil
+
+-- possibly constrained by a parg
+			if type(intbl[1]) == "table" and intbl[1].parg then
+				arg = table.remove(intbl, 1)
+			end
+
+-- that can fail
+			local set = item:slice(arg)
+
+-- abort on overflow
+			if set then
+				if #set + #out > cap then
+					return nil, "capacity limit exceeded"
+				end
+
+				for _,v in ipairs(out) do
+					table.insert(out, v)
+				end
+
+-- or an unhandled / unknown entry
+			else
+				return nil, "unexpected type in arguments"
+			end
+		end
+	end
+
+	return out
+end
+
 function cat9.switch_env(job, force_prompt)
 	if cat9.job_stash and not job then
 		cat9.chdir(cat9.job_stash.dir)
@@ -557,4 +600,32 @@ function cat9.setup_readline(root)
 	rl:suggest(config.autosuggest)
 end
 
+-- use the same parg setup everywhere for extracting parameters on embed,
+-- tab, ... like properties. this is used by term/shmif like handovers.
+function cat9.misc_resolve_mode(arg, cmode)
+	if type(arg[1]) ~= "table" then
+		return "", cmode
+	end
+	local open_mode = ""
+
+	local t = table.remove(arg, 1)
+	if not t.parg then
+		cat9.add_message("spurious #job argument in subshell command")
+		return
+	end
+
+	for _,v in ipairs(t) do
+		if v == "err" then
+			open_mode = "e"
+		elseif v == "embed" then
+			cmode = "embed"
+		elseif v == "v" then
+			cmode = "join-d"
+		elseif v == "tab" then
+			cmode = "tab"
+		end
+	end
+
+	return open_mode, cmode
+end
 end

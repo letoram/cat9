@@ -255,11 +255,26 @@ function cat9.file_completion(fn, argv)
 	return path, prefix, flt, offset
 end
 
+function cat9.path_for_bin(fn, path)
+	if not path then
+		path = root:getenv()["PATH"]
+	end
+
+	set = (type(path) == "string" and string.split(path, ";") or path)
+
+
+	local path = root:getenv()["PATH"]
+	if not path then
+	else
+		set = string.split(path, ":")
+	end
+end
+
 function cat9.prefix_filter(intbl, prefix, offset)
 	local res = {}
 	prefix = prefix and prefix or ""
 
-	for _,v in ipairs(intbl) do
+	for i,v in ipairs(intbl) do
 		if string.sub(v, 1, #prefix) == prefix then
 			local str = v
 			if offset then
@@ -267,6 +282,12 @@ function cat9.prefix_filter(intbl, prefix, offset)
 			end
 			if #str > 0 then
 				table.insert(res, str)
+				if intbl.hint and intbl.hint[i] then
+					if not res.hint then
+						res.hint = {}
+					end
+					res.hint[#res] = intbl.hint[i]
+				end
 			end
 		end
 	end
