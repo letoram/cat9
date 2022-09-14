@@ -237,8 +237,10 @@ local function finish_job(job, code)
 	end
 
 -- avoid polluting output history with simple commands that succeeded or failed
--- without producing any output / explanation
-	if config.autoclear_empty and job.data.bytecount == 0 then
+-- without producing any output / explanation or ones that have already been hidden
+	if job.hidden then
+		cat9.remove_job(job)
+	elseif config.autoclear_empty and job.data.bytecount == 0 then
 		if #job.err_buffer == 0 then
 			if job.exit and job.exit ~= 0 and not job.hidden then
 				cat9.add_message(
@@ -405,45 +407,21 @@ function
 	return job
 end
 
-function cat9.term_handover(cmode, ...)
+local function term_handover(mode, env, bin, ...)
 	local argtbl = {...}
 	local argv = {}
-	local env = {}
-	local oldenv = cat9.table_copy_shallow(cat9.env)
 
--- don't want any of these to bleed through
-	for k,v in pairs(oldenv) do
-		if string.sub(k, 1, 5) ~= "ARCAN" then
-			env[k] = v
-		end
-	end
-
-	local open_mode = ""
-	local embed = false
-
--- any special !(a,b,c) options go here, this is tied to each | group,
-	if type(argtbl[1]) == "table" then
-		local t = table.remove(argtbl, 1)
-		if not t.parg then
-			cat9.add_message("spurious #job argument in subshell command")
-			return
-		end
-
-		for _,v in ipairs(t) do
-			if v == "err" then
-				open_mode = "e"
-			elseif v == "embed" then
-				embed = true
-				cmode = "embed"
-			end
-		end
-
+-- any special !(a,b,c) options go here, mainly embedding or wm open hint
 -- more unpacking to be done here, especially overriding env
+	local open_mode, cmode = cat9.misc_resolve_mode(argtbl, mode)
+	if not open_mode then
+		return
 	end
 
+-- some arguments may need to be resolved asynchronously, so sweep argv and
+-- add to a list of runners that resolve into the final argv
 	local dynamic = false
 	local runners = {}
-
 	for _,v in ipairs(argtbl) do
 		ok, msg = cat9.expand_arg(argv, v)
 		if not ok then
@@ -454,8 +432,9 @@ function cat9.term_handover(cmode, ...)
 	end
 
 -- Dispatched when the queue of runners is empty - argv is passed in env due to
--- afsrv_terminal being used to implement the vt100 machine. This is a fair
--- place to migrate to another vt100 implementation.
+-- afsrv_terminal being used to implement the vt100 machine. Dir needs to be
+-- tracked as with a slow desktop connection, run can resolve after the user
+-- has chdir:ed root away.
 	local dir = root:chdir()
 	local run =
 	function()
@@ -465,39 +444,13 @@ function cat9.term_handover(cmode, ...)
 				env["ARCAN_ARG"] and (env["ARCAN_ARG"] .. ":keep_stderr") or "keep_stderr"
 		end
 
-		root:new_window("handover",
-		function(wnd, new)
-			if not new then
-				return
-			end
-
-			local inp, out, err, pid =
-				wnd:phandover("/usr/bin/afsrv_terminal", open_mode, {}, env)
-
-			if #open_mode > 0 or embed then
-				local job =
-				{
-					pid = pid,
-					inp = inp,
-					err = err,
-					out = out,
-					env = env,
-					dir = dir
-				}
-				job.wnd = new
-				cat9.import_job(job)
-			end
-
-		end, cmode)
+		cat9.shmif_handover(cmode, open_mode, bin, env, {})
 	end
 
 -- Asynch-serialise - each runner is a function (or string) that, on finish,
 -- appends arguments to argv and when there are no runners left - hands over
 -- and executes. Even if the job can be resolved immediately (static) the same
 -- code is reused to avoid further branching.
---
--- This method should probably be generalised / moved in order to provide
--- sequenced jobs [ a ; b ; c ]
 	local step_job
 	step_job =
 	function()
@@ -522,6 +475,48 @@ function cat9.term_handover(cmode, ...)
 	end
 
 	step_job()
+end
+
+function cat9.term_handover(cmode, ...)
+	local env = {}
+	local oldenv = cat9.table_copy_shallow(cat9.env)
+
+-- don't want any of these to bleed through unless we open in lash mode
+	for k,v in pairs(oldenv) do
+		if string.sub(k, 1, 5) ~= "ARCAN" then
+			env[k] = v
+		end
+	end
+
+	term_handover(cmode, env, "/usr/bin/afsrv_terminal", ...)
+end
+
+function cat9.shmif_handover(cmode, omode, bin, env, argv)
+	local dir = root:chdir()
+	root:new_window("handover",
+		function(wnd, new)
+			if not new then
+				return
+			end
+			wnd:chdir(dir)
+			local inp, out, err, pid = wnd:phandover(bin, cmode, argv, env)
+
+-- only create a job entry if we explicitly ask for one
+			if #omode > 0 or cmode == "embed" then
+				local job =
+				{
+					pid = pid,
+					inp = inp,
+					err = err,
+					out = out,
+					env = env,
+					dir = dir
+				}
+				job.wnd = new
+				cat9.import_job(job)
+			end
+		end, cmode
+	)
 end
 
 function cat9.remove_job(job)
@@ -564,6 +559,10 @@ function cat9.remove_job(job)
 	return found
 end
 
+local function attr_lookup(job, set, i, pos, highlight)
+	return highlight and config.styles.data_highlight or config.styles.data
+end
+
 local function raw_view(job, set, x, y, cols, rows, probe)
 	set.linecount = set.linecount or 0
 	local lc = set.linecount
@@ -586,8 +585,6 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	end
 
 -- the rows will naturally be capped to what we claimed to support
-	local dataattr = config.styles.data
-	local datahiattr = config.styles.data_highlight
 	local lineattr = config.styles.line_number
 	local digits = #tostring(set.linecount)
 	local ofs = job.row_offset
@@ -666,13 +663,17 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			row = string.sub(row, job.col_offset + 1)
 		end
 
+-- expanding tabs should go here, be configured per job and allow
+-- shenanigans like tabstobs
+--		row:gsub("\t", "  ")
+
 		if #row > ccols then
 			row = string.sub(row, 1, ccols)
 		end
 
 -- finally print it, hightlight any manually selected lines
 		root:write_to(cx, y+i-1, row,
-			            job.selections[ind] and datahiattr or dataattr)
+			            job:attr_lookup(set, i, 0, job.selections[ind]))
 	end
 
 	return lc
@@ -845,9 +846,9 @@ function(intbl)
 end
 
 local function hide_job(job)
-	if job.hidden then
+	if not job.hidden then
 		cat9.activevisibile = cat9.activevisible - 1
-		job.hide = true
+		job.hidden = true
 	end
 end
 
@@ -875,7 +876,14 @@ function cat9.import_job(v, noinsert)
 	v.col_offset = 0
 	v.job = true
 	v.hide = hide_job
-	v.set_view = view_set
+
+	if not v.set_view then
+		v.set_view = view_set
+	end
+
+	if not v.attr_lookup then
+		v.attr_lookup = attr_lookup
+	end
 
 -- save the CLI environment so it can be restored later (or when repeating)
 	v.builtins = cat9.builtins

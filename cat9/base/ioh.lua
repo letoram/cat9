@@ -64,10 +64,31 @@ function handlers.key(self, sub, keysym, code, mods)
 			return
 		elseif keysym == tui.keys.SPACE then
 
+-- easy case, direct alias match
 			if cat9.readline then
 				local str = cat9.readline:get()
 				if cat9.aliases[str] then
 					cat9.readline:set(cat9.aliases[str])
+					return
+				end
+
+-- otherwise scan existing to whitespace and try with last (this should
+-- use cursor logical position but the readline widget doesn't expose)
+				local pos = 1
+				for i=#str,1,-1 do
+					if string.sub(str, i, i) == " " then
+						pos = i+1
+						break
+					end
+				end
+				if pos == 1 or pos >= #str then
+					return
+				end
+
+-- try the substring for alias
+				local sub = string.sub(str, pos)
+				if cat9.aliases[sub] then
+					cat9.readline:set(string.sub(str, 1, pos-1) .. cat9.aliases[sub])
 				end
 			end
 

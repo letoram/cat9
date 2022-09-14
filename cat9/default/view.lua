@@ -111,11 +111,9 @@ local function view_monitor()
 		local tbl = {...}
 		local fmtstr = string.rep("%s\t", #tbl)
 		for i,v in ipairs(tbl) do
-			if type(v) == "userdata" then
-				tbl[i] = "userdata"
-			end
+			tbl[i] = tostring(v)
 		end
-		local msg = string.format(fmtstr, ...)
+		local msg = string.format(fmtstr, unpack(tbl))
 		local lst = string.split(msg, "\n")
 		for _,v in ipairs(lst) do
 			table.insert(job.data, v)

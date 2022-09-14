@@ -3,8 +3,13 @@ function(cat9, root, config)
 
 local battery =
 {
-	state = {},
-	failed = false
+	state =
+	{
+		current_now = 0,
+		voltage_now = 0,
+		power_now = 0
+	},
+	failed = false,
 }
 
 function battery.enable(self)

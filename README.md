@@ -18,10 +18,10 @@ remix it into something different that fits you - see HACKING.md for more tips.
 What can it do?
 ===============
 
-One of the bigger conveniences, on top of being quite snappy, is being able to
-run and cleanly separate multiple concurrent jobs asynchronously, with the
-results from 'out' and 'err' being kept until you decide to forget it. At the
-same time, traditionally noisy tasks like changing directories are blocked from
+One of the bigger conveniences, on top of being quite snappy, is to run and
+cleanly separate multiple concurrent jobs asynchronously, with the results from
+'out' and 'err' being kept until you decide to reuse or forget it. At the same
+time, traditionally noisy tasks like changing directories are blocked from
 polluting your view with irrelevant information.
 
 https://user-images.githubusercontent.com/5888792/161494772-2abccac4-bb92-4a12-9a69-987e66201719.mp4
@@ -51,11 +51,11 @@ Building and setting this up is currently not for the faint of heart. It might
 look simple at first glance, but going against the grain of decades of
 accumulated legacy comes with some friction.
 
-For starters you need an Arcan build that comes straight from the source. The
-things needed here are really new, not covered by any release, and is actively
-worked on. [Arcan](https://github.com/letoram/arcan) is a pain to build from
-source and, if you want it to replace your entire display server, also a pain
-to setup. Twice the fun.
+For starters you want an Arcan build that comes straight from the source. The
+things needed here are new, unlikely covered by any release, and is actively
+worked on. [Arcan](https://github.com/letoram/arcan) is unpleasant to build
+from source and, if you want it to replace your entire display server, also a
+pain to setup. Twice the fun.
 
 For our ends here, it works just fine as a window that looks strangely much
 like a terminal emulator would look, but its innards are entirely different.
@@ -88,9 +88,10 @@ copy or link cat9.lua to $HOME/.arcan/lash/default.lua or cat9.lua (make the
 directory should it not exist) as well as the cat9 subdirectory so that there
 is a $HOME/.arcan/lash/cat9.
 
-Similarly, in durden it would be global/open/terminal=cli=lua and for
+Similarly, in Durden it would be global/open/terminal=cli=lua and for
 safespaces, tack on cli=lua to the terminal spawn line, e.g.
-layers/current/terminal=cli=lua
+layers/current/terminal=cli=lua. In recent Durden versions this has a shortcut
+as global/open/lash, and is also bound to m1+m2+enter.
 
 Next time you start the arcan console like above, if you picked the default.lua
 route it will start immediately - otherwise you have to manually tell lash to
@@ -165,17 +166,23 @@ the name of the basedir:
     ...
 
 The reason for this structure is to allow lash to be reused for building CLI
-frontends to other tools and maintain a unified look and feel. You can also
-modify/extend this to mimic the behaviour of other common shells. The ones
-included by default are as follows:
+frontends to other tools, maintain a unified look and feel and swap between
+them quickly at will. You can also modify/extend this to mimic the behaviour
+of other common shells.
+
+These also include a set of views. A view is a script that defines how to
+present the data within a job, and controls things like colour and formatting,
+optional elements like line numbers as well as wrapping behaviour.
+
+The commands included in the default set are as follows:
 
 ### Input
 
 The input command is for controlling how parts of the UI responds to mouse or
 keyboard inputs. By default the keyboard is grabbed by the command-line. This
-grab can be toggled with CTRL+ESCAPE.
+grab can be released with CTRL+ESCAPE.
 
-    input #jobid focus_toggle
+    input #jobid
 
 This will only trigger for jobs that have a working input sink, and retain
 current focus if it does not.
@@ -192,11 +199,24 @@ on a process identifier (number).
     config key value
 
 The config options changes the runtime shell behavior configuration. It is
-populated by the keys and values in config/default.lua. Certain targets also
-allow properties to set, e.g. persistence or an alias:
+populated by the keys and values in config/default.lua.
+
+Certain targets also allow properties to set, e.g. persistence or an alias:
 
     config #id alias myname
     config #myname persist auto
+
+It can be used to hot-reload settings and the code for default builtins:
+
+    config =reload
+
+It can be used to define aliases:
+
+    config myalias "my longer command"
+
+When ctrl+space is used with readline, the last word will be swapped for the
+alias. This will not have a commit action, so the expansion is visible to avoid
+unpleasant surprises.
 
 ### Open
 
@@ -240,6 +260,15 @@ Change the current directory to the specified one, with regular absolute or
 relative syntax. It is also possible to cd back into the directory that was
 current when a specific job was created.
 
+Cd also tracks which directories commands are being run from and adds them
+to a history. This can be accessed via the special:
+
+    cd f ...
+
+Where the f will be omitted and the set of suggested completions will come
+from the list of favourites. This can be manually altered, using f- to
+remove a path and f+ . or f+ /some/path to add it to the favorites.
+
 ### View
 
     view #job stream [opt1] [opt2] .. [optn]
@@ -274,11 +303,11 @@ This implements word wrap, optionally filtered through a terminal state machine
 
 ### Copy
 
-    copy src [opts] dst
+    copy src [opts] [dst]
 
 The copy command is used to copy data in and out of Cat9 itself, such as taking
-the output of a previous job and storing it in a file or into another running
-job.
+the output of a previous job and storing it in a file, into another running job
+or into a new job (if dst is not provided).
 
 By default, src and dst are treated as just names with normal semantics for
 absolute or relative paths. Depending on a prefix used, the role can change:
@@ -355,4 +384,6 @@ of a new command line interface: shell'.
 
 The later steps then has been a migration toggle in the previous arcan terminal
 emulator that allows a switch over to scripts with embedded Lua based bindings
-to the TUI API and its widgets. This is LASH.
+to the TUI API and its widgets. This later mode and support scripts is what we
+refer to as Lash. Lash in turn is too barebones to be useful, and a set of user
+scripts are plugged in, Cat9 is one such set.
