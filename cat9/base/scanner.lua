@@ -271,7 +271,7 @@ function cat9.path_for_bin(fn, path)
 end
 
 function cat9.prefix_filter(intbl, prefix, offset)
-	local res = {}
+	local res = {hint = {}}
 	prefix = prefix and prefix or ""
 
 	for i,v in ipairs(intbl) do
@@ -282,12 +282,7 @@ function cat9.prefix_filter(intbl, prefix, offset)
 			end
 			if #str > 0 then
 				table.insert(res, str)
-				if intbl.hint and intbl.hint[i] then
-					if not res.hint then
-						res.hint = {}
-					end
-					res.hint[#res] = intbl.hint[i]
-				end
+				table.insert(res.hint, intbl.hint and intbl.hint[i] or "")
 			end
 		end
 	end
@@ -301,7 +296,15 @@ function cat9.prefix_filter(intbl, prefix, offset)
 		end
 	end
 
-	table.sort(res)
+-- So if hints have been provided, the sort would cause a mismatch between the
+-- hintset and the dataset causing less than helpful hint. The current tactic
+-- is just to have those resultsets presorted, and the real solve is probably
+-- to have a metatable for the result before the sort (or a custom sort impl.)
+-- that reassigns the indices for hint as well.
+	if not intbl.hint then
+		table.sort(res)
+	end
+
 	return res
 end
 end
