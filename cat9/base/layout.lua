@@ -23,8 +23,8 @@ end
 function handlers.visibility(self, visible, focus)
 	cat9.visible = visible
 	cat9.focused = focus
-	cat9.redraw()
 	cat9.flag_dirty()
+	cat9.redraw()
 end
 
 function handlers.resized()
@@ -109,10 +109,10 @@ function cat9.xy_to_hdr(x, y)
 	end
 
 	for i=1,#job.hdr_to_id do
+		id = i
 		if col < job.hdr_to_id[i] then
 			break
 		end
-		id = i
 	end
 
 	return id, job

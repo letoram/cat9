@@ -399,33 +399,100 @@ function cat9.add_job_suggestions(set, allow_hidden, filter)
 	end
 end
 
+local function expand_helpers(helpers, v, ...)
+	local a, b, c = string.find(v, "$([%w_]+)")
+	if not c then
+		return v
+	end
+
+	local res = ""
+	if a > 1 then
+		res = string.sub(v, 1, a-1)
+	end
+
+	if helpers[c] then
+		local expanded = helpers[c](...)
+		if expanded then
+			if #expanded == 0 then
+				return nil
+			end
+			res = res .. expanded
+		end
+	end
+
+-- drop leading first whitespacing, forcing a double-escape to get padding
+-- between expansion and possible unit indicator
+	local suf = string.sub(v, b+1)
+	if string.sub(suf, 1, 1) == " " then
+		suf = string.sub(suf, 2)
+	end
+
+	res = res .. suf
+
+	return expand_helpers(helpers, res)
+end
+
+-- part of prompt expansion:
+--   wrap items in some user-defined block (prefix data suffix) or
+--   omitt the block entirely if there is no actual data
+local function apply_queue(dst, queue, template)
+	if not queue or #queue == 0 then
+		return
+	end
+
+	if template.prefix and type(template.prefix) == "table" then
+		for _,v in ipairs(template.prefix) do
+			table.insert(dst, v)
+		end
+	end
+
+	for _,v in ipairs(queue) do
+		table.insert(dst, v)
+	end
+
+	if template.suffix and type(template.suffix) == "table" then
+		for _,v in ipairs(template.suffix) do
+			table.insert(dst, v)
+		end
+	end
+end
+
+-- used for prompt expansion, should be improved a bit to better support
+-- decorating groups (rather than forcing the prompt template to do it)
 function cat9.template_to_str(template, helpers, ...)
 	local res = {}
+	local queue
+
 	for _,v in ipairs(template) do
+
+-- tables are treated as format tables and added verbatim
 		if type(v) == "table" then
 			table.insert(res, v)
+
+-- strings have expansion based on $ but we can stack expansions
+-- and ignore them if they expansions do not produce any results
 		elseif type(v) == "string" then
-			if string.sub(v, 1, 1) == "$" then
-				local hlp = helpers[string.sub(v, 2)]
-				if hlp then
-					local exp = hlp(...)
-					if not exp then
-						cat9.add_message("broken template helper:" .. v)
-					else
-						table.insert(res, exp)
-					end
+			if v == "$begin" or v == "$end" then
+				apply_queue(res, queue, template)
+				if v == "$begin" then
+					queue = {}
 				else
-					cat9.add_message("unsupported helper: " .. string.sub(v, 2))
+					queue = nil
 				end
 			else
-				table.insert(res, v)
+				table.insert(queue or res, expand_helpers(helpers, v, ...))
 			end
+
+-- functions are just executed and expected to return string or nil
 		elseif type(v) == "function" then
-			table.insert(res, v(cat9))
+			table.insert(queue or res, v(cat9))
 		else
 			cat9.add_message("bad member in prompt")
 		end
 	end
+
+-- implicit $end
+	apply_queue(res, queue, template)
 	return res
 end
 
