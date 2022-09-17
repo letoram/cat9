@@ -82,6 +82,10 @@ function(arg)
 	return
 	function(line)
 		local res = string.match(line, arg)
+		if type(res) == "table" then
+			res = res[1]
+		end
+
 		if res then
 			return true, res
 		end
@@ -172,20 +176,18 @@ local function set_interactive(job)
 	local last_set
 	local verify =
 	function(self, prefix, msg, suggest)
-		local tokens, err, ofs, types =
-			lash.tokenize_command(msg, true,
-				{["+"] = true, ["-"] = true, ["/"] = true, ["="] = true})
-		if err then
-			cat9.add_message(err, cat9.MESSAGE_HELP)
-			last_set = nil
-				return ofs
+		local set, err, ofs = cat9.tokenize_resolve(msg)
+
+		if err or ofs or not set then
+			if err then
+				cat9.add_message(err, cat9.MESSAGE_HELP)
 			end
-		last_set = cat9.parse_resolve(tokens, types, true)
-		if not last_set then
+			last_set = nil
 			return ofs
 		end
 
 -- run set through regular filter and update view
+		last_set = set
 		local state =
 			{
 				data_linecount = 0,

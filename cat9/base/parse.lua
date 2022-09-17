@@ -165,6 +165,23 @@ local function build_ptable(t)
 	end
 end
 
+-- convenience helper to get 'args' similar to a full parse
+function cat9.tokenize_resolve(str)
+	local tokens, err, ofs, types =
+		lash.tokenize_command(str, true,
+			{["+"] = true, ["-"] = true, ["/"] = true, ["="] = true})
+	if err then
+		return nil, err, ofs
+	end
+
+	local set = cat9.parse_resolve(tokens, types, true)
+	if not set then
+		return nil, nil, ofs
+	end
+
+	return set
+end
+
 function cat9.parse_resolve(tokens, types, suggest)
 	local res = {}
 	local groups = {res}
