@@ -3,6 +3,9 @@ local collapse_sym = lash.root:has_glyph("▲") and "▲" or "[-]"
 local expand_sym = lash.root:has_glyph("▼") and "▼" or "[+]"
 local selected_sym = lash.root:has_glyph("►") and "►" or ">"
 
+local fmt_sep = {fc = tui.colors.label, bc = tui.colors.text}
+local fmt_data = {fc = tui.colors.inactive, bc = tui.colors.text}
+
 -- simpler toggles for dynamically controlling presentation
 return
 {
@@ -55,8 +58,12 @@ return
 	{
 		{selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{group_sep, "$short", group_sep},
+		{group_sep, "repeat/flush", group_sep},
 		{"X"},
-		m1 = {[3] = "forget #csel"}
+		m1 = {
+			[3] = "repeat #csel flush",
+			[4] = "forget #csel"
+		}
 	},
 
 -- powerline glyphs for easy cut'n'paste:   
@@ -65,33 +72,37 @@ return
 		{ collapse_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{ group_sep, "$view"},
 		{ group_sep, "$full"},
+		prefix = {fmt_sep, "[", fmt_data},
+		suffix = {fmt_sep, "]", fmt_data}
 	},
 
 -- similar to job_bar but no click-groups so only one level of tables
 -- possible specials defined in base/promptmeta.lua
 	prompt_focus =
 	{
-		"[",
+		"$begin",
 		function() return os.date("%H:%M:%S") end,
-		"]",
---		"[",
---		"$battery_charging",
---		"$battery_pct",
---		"% ",
---		"$battery_power",
---		"W]",
-		"[",
+--		"$begin",
+--		"$battery_charging $battery_pct % $battery_power W",
+		"$begin",
 		"$jobs",
-		"] ",
+		"$begin",
+		"$builtin_name",
+		"$end",
+		" > ",
+		fmt_data,
 		"$lastdir",
-		"# "
+		"# ",
+		prefix = {fmt_sep, "[", fmt_data},
+		suffix = {fmt_sep, "]", fmt_data}
 	},
 
 	prompt =
 	{
-		"[",
+		"$begin",
 		"$lastdir",
-		"]",
+		prefix = {fmt_sep, "<", fmt_data},
+		suffix = {fmt_sep, ">", fmt_data}
 	},
 
 	readline =
