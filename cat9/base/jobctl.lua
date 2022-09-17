@@ -860,6 +860,7 @@ local function view_set(job, view, slice, state, name)
 	job.slice = slice or cat9.default_slice
 	job.row_offset = 0
 	job.col_offset = 0
+	cat9.flag_dirty()
 end
 
 -- make sure the expected fields are in a job, used both when importing from an
