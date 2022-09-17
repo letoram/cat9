@@ -52,6 +52,17 @@ function builtins.cd(step, opt)
 		else
 			cat9.add_message("job #" .. tostring(step.id) .. " doesn't have a working directory")
 		end
+
+-- allow cd #0 (4)
+		if type(opt) == "table" and opt.parg then
+			if #opt == 1 and tonumber(opt[1]) then
+				local subdir = step:slice(opt)
+				if subdir and subdir[1] then
+					cat9.chdir(string.gsub(subdir[1], "\n", ""))
+				end
+			end
+		end
+
 		last_dir = root:chdir()
 		return
 	end
@@ -89,9 +100,12 @@ function builtins.cd(step, opt)
 	last_dir = root:chdir()
 end
 
+-- cd [job or str]
+-- cd f
+-- cd f-
+-- cd #job (line) [ basically used for ls ]
 function suggest.cd(args, raw)
 	if #args > 2 then
-
 		if type(args[2]) == "string" then
 			if args[2] == "f" or args[2] == "f-" then
 				cat9.readline:suggest(cat9.prefix_filter(linearize(hist), args[3]), "word")
@@ -137,7 +151,7 @@ function suggest.cd(args, raw)
 			if flt then
 				set = cat9.prefix_filter(set, flt, offset)
 			end
-			cat9.readline:suggest(set, "substitute", "cd " .. prefix, "/")
+			cat9.readline:suggest(set, "substitute", "cd \"" .. prefix, "/\"")
 		end
 	)
 end
