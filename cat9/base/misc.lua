@@ -484,8 +484,12 @@ function cat9.template_to_str(template, helpers, ...)
 			end
 
 -- functions are just executed and expected to return string or nil
+-- and only a string with non-whitespace characters are considered
 		elseif type(v) == "function" then
-			table.insert(queue or res, v(cat9))
+			local fret = v(cat9)
+			if fret and string.find(fret, "%S") then
+				table.insert(queue or res, fret)
+			end
 		else
 			cat9.add_message("bad member in prompt")
 		end
@@ -504,16 +508,32 @@ function cat9.table_copy_shallow(intbl)
 	return outtbl
 end
 
+local function escape(line, expand)
+	if not expand then
+		return line
+	end
+
+	if string.find(line, " ") or string.find(line, "\"") then
+		return '"' .. string.trim(string.gsub(line, "\"", "\\\"")) .. '"'
+	end
+
+	return line
+end
+
 -- this also takes parg on table with slicing into account
-function cat9.expand_string_table(intbl, cap)
+function cat9.expand_string_table(intbl, cap, expand)
 -- treat as a FIFO
 	local out = {}
+	local count = 0
+
 	while #intbl > 0 do
 		local item = table.remove(intbl, 1)
+		local as_string = escape(tostring(item), expand)
 
 -- just a simple literal?
-		if type(item) == "string" or tostring(item) then
-			table.insert(out, tostring(item))
+		if type(item) ~= "table" and as_string then
+			table.insert(out, as_string)
+			count = count + #as_string
 
 -- a job that needs to be sliced out
 		elseif type(item) == "table" and item.slice then
@@ -529,18 +549,16 @@ function cat9.expand_string_table(intbl, cap)
 
 -- abort on overflow
 			if set then
-				if #set + #out > cap then
-					return nil, "capacity limit exceeded"
-				end
-
-				for _,v in ipairs(out) do
+-- merge
+				for _,v in ipairs(set) do
+					v = escape(tostring(v), expand)
+					count = count + #v
 					table.insert(out, v)
 				end
-
--- or an unhandled / unknown entry
-			else
-				return nil, "unexpected type in arguments"
 			end
+-- or an unhandled / unknown entry
+		else
+			return nil, "unexpected type in arguments"
 		end
 	end
 
