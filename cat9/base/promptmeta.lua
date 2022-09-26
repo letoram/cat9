@@ -171,6 +171,13 @@ function()
 	end
 end
 
+cat9.promptmeta["builtin_status"] =
+function()
+	if cat9.builtins["_status"] then
+		return cat9.builtins["_status"]()
+	end
+end
+
 cat9.promptmeta["battery_charging"] =
 function()
 	battery:synch()

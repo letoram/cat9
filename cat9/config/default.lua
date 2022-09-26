@@ -82,13 +82,15 @@ return
 	{
 		"$begin",
 		function() return os.date("%H:%M:%S") end,
---		"$begin",
---		"$battery_charging $battery_pct % $battery_power W",
 		"$begin",
+--		"$battery_charging $battery_pct % $battery_power W",
+--		"$begin",
 		"$jobs",
 		"$begin",
 		"$builtin_name",
-		"$end",
+		"$builtin_status",
+		"$dynamic", -- insertion point for any builtins that attach itself
+		"$end", -- force stop any remaining group
 		" > ",
 		fmt_data,
 		"$lastdir",

@@ -555,9 +555,11 @@ function cat9.parse_string(rl, line)
 -- this prevents the builtins from being part of a pipeline which might
 -- not be desired - like cat something | process something | open @in vnew
 	local res
-	if cat9.builtins[commands[1]] then
+	local cmd = commands[1]
+
+	if string.sub(cmd, 1, 1) ~= "_" and cat9.builtins[cmd] then
 		cat9.stdin = inp
-		res = cat9.builtins[commands[1]](unpack(commands, 2))
+		res = cat9.builtins[cmd](unpack(commands, 2))
 		cat9.stdin = nil
 		return res
 	elseif cat9.builtins["_default"] then

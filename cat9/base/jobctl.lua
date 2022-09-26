@@ -688,6 +688,40 @@ function cat9.view_err(job, ...)
 	return raw_view(job, job.err_buffer, ...)
 end
 
+local function do_line(dst, v, lookup)
+	local num = tonumber(v)
+
+	if num then
+		local line, bc, lc = lookup(num)
+		table.insert(dst, line)
+		dst.bytecount = dst.bytecount + bc
+		dst.linecount = dst.linecount + lc
+		return true
+	end
+
+	local set = string.split(v, "-")
+	local err = "bad / malformed range"
+	if #set ~= 2 then
+		return nil, err
+	end
+
+	local a = tonumber(set[1])
+	local b = tonumber(set[2])
+	if not a or not b then
+		return nil, err
+	end
+
+	local step = a > b and -1 or 1
+	for i=a,b,step do
+		local line, bc, lc = lookup(i)
+		table.insert(dst, line)
+		dst.bytecount = dst.bytecount + bc
+		dst.linecount = dst.linecount + lc
+	end
+
+	return true
+end
+
 function cat9.resolve_lines(job, dst, lines, lookup)
 	if not lines or #lines == 0 then
 		return lookup()
@@ -709,35 +743,22 @@ function cat9.resolve_lines(job, dst, lines, lookup)
 		return dst
 	end
 
+-- enumerate the set and pass through lookup
 	for _, v in ipairs(lines) do
-		local num = tonumber(v)
-		if num then
-			local line, bc, lc = lookup(num)
-			table.insert(dst, line)
-			dst.bytecount = dst.bytecount + bc
-			dst.linecount = dst.linecount + lc
 
-		elseif type(v) == "string" then
-
-			local set = string.split(v, "-")
-			local err = "bad / malformed range"
-			if #set ~= 2 then
-				return nil, err
+-- special case for nested (1,2,3)
+		if string.find(v, ",") then
+			for _, v in ipairs(string.split(v, ",")) do
+				local ok, err = do_line(dst, v, lookup)
+				if not ok then
+					return false, err
+				end
 			end
-
-			local a = tonumber(set[1])
-			local b = tonumber(set[2])
-
-			if not a or not b then
+		else
+-- and regular processing for what is num or range as 1-5
+			local ok, err = do_line(dst, v, lookup)
+			if not ok then
 				return nil, err
-			end
-
-			local step = a > b and -1 or 1
-			for i=a,b,step do
-				local line, bc, lc = lookup(i)
-				table.insert(dst, line)
-				dst.bytecount = dst.bytecount + bc
-				dst.linecount = dst.linecount + lc
 			end
 		end
 	end

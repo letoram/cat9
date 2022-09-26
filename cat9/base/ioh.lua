@@ -49,6 +49,62 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 	cat9.flag_dirty()
 end
 
+local function alias_expand()
+	if not cat9.readline then
+		return
+	end
+
+-- easy case, direct alias match
+	local str = cat9.readline:get()
+	if cat9.aliases[str] then
+		cat9.readline:set(cat9.aliases[str])
+		return
+	end
+
+-- otherwise scan existing to whitespace and try with last (this should
+-- use cursor logical position but the readline widget doesn't expose)
+	local pos = 1
+	for i=#str,1,-1 do
+		if string.sub(str, i, i) == " " then
+			pos = i+1
+			break
+		end
+	end
+
+	if pos == 1 or pos >= #str then
+		return
+	end
+
+-- try the substring for alias
+	local sub = string.sub(str, pos)
+	if cat9.aliases[sub] then
+		cat9.readline:set(string.sub(str, 1, pos-1) .. cat9.aliases[sub])
+		return
+	end
+
+-- lastly try to expand string table into arguments and swap out the string
+-- though we don't currently support groups the entire way through (a | b )
+-- this would break from that since the linking semantics fail.
+-- Should be just to iterate over strset, figure out the linker and
+-- reinject that character though.
+--
+-- The expand_item_cap here is just some kind of arbitrary boundary safeguard,
+-- expanding the wrong range into a huge command-line.
+	local set, _, _ = cat9.tokenize_resolve(str)
+	local expand_item_cap = 4096
+	if set then
+		local strset, err = cat9.expand_string_table(set[1], expand_item_cap, true)
+-- expand string table will only give us resolved symbols, sliced out jobs
+-- but possibly expanded strings are not escaped, so add that to those where
+-- needed.
+		if strset then
+			cat9.readline:set(table.concat(strset, " "))
+		else
+			cat9.add_message(err)
+		end
+	end
+end
+
 -- custom keybinds go here (or forward routing to selected window)
 function handlers.key(self, sub, keysym, code, mods)
 	if bit.band(mods, tui.modifiers.CTRL) > 0 then
@@ -62,35 +118,9 @@ function handlers.key(self, sub, keysym, code, mods)
 				cat9.setup_readline(root)
 			end
 			return
+
 		elseif keysym == tui.keys.SPACE then
-
--- easy case, direct alias match
-			if cat9.readline then
-				local str = cat9.readline:get()
-				if cat9.aliases[str] then
-					cat9.readline:set(cat9.aliases[str])
-					return
-				end
-
--- otherwise scan existing to whitespace and try with last (this should
--- use cursor logical position but the readline widget doesn't expose)
-				local pos = 1
-				for i=#str,1,-1 do
-					if string.sub(str, i, i) == " " then
-						pos = i+1
-						break
-					end
-				end
-				if pos == 1 or pos >= #str then
-					return
-				end
-
--- try the substring for alias
-				local sub = string.sub(str, pos)
-				if cat9.aliases[sub] then
-					cat9.readline:set(string.sub(str, 1, pos-1) .. cat9.aliases[sub])
-				end
-			end
+			alias_expand()
 
 		elseif cat9.bindings[keysym] then
 			cat9.parse_string(false, cat9.bindings[keysym])
