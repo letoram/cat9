@@ -140,7 +140,9 @@ local function load_builtins(base)
 
 	builtin_completion = {}
 	for k, _ in pairs(cat9.builtins) do
-		table.insert(builtin_completion, k)
+		if string.sub(k, 1, 1) ~= "_" then
+			table.insert(builtin_completion, k)
+		end
 	end
 	table.sort(builtin_completion)
 
