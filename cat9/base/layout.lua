@@ -92,6 +92,27 @@ function cat9.id_to_job(id)
 			return v
 		end
 	end
+
+	if num >= 0 then
+		return
+	end
+
+-- build a table of visible jobs, and sort based on monotonic id (creation)
+-- then delete based on the size of that set
+	num = num * -1
+	local set = {}
+	for _,v in ipairs(lash.jobs) do
+		if not v.hidden then
+			table.insert(set, {v.monotonic_id, v})
+		end
+	end
+
+	table.sort(set, function(a, b) return a[1] < b[1]; end)
+
+	local ofs = #set - num + 1
+	if set[ofs] then
+		return set[ofs][2]
+	end
 end
 
 -- resolve a grid coordinate to the header of a job,

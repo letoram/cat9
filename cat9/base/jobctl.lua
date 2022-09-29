@@ -887,6 +887,7 @@ end
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
+local counter = 0
 function cat9.import_job(v, noinsert)
 	if not v.collapsed_rows then
 		v.collapsed_rows = config.collapsed_rows
@@ -997,6 +998,9 @@ function cat9.import_job(v, noinsert)
 	if not v.id and not v.hidden then
 		v.id = find_lowest_free()
 	end
+
+	counter = counter + 1
+	v.monotonic_id = counter
 
 -- mark latest one as expanded, and the previously 'latest' back to collapsed
 	if config.autoexpand_latest and not v.hidden then
