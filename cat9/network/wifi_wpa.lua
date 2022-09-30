@@ -482,7 +482,7 @@ function(dev, dstkey, cmd)
 			local kvs = {}
 			for _,v in ipairs(lines) do
 				local kvp = string.split(v, "=")
-				kvs[kvp[1]] = kvp[2] or true
+				kvs[string.lower(kvp[1])] = kvp[2] or true
 			end
 			dev[dstkey] = kvs
 		end
@@ -562,21 +562,32 @@ local function build_status_string(dev, set)
 	if dev.status.wpa_state and set.state then
 		if dev.status.wpa_state == "SCANNING" then
 			res = res .. ":scan"
+		elseif dev.status.wpa_state == "CONNECTED" then
+			res = res .. ":wifi-ok"
 		end
 	end
 
--- address
--- uuid
--- ip
+	if set.signal and dev.signal and dev.signal.rssi then
+		res = res .. ":" .. dev.signal.rssi .. " dBm"
+	end
+
+	if set.ip and dev.status.ip_address then
+		res = res .. ":" .. dev.status.ip_address
+	end
+
+	if set.ssid and dev.status.ssid then
+		res = res .. ":" .. dev.status.ssid
+	end
+
 	if dev.status.freq and set.band and tonumber(dev.status.freq) then
 		local num = tonumber(dev.status.freq) * 0.001
 		res = string.format("%s:%.2f GHz", res, num)
 	end
 
-	return ""
+	return res
 end
 
-function builtin_split.monitor(dev, mode)
+function builtin_split.monitor(dev, mode, ...)
 	if mode == "prompt" then
 
 -- disable the one we have
@@ -602,7 +613,17 @@ function builtin_split.monitor(dev, mode)
 
 		local counter = 10
 		poll_cmd(dev, "status", "STATUS")
-		poll_cmd(dev, "signal", "POLL_SIGNAL")
+		poll_cmd(dev, "signal", "SIGNAL_POLL")
+
+		local set = {ip = true, signal = true, state = true}
+-- custom set?
+		local argv = {...}
+		if #argv > 0 then
+			set = {}
+			for _,v in ipairs(argv) do
+				set[v] = true
+			end
+		end
 
 -- just some rough timer, don't want to spam this
 		dev.have_prompt =
@@ -610,11 +631,11 @@ function builtin_split.monitor(dev, mode)
 			counter = counter - 1
 			if counter == 0 then
 				poll_cmd(dev, "status", "STATUS")
-				poll_cmd(dev, "signal", "POLL_SIGNAL")
+				poll_cmd(dev, "signal", "SIGNAL_POLL")
 				counter = 10
 			end
 
-			return build_status_string(dev, "")
+			return build_status_string(dev, set)
 		end
 
 		table.insert(config.prompt_focus, insert_ind, dev.have_prompt)

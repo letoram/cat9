@@ -117,6 +117,11 @@ These get numeric identifiers and are referenced by a pound sign:
     find /tmp
     repeat #0 flush
 
+These pounds can also use relative addresses, #-2 would point to the second
+latest job to be created. There are also special jobs, like #csel pointing to
+the currently cursor-selected job, and #last pointing to the latest created
+job.
+
 Most builtin commands use job references in one way or another. The context of
 these jobs, e.g. environment variables and path is tracked separately. By
 starting a command with a job reference, the current context is temporarily
@@ -153,7 +158,44 @@ for those clients, start with p! like so:
     p!vim
 
 These will default switch to 'view wrap vt100' that has a rudimentary terminal
-emulator state machine that need some more work (see base/vt100\*)
+emulator state machine that need some more work (see base/vt100\*).
+
+Data can be sliced out of a job into the current command-line with ctrl+space:
+
+    rm #0(1,3)
+
+and pressing ctrl+space would copy lines 1 and 3 and expand them into the
+current command line. This argument format is also supported by some builtins,
+typing:
+
+    copy #0(1-5)
+
+and pressing enter would copy the lines 1 to 5 into a new job.
+
+## Customisation
+
+The config/default.lua file can be edited to change presentation, layout and
+similar options, including the formats for prompts and titlebars. Most of these
+options can also be reached at runtime via the 'config' builtin, further below.
+
+Keybindings and mouse button presses act just like lines typed on the prompt,
+but are defined in the config/bindings.lua file. Keybindings are activated on
+ctrl+[key]. The following:
+
+    bnd[tui.keys.A] = "forget #-1"
+
+would create a binding that whenever ctrl-A is pressed, the latest job created
+would be removed.
+
+Mouse buttons are similar, but the 'key' is slightly more complex as they are
+split based on where you are clicking (titlebar, data body, ...). The currently
+most complex binding looks something like this:
+
+    bnd.m2_data_col_click = "view #csel select $=crow"
+
+Would apply the builtin view command on the mouse-selected job at the current
+row offset if the second mouse button was clicked on the first column
+(line-number).
 
 ## Builtins
 
