@@ -31,7 +31,6 @@ local function show_ptn(job, ...)
 end
 
 local function slice_ptn(job, lines, set)
-	local data = set or job.data
 	local res =
 	{
 		bytecount = 0,
