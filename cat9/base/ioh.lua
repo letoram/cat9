@@ -361,6 +361,31 @@ function cat9.reset()
 	cat9.flag_dirty()
 end
 
+-- check if two prompts resolve to the same set of strings and attributes
+local function diff_prompt(a, b)
+	if not a or not b or #a ~= #b then
+		return true
+	end
+
+	for i,v in ipairs(a) do
+		if type(v) ~= type(b[i]) then
+			return true
+		end
+
+		if type(v) == "table" then
+			local ab = b[i]
+			for k, v in pairs(v) do
+				if ab[k] ~= v then
+					return true
+				end
+			end
+
+		elseif v ~= b[i] then
+			return true
+		end
+	end
+end
+
 -- use for monotonic scrolling (drag+select on expanded?) and dynamic prompt
 local clock = 10
 function handlers.tick()
@@ -368,7 +393,11 @@ function handlers.tick()
 	clock = clock - 1
 
 	if clock == 0 then
-		cat9.flag_dirty()
+		local prompt = cat9.get_prompt()
+		if diff_prompt(prompt, cat9.last_prompt) then
+			cat9.last_prompt = prompt
+			cat9.flag_dirty()
+		end
 		clock = 10
 	end
 
