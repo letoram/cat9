@@ -800,7 +800,7 @@ end
 local function find_lowest_free()
 	local lowest = 0
 	for _,v in ipairs(lash.jobs) do
-		if not v.hidden and v.id >= lowest then
+		if v.id and v.id >= lowest then
 			lowest = v.id + 1
 		end
 	end
@@ -866,10 +866,15 @@ function(intbl)
 	root:chdir(dir)
 end
 
-local function hide_job(job)
-	if not job.hidden then
-		cat9.activevisibile = cat9.activevisible - 1
+local function hide_job(job, show)
+	if not job.hidden and not show then
+		cat9.activevisible = cat9.activevisible - 1
 		job.hidden = true
+		cat9.flag_dirty()
+	elseif job.hidden and show then
+		job.hidden = false
+		cat9.activevisible = cat9.activevisible + 1
+		cat9.flag_dirty()
 	end
 end
 

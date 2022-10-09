@@ -51,7 +51,7 @@ function(job, ...)
 
 -- for edit we hook into job creation, substitute in our new argv then call reset
 	if opts.edit then
-		cat9.switch_env(job, "(#" .. job.id .. " : " .. job.dir .. " ) ")
+		cat9.switch_env(job, {"(#" .. job.id .. " : " .. job.dir .. " ) "})
 		local old_setup = cat9.setup_shell_job
 
 -- this can come asynch due to arguments not resolving immediately, so let

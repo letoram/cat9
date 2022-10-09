@@ -234,7 +234,7 @@ local function rows_for_job(job, cols, rows)
 		end
 
 		if job.expanded then
-			return wrows
+			return wrows + 1
 		end
 
 		return cap > wrows and wrows or cap
