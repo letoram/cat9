@@ -551,7 +551,7 @@ function cat9.remove_job(job)
 	for i=#lash.jobs,1,-1 do
 		if not lash.jobs[i].hidden then
 			cat9.latestjob = lash.jobs[i]
-			cat9.latestjob.expanded = -1
+			cat9.latestjob.expanded = true
 			break
 		end
 	end
@@ -576,7 +576,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	if job.expanded then
 		lc = lc > rows and rows or lc
 	else
-		lc = lc < job.collapsed_rows and lc or job.collapsed_rows
+		lc = lc > job.collapsed_rows and job.collapsed_rows or lc
 	end
 
 -- and if we are probing, don't draw
@@ -664,7 +664,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		end
 
 -- expanding tabs should go here, be configured per job and allow
--- shenanigans like tabstobs
+-- shenanigans like tabstobs or other markers e.g. -->
 --		row:gsub("\t", "  ")
 
 		if #row > ccols then
@@ -1005,11 +1005,11 @@ function cat9.import_job(v, noinsert)
 -- mark latest one as expanded, and the previously 'latest' back to collapsed
 	if config.autoexpand_latest and not v.hidden then
 		if cat9.latestjob then
-			cat9.latestjob.expanded = nil
+			cat9.latestjob.expanded = false
 			cat9.latestjob = v
 		end
 		cat9.latestjob = v
-		v.expanded = -1
+		v.expanded = true
 	end
 
 -- keep linefeeds, we strip ourselves

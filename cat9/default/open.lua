@@ -26,10 +26,13 @@ local mime_prefix =
 	text  = "proto=text"
 }
 
-local function fname_to_decode(cat9, dstenv, fn, closure)
+local function fname_to_decode(cat9, root, dstenv, wdir, fn, closure)
 	if cat9.scanner_active then
 		cat9.stop_scanner()
 	end
+
+	local dir = root:chdir()
+	root:chdir(wdir)
 
 	cat9.set_scanner(
 		{"/usr/bin/file", "file", "-b", "--mime-type", fn},
@@ -56,8 +59,11 @@ local function fname_to_decode(cat9, dstenv, fn, closure)
 			end
 		end
 	)
+
+	root:chdir(dir)
 end
 
+local embed_handlers = {}
 local function spawn_trigger(cat9, root, wndtype, spawn, trigger)
 -- the 'embed' spawn method is special as we need to create a control job in
 -- order to position and size the embedding
@@ -79,21 +85,31 @@ end
 return
 function(cat9, root, builtins, suggest)
 
+function embed_handlers.resized(wnd)
+	cat9.flag_dirty()
+end
+
 -- asynch query file on the file to figure out which 'proto' type to
 -- handover exec/spawn. More oracles are needed here (eg. arcan appl,
 -- xdg-open, arcan-wayland, default browser ...)
-local function open_string(file, spawn)
+local function open_string(file, spawn, context)
 	local dstenv = {}
 
 	if not spawn then
 		spawn = cat9.config.open_spawn_default
 	end
 
+	local wdir = context and context.dir or root:chdir()
+
 -- handover to the decoder, create a job for tracking and as anchor if
 -- we are supposed to embed
 	trigger =
 	function(par, wnd)
+		local dir = root:chdir()
+		root:chdir(wdir)
 		local _, _, _, pid = par:phandover("/usr/bin/afsrv_decode", "", {}, dstenv)
+		root:chdir(dir)
+
 		if not pid then
 			wnd:close()
 			return
@@ -106,9 +122,11 @@ local function open_string(file, spawn)
 
 		if spawn == "embed" then
 			job.wnd = wnd
+			wnd:set_handlers(embed_handlers)
 		else
 			job.hidden = true
 		end
+
 		cat9.import_job(job)
 		job.collapsed_rows = cat9.config.open_embed_collapsed_rows
 		return true
@@ -118,7 +136,7 @@ local function open_string(file, spawn)
 -- turn modifies dstenv to match file and then queues the new window and runs
 -- 'trigger'.
 	fname_to_decode(
-	cat9, dstenv, file,
+	cat9, root, dstenv, wdir, file,
 		function()
 			spawn_trigger(cat9, root, "handover", spawn, trigger)
 		end
@@ -134,7 +152,7 @@ function builtins.open(file, ...)
 	local opts = {...}
 	local spawn = false
 	local spawn_suffix = ""
-	local parg = {}
+	local context = nil
 
 	if type(opts[1]) == "table" and opts[1].parg then
 		parg = table.remove(opts, 1)
@@ -143,6 +161,9 @@ function builtins.open(file, ...)
 	for _,v in ipairs(opts) do
 		if dir_lut[v] then
 			spawn = dir_lut[v]
+
+-- embed exists in a synchronous form as well that provides feedback on sizing
+-- synchronised to updates
 		elseif v == "sync" then
 			spawn_suffix = "-sync"
 		end
@@ -152,19 +173,14 @@ function builtins.open(file, ...)
 		spawn = spawn .. spawn_suffix
 	end
 
--- if we have parg then slice out and treat as individual files,
--- this should probably result in a chain-open or as a playlist.
---
--- both are somewhat painful to get working so just handle the
--- first for now.
-	for i=#parg,1,-1 do
-		local num = tonumber(parg[i])
-		if not num and num ~= "-" then
-			table.remove(parg, i)
-		end
-	end
-	if #parg == 1 then
-		file = file:slice(parg)[1]
+-- if we have parg then slice out and treat as individual files. right now this
+-- ignores ranges and so on, though should likely set this up as either a
+-- playlist or let the spawn permit multiple, just not have open #0(1-1000) a
+-- thousand windows.
+	if type(file) == "table" and parg then
+		context = file
+		local set = file:slice(parg)
+		file = set[1]
 		if file then
 			file = string.gsub(file, "\n", "")
 		end
@@ -212,7 +228,7 @@ function builtins.open(file, ...)
 		spawn_trigger(cat9, root, "tui", spawn, trigger)
 
 	elseif type(file) == "string" then
-		open_string(file, spawn)
+		open_string(file, spawn, context)
 	end
 end
 

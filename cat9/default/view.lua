@@ -25,16 +25,12 @@ function viewlut.err(set, i, job)
 end
 
 function viewlut.expand(set, i, job)
-	job.expanded = -1
+	job.expanded = true
 	return i + 1
 end
 
 function viewlut.toggle(set, i, job)
-	if job.expanded ~= nil then
-		job.expanded = nil
-	else
-		job.expanded = -1
-	end
+	job.expanded = not job.expanded
 	return i + 1
 end
 
@@ -57,7 +53,7 @@ function viewlut.linenumber(set, i, job)
 end
 
 function viewlut.collapse(set, i, job)
-	job.expanded = nil
+	job.expanded = false
 end
 
 function viewlut.scroll(set, i, job)
@@ -104,7 +100,7 @@ local function view_monitor()
 	local job = cat9.import_job(job)
 	local oldam = cat9.add_message
 	local oldprint = print
-	job.expanded = -1
+	job.expanded = true
 
 	print =
 	function(...)

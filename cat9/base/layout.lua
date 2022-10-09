@@ -16,7 +16,6 @@ return function(cat9, root, config)
 local handlers = cat9.handlers
 
 function handlers.recolor()
-	cat9.redraw()
 	cat9.flag_dirty()
 end
 
@@ -24,7 +23,6 @@ function handlers.visibility(self, visible, focus)
 	cat9.visible = visible
 	cat9.focused = focus
 	cat9.flag_dirty()
-	cat9.redraw()
 end
 
 function handlers.resized()
@@ -37,8 +35,7 @@ function handlers.resized()
 	end
 
 	rowtojob = {{width = cols, x = 0}}
-
-	cat9.redraw()
+	cat9.flag_dirty()
 end
 
 local function inside(job, x, y)
@@ -225,26 +222,35 @@ function cat9.bytestr(count)
 end
 
 local function rows_for_job(job, cols, rows)
+	local cap = job.collapsed_rows
+
 	if job.wnd then
-		if job.expanded then
-			local _, wrows = job.wnd:dimensions()
-			if wrows <= 1 then
-				return rows + 1
-			end
-			return rows + 1
+		cap = config.open_embed_collapsed_rows
+
+-- this will only yield the current dimensions, cannot be used for hinting
+		local wcols, wrows = job.wnd:dimensions()
+		if wrows <= 1 then
+			wrows = 1
 		end
-		return config.open_embed_collapsed_rows + 1
+
+		if job.expanded then
+			return wrows
+		end
+
+		return cap > wrows and wrows or cap
 	end
 
+-- clamp
 	if not job.expanded then
-		rows = rows > job.collapsed_rows and job.collapsed_rows or rows
+		rows = rows > cap and cap or rows
 	end
 
 	return job:view(0, 0, cols, rows, true) + 1
 end
 
 local function draw_job(job, x, y, cols, rows, cc)
-	local rows = rows_for_job(job, cols, rows)
+	local rcap = rows - 1
+	rows = rows_for_job(job, cols, rows)
 	local len = 0
 
 	job.region = {x, y, x + cols, y}
@@ -256,74 +262,73 @@ local function draw_job(job, x, y, cols, rows, cc)
 	y = y + 1
 	rows = rows - 1
 
--- the default 'raw' view is defined inside jobctl, cap rows
-	if job.wnd then
+-- not more to do if we don't have an embedded/external window tied to us
+	if not job.wnd then
 		if not job.expanded then
-			rows = rows >
-				config.open_embed_collapsed_rows and
-				config.open_embed_collapsed_rows or rows
+			rows = rows > job.collapsed_rows and job.collapsed_rows or rows
 		end
-
-		local set = false
-		if not job.lasthint then
-			job.lasthint =
-			{
-				hidden = false,
-				max_rows = rows,
-				anchor_col = x,
-				anchor_row = y,
-				max_cols = cols - 1
-			}
-			set = true
-		end
-
-		local lh = job.lasthint
-
--- likely the most complex flow in all of this.
--- in the expanded for we hint the dimensions, display server forwards
--- to the client that resizes to the best of its effort, display server
--- hints presented size and we adjust the number of rows consumed.
-		local scale
-		if not job.expanded then
-			scale = true
-		else
-			scale = false
-			rows = rows - 1
-		end
-
--- only update if things have actually changed
-		if
-			lh.anchor_col ~= x or lh.anchor_row ~= y or
-			lh.max_rows ~= rows or lh.max_cols ~= cols or
-			lh.scale ~= scale then
-			set = true
-		end
-
-		if set then
-			lh.scale = scale
-			lh.anchor_row = y
-			lh.anchor_col = x
-			lh.max_rows = rows
-			lh.max_cols = cols
-			job.wnd:hint(root, lh)
-		end
-
-		y = y + rows
-		job.region[4] = y
-		return y + 1
-	end
-
-	if not job.expanded then
-		rows = rows > job.collapsed_rows and job.collapsed_rows or rows
-	end
 
 -- the row to job can probably be ignored eventually by just tracking
 -- visual set and scanning based on x, y, cols, rows
-	local ay = job:view(x, y, cols, rows)
-	job.region[4] = ay + y + 1
+		local ay = job:view(x, y, cols, rows)
+		job.region[4] = ay + y + 1
 
 -- return the number of consumed rows to the renderer
-	return ay + 1
+		return ay + 1
+	end
+
+-- the default 'raw' view is defined inside jobctl, cap rows
+	if not job.expanded then
+		rows = rows >
+			config.open_embed_collapsed_rows and
+			config.open_embed_collapsed_rows or rows
+
+		rcap = rcap >
+			config.open_embed_collapsed_rows and
+			config.open_embed_collapsed_rows or rows
+	end
+
+	local set = false
+	if not job.lasthint then
+		job.lasthint =
+		{
+			hidden = false,
+			anchor_col = x,
+			anchor_row = y,
+			max_cols = cols - 1,
+			max_rows = rcap,
+		}
+		set = true
+	end
+
+	local lh = job.lasthint
+
+-- likely the most complex flow in all of this.
+-- in the expanded form we hint the dimensions, display server forwards
+-- to the client that resizes to the best of its effort, display server
+-- hints presented size and we adjust the number of rows consumed
+	local scale = not job.expanded
+
+-- only update if things have actually changed
+	if
+		lh.anchor_col ~= x or lh.anchor_row ~= y or
+		lh.max_rows ~= rcap or lh.max_cols ~= cols or
+		lh.scale ~= scale then
+		set = true
+	end
+
+	if set and job.wnd then
+		lh.scale = scale
+		lh.anchor_row = y
+		lh.anchor_col = x
+		lh.max_rows = rcap
+		lh.max_cols = cols
+		job.wnd:hint(root, lh)
+	end
+
+	y = y + rows
+	job.region[4] = y
+	return rows + 2
 end
 
 function cat9.get_prompt()
@@ -345,7 +350,7 @@ layout_column(set, x, maxy, cols, rows, cc)
 				break
 			end
 		else
-			if rows < job.collapsed_rows + 1 then
+			if rows < job.collapsed_rows + config.job_pad then
 				break
 			end
 		end
@@ -353,12 +358,11 @@ layout_column(set, x, maxy, cols, rows, cc)
 
 -- get the number of rows the job will consume given the set cap (probe)
 		local pref = rows_for_job(job, cols, maxy - 1)
-		maxy = maxy - pref
 
 -- then set xy based on this and then move up with the padding
-		local nc = draw_job(job, x, maxy, cols, pref, cc)
+		local nc = draw_job(job, x, maxy - pref, cols, pref, cc)
 		rows = rows - nc - config.job_pad
-		maxy = maxy - config.job_pad
+		maxy = maxy - nc - config.job_pad
 	end
 end
 
@@ -463,7 +467,7 @@ function cat9.redraw()
 			last_row = last_row + 1
 		end
 
-	-- and the actual input / readline field
+-- and the actual input / readline field
 		if cat9.readline then
 			cat9.readline:bounding_box(0, last_row, cols, last_row)
 			cat9.readline:set_prompt(cat9.get_prompt())
@@ -509,5 +513,4 @@ function cat9.flag_dirty()
 	end
 	cat9.dirty = true
 end
-
 end
