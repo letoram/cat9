@@ -90,14 +90,28 @@ local function alias_expand()
 --
 -- The expand_item_cap here is just some kind of arbitrary boundary safeguard,
 -- expanding the wrong range into a huge command-line.
+--
+-- Another quirk is that setting the execution context
+-- (starting with a job reference that has no parg) should be kept verbatim
 	local set, _, _ = cat9.tokenize_resolve(str)
 	local expand_item_cap = 4096
 	if set then
-		local strset, err = cat9.expand_string_table(set[1], expand_item_cap, true)
+		local group = set[1]
+		local prefix = ""
+
+		if type(group[1]) == "table" and not group[1].parg and group[1].id then
+			prefix = "#" .. tostring(group[1].id)
+			table.remove(group, 1)
+		end
+
+		local strset, err = cat9.expand_string_table(group, expand_item_cap, true)
 -- expand string table will only give us resolved symbols, sliced out jobs
 -- but possibly expanded strings are not escaped, so add that to those where
 -- needed.
 		if strset then
+			if #prefix > 0 then
+				table.insert(strset, 1, prefix)
+			end
 			cat9.readline:set(table.concat(strset, " "))
 		else
 			cat9.add_message(err)

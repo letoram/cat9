@@ -67,17 +67,19 @@ List:
 
 Ui:
 - [ ] job history scroll
+- [ ] embed input routing
 - [p] persistence
   - [ ] history
 	- [ ] alias / favorites
 	- [ ] env
 	- [ ] contents
+- [ ] keybindings (config =bind symname cmd)
 - [ ] per command history
 - [ ] mouse select in buffer
 - [ ] mouse controls per view
 - [p] drag and drop
 - [ ] tray integration
-- [ ] readline suggestions " escaping
+- [p] readline suggestions " escaping
 - [ ] on builtin validation error, set highlight offset and cursor
 - [ ] live-update #0:
       repeat #0 live

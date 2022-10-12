@@ -89,6 +89,29 @@ function embed_handlers.resized(wnd)
 	cat9.flag_dirty()
 end
 
+local function find_job(wnd)
+	for _,v in ipairs(lash.jobs) do
+		if v.wnd == wnd then
+			return v
+		end
+	end
+end
+
+function embed_handlers.visibility(wnd, visible, focus)
+	local job = find_job(wnd)
+
+	if not job or not job.lasthint then
+		return
+	end
+
+-- this will cause a relayout which will send a new hint
+	job:hide(visible)
+	if job.lasthint.hidden ~= job.hidden then
+		job.lasthint.hidden = job.hidden
+		job.wnd:hint(root, job.lasthint)
+	end
+end
+
 -- asynch query file on the file to figure out which 'proto' type to
 -- handover exec/spawn. More oracles are needed here (eg. arcan appl,
 -- xdg-open, arcan-wayland, default browser ...)
@@ -107,7 +130,7 @@ local function open_string(file, spawn, context)
 	function(par, wnd)
 		local dir = root:chdir()
 		root:chdir(wdir)
-		local _, _, _, pid = par:phandover("/usr/bin/afsrv_decode", "", {}, dstenv)
+		local _, _, _, pid = par:phandover("/usr/bin/afsrv_decode", "", {"afsrv_decode"}, dstenv)
 		root:chdir(dir)
 
 		if not pid then
@@ -151,7 +174,6 @@ function builtins.open(file, ...)
 	local trigger
 	local opts = {...}
 	local spawn = false
-	local spawn_suffix = ""
 	local context = nil
 
 	if type(opts[1]) == "table" and opts[1].parg then
@@ -161,16 +183,7 @@ function builtins.open(file, ...)
 	for _,v in ipairs(opts) do
 		if dir_lut[v] then
 			spawn = dir_lut[v]
-
--- embed exists in a synchronous form as well that provides feedback on sizing
--- synchronised to updates
-		elseif v == "sync" then
-			spawn_suffix = "-sync"
 		end
-	end
-
-	if spawn then
-		spawn = spawn .. spawn_suffix
 	end
 
 -- if we have parg then slice out and treat as individual files. right now this
@@ -180,7 +193,7 @@ function builtins.open(file, ...)
 	if type(file) == "table" and parg then
 		context = file
 		local set = file:slice(parg)
-		file = set[1]
+		file = set and set[1]
 		if file then
 			file = string.gsub(file, "\n", "")
 		end

@@ -224,7 +224,7 @@ local function set_interactive(job)
 	cat9.readline:suggest({})
 	cat9.get_prompt =
 	function()
-		return "(filter)"
+		return {"(filter)"}
 	end
 	cat9:flag_dirty()
 end

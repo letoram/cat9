@@ -424,7 +424,7 @@ function cat9.suggest_history()
 			end
 		}))
 	cat9.get_prompt = function()
-		return "(history)"
+		return {"(history)"}
 	end
 	cat9.readline:suggest(true)
 	cat9.readline:suggest(lash.history)

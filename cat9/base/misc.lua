@@ -595,7 +595,13 @@ function cat9.switch_env(job, force_prompt)
 	if force_prompt then
 		cat9.get_prompt =
 		function()
-			return force_prompt
+			if type(force_prompt) == "string" then
+				return {force_prompt}
+			elseif type(force_prompt) == "table" then
+				return force_prompt
+			else
+				return {""}
+			end
 		end
 		if cat9.readline then
 			cat9.readline:set(job.raw)
