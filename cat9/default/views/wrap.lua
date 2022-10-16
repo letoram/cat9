@@ -188,6 +188,7 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 
 -- add the final linefeed to indicate that there is actually a newline
 		local count = break_line(res, row, prefix, cols, job.col_offset or 0, raw, attr)
+
 		if count > 0 then
 			total = total + count
 			table.insert(res, dataattr)
@@ -209,18 +210,15 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 
 -- get the number of lines that we can draw
 	local lc = set.linecount and set.linecount or 0
-	if job.expanded then
-		lc = lc > rows and rows or lc
-	else
-		lc = lc < job.collapsed_rows and lc or job.collapsed_rows
-	end
+	local rowcap = job.expanded and rows or job.collapsed_rows
+	lc = lc > rowcap and rowcap or lc
 
 	local ofs = job.row_offset
 	if lc >= set.linecount then
 		ofs = 0
 	end
 
-	if state.cap and state.cap < cols then
+	if state.cap and state.cap < cols and state.cap > 0 then
 		cols = state.cap
 	end
 
@@ -228,6 +226,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 -- early out - otherwise rebuild the split / absorbed set
 	local reduced, count
 	if job.wrap_cache and
+		job.wrap_cache.col_count == cols and
 		job.wrap_cache.linecount == set.linecount and
 		job.wrap_cache.col_offset == job.col_offset and
 		job.wrap_cache.show_line_number == job.show_line_number and
@@ -243,13 +242,16 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 			row_offset = job.row_offset,
 			show_line_number = job.show_line_number,
 			reduced = reduced,
-			count = count
+			count = count,
+			col_count = cols
 		}
 	end
 
 	if probe then
 		return count
 	end
+
+	lc = count > rowcap and rowcap or count
 
 -- sweep reduced
 	local attr

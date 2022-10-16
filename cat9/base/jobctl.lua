@@ -859,8 +859,8 @@ function(intbl)
 
 	local dir = root:chdir(tbl.dir)
 	local job2 = cat9.setup_shell_job(
-		tbl.args, tbl.mode, tbl.env, tbl.raw, {job = tbl},
-		{passive = true}
+		tbl.args, tbl.mode, tbl.env, tbl.raw, {job = tbl,
+		passive = tbl.factory_mode == "manual"}
 	)
 
 	root:chdir(dir)
