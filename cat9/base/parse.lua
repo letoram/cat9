@@ -542,7 +542,7 @@ function cat9.parse_string(rl, line)
 
 	if type(commands[1]) == "table" then
 		local tbl = table.remove(commands, 1)
-		cat9.switch_env(tbl)
+		cat9.switch_env(tbl, nil, commands[1])
 
 -- just switch context
 		if #commands == 0 then
