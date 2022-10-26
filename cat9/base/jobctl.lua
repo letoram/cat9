@@ -533,8 +533,6 @@ function cat9.remove_job(job)
 		return false
 	end
 
-	cat9.latestjob = nil
-
 	if cat9.clipboard_job == job then
 		cat9.clipboard_job = nil
 	end
@@ -544,16 +542,21 @@ function cat9.remove_job(job)
 	job.dead = true
 
 -- if this job last, let the previous job autofill
-	if cat9.latestjob ~= job or not config.autoexpand_latest then
+	if cat9.latestjob ~= job then
 		return true
 	end
+
+	cat9.latestjob = nil
 
 	for i=#lash.jobs,1,-1 do
 		if not lash.jobs[i].hidden then
 			cat9.latestjob = lash.jobs[i]
-			cat9.latestjob.expanded = true
 			break
 		end
+	end
+
+	if cat9.latestjob and config.autoexpand_latest then
+		cat9.latestjob.expanded = true
 	end
 
 	return found
@@ -1008,13 +1011,16 @@ function cat9.import_job(v, noinsert)
 	v.monotonic_id = counter
 
 -- mark latest one as expanded, and the previously 'latest' back to collapsed
-	if config.autoexpand_latest and not v.hidden then
-		if cat9.latestjob then
+	if not v.hidden then
+		if config.autoexpand_latest and cat9.latestjob then
 			cat9.latestjob.expanded = false
-			cat9.latestjob = v
 		end
+
 		cat9.latestjob = v
-		v.expanded = true
+
+		if config.autoexpand_latest then
+			cat9.latestjob.expanded = true
+		end
 	end
 
 -- keep linefeeds, we strip ourselves
