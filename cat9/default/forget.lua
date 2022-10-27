@@ -210,16 +210,8 @@ function suggest.forget(args, raw)
 	local set = {}
 	local cmd = args[#args]
 
-	for _,v in ipairs(lash.jobs) do
-		if not v.pid and not v.hidden then
-			table.insert(set, "#" .. tostring(v.id))
-			if v.alias then
-				table.insert(set, "#" .. v.alias)
-			end
-		end
-	end
-
 	if #args == 2 then
+		cat9.add_job_suggestions(set, false)
 		table.insert(set, "all-passive")
 		table.insert(set, "all-bad")
 		table.insert(set, "all-hard")
@@ -228,7 +220,6 @@ function suggest.forget(args, raw)
 
 	if #args == 3 and args[2] == "lines" then
 		cat9.add_job_suggestions(set, false)
-		return
 	elseif #args > 3 and args[2] == "lines" then
 -- add_message for line-number bounds?
 		cat9.readline:suggest({})

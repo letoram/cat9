@@ -90,11 +90,9 @@ function(args, raw)
 		return
 	end
 
-	for _,v in ipairs(lash.jobs) do
-		if not v.pid and not v.hidden then
-			table.insert(set, "#" .. tostring(v.id))
-		end
-	end
+	cat9.add_job_suggestions(set, false, function(job)
+		return not job.pid
+	end)
 
 	cat9.readline:suggest(set, "word")
 end
