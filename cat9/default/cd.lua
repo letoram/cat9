@@ -130,11 +130,11 @@ function suggest.cd(args, raw)
 -- special case, job references
 	if string.sub(raw, 4, 4) == "#" then
 		local set = {}
-		for _,v in ipairs(lash.jobs) do
-			if v.dir and v.id then
-				table.insert(set, "#" .. tostring(v.id))
-			end
-		end
+
+		cat9.add_job_suggestions(set, false, function(job)
+			return job.dir ~= nil
+		end)
+
 		cat9.readline:suggest(cat9.prefix_filter(set, string.sub(raw, 4)), "word")
 		return
 	end

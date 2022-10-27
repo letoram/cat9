@@ -51,6 +51,7 @@ end
 
 function suggest.signal(args, raw)
 	local set = {}
+
 	if #args > 3 then
 		cat9.add_message("signal #jobid signal : too many arguments")
 		return
@@ -61,11 +62,11 @@ function suggest.signal(args, raw)
 		return
 	end
 
-	for _,v in ipairs(lash.jobs) do
-		if v.pid and not v.hidden then
-			table.insert(set, "#" .. tostring(v.id))
-		end
-	end
+	cat9.add_job_suggestions(set, false, function(job)
+		return job.pid ~= nil
+	end)
+
+	cat9.readline:suggest(set, "word")
 end
 
 end
