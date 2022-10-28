@@ -337,12 +337,7 @@ local function suggest_for_src(args, raw)
 	table.insert(set, "pick:")
 	table.insert(set, "./")
 	table.insert(set, "/")
-
-	for _,v in ipairs(lash.jobs) do
-		if not v.hidden then
-			table.insert(set, "#" .. tostring(v.id))
-		end
-	end
+	cat9.add_job_suggestions(set, false)
 
 	cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
 	return

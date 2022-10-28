@@ -118,12 +118,9 @@ end
 
 function suggest.trigger(args, raw)
 	local set = {}
+
 	if #args == 2 then
-		for _,v in ipairs(lash.jobs) do
-			if not v.hidden then
-				table.insert(set, "#" .. tostring(v.id))
-			end
-		end
+		cat9.add_job_suggestions(set, false)
 		cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
 	elseif #args == 3 then
 		cat9.readline:suggest(cat9.prefix_filter({"ok", "fail"}, args[3]), "word")
