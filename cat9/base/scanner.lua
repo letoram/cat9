@@ -47,28 +47,15 @@ function cat9.set_scanner(path, closure)
 		print(debug.traceback())
 	end
 	cat9.scanner.closure = closure
-
--- mark as hidden so it doesn't clutter the UI or consume job IDs but can still
--- re-use event triggers an asynch processing
-	local job =
-	{
-		out = out,
-		pid = pid,
-		hidden = true,
-	}
-
-	cat9.import_job(job)
-	out:lf_strip(true)
-
--- append as closure so it'll be triggers just like any other job completion
-	table.insert(job.closure,
-	function(id, code)
-		cat9.scanner.pid = nil
-		if cat9.scanner.closure then
-			cat9.scanner.closure(job.data)
+	cat9.add_background_job(
+		out, pid, {lf_strip = true},
+		function(job, code)
+			cat9.scanner.pid = nil
+			if cat9.scanner.closure then
+				cat9.scanner.closure(job.data)
+			end
 		end
-	end)
-
+	)
 end
 
 -- This can be called either when invalidating an ongoing scanner by setting a
