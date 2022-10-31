@@ -233,7 +233,7 @@ local function finish_job(job, code)
 	local set = job.closure
 	job.closure = {}
 	for _,v in ipairs(set) do
-		v(job.id, code)
+		v(job, code)
 	end
 
 -- avoid polluting output history with simple commands that succeeded or failed
@@ -340,7 +340,6 @@ function
 	job.err_buffer = {}
 	job.inp_buffer = {}
 	job.short = args[2]
-	job.set_input = input_fn
 
 	if not job.dir then
 		job.dir = root:chdir()
@@ -488,6 +487,12 @@ function cat9.term_handover(cmode, ...)
 		end
 	end
 
+-- now we can toggle some afsrv_terminal args of our own, since this all
+-- goes by quite quickly, keep_alive is useful so one can see that the
+-- command/handover stage works
+
+	env["ARCAN_ARG"] = "keep_alive"
+
 	term_handover(cmode, env, "/usr/bin/afsrv_terminal", ...)
 end
 
@@ -570,17 +575,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	set.linecount = set.linecount or 0
 	local lc = set.linecount
 
--- on an empty :view() just return the dataset itself
-	if not x or not cols or not rows then
-		return set
-	end
-
--- otherwise the amount of consumed rows
-	if job.expanded then
-		lc = lc > rows and rows or lc
-	else
-		lc = lc > job.collapsed_rows and job.collapsed_rows or lc
-	end
+	lc = lc > rows and rows or lc
 
 -- and if we are probing, don't draw
 	if probe then
@@ -867,6 +862,25 @@ function(intbl)
 	)
 
 	root:chdir(dir)
+end
+
+function cat9.add_background_job(out, pid, opts, closure)
+	local job =
+	{
+		out = out,
+		pid = pid,
+		hidden = true
+	}
+
+	cat9.import_job(job)
+
+-- import will reset this
+	if opts.lf_strip then
+		out:lf_strip(opts.lf_strip)
+	end
+
+	table.insert(job.closure, closure)
+	return job
 end
 
 local function hide_job(job, show)

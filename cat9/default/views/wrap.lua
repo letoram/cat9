@@ -210,8 +210,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 
 -- get the number of lines that we can draw
 	local lc = set.linecount and set.linecount or 0
-	local rowcap = job.expanded and rows or job.collapsed_rows
-	lc = lc > rowcap and rowcap or lc
+	lc = lc > rows and rows or lc
 
 	local ofs = job.row_offset
 	if lc >= set.linecount then
@@ -250,8 +249,6 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 	if probe then
 		return count
 	end
-
-	lc = count > rowcap and rowcap or count
 
 -- sweep reduced
 	local attr
