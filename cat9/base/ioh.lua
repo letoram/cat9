@@ -347,16 +347,21 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		end
 	end
 
--- here is a possible spot for forwarding to the active view on the job
--- in order to have better click-action handlers
-
--- Then check if we should act special on the data region of a job,
--- first try a specific column (1 is line-number/meta, 2 is data).
+-- Then check if we should act special on the data region of a jo
 	local in_data = cat9.xy_to_data(x, y)
 	if not in_data then
 		return
 	end
 
+-- jobs spawned by certain builtins can have custom mouse handlers
+-- that take precedence
+	if job.handlers.mouse_button and
+		job.handlers.mouse_button(
+			job, index, x - job.last_col, y - job.last_row, mods, active) then
+		return
+	end
+
+-- then there are specific bindings for columns (e.g. click lineno)
 	if job.mouse and job.mouse.on_col then
 		if try("m%d_data_col%d_click", index, job.mouse.on_col) then
 			return
