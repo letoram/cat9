@@ -677,6 +677,10 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	return lc
 end
 
+function cat9.view_fmt_job(job, set, ...)
+	return raw_view(job, set, ...)
+end
+
 function cat9.view_raw(job, ...)
 	return raw_view(job, job.data, ...)
 end
