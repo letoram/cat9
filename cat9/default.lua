@@ -12,6 +12,7 @@ return
 	'env.lua',
 	'trigger.lua',
 	'input.lua',
+	'list.lua',
 	'views/wrap.lua',
 	'views/crop.lua',
 	'views/filter.lua',
