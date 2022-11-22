@@ -174,7 +174,7 @@ and pressing enter would copy the lines 1 to 5 into a new job.
 
 ## Customisation
 
-The config/default.lua file can be edited to change presentation, layout and
+The config/config.lua file can be edited to change presentation, layout and
 similar options, including the formats for prompts and titlebars. Most of these
 options can also be reached at runtime via the 'config' builtin, further below.
 
@@ -216,6 +216,10 @@ These also include a set of views. A view is a script that defines how to
 present the data within a job, and controls things like colour and formatting,
 optional elements like line numbers as well as wrapping behaviour.
 
+These have a separate config store that follows the pattern:
+
+    cat9/config/(basedir).lua
+
 The commands included in the default set are as follows:
 
 ### Input
@@ -241,7 +245,7 @@ on a process identifier (number).
     config key value
 
 The config options changes the runtime shell behavior configuration. It is
-populated by the keys and values in config/default.lua.
+populated by the keys and values in config/config.lua.
 
 Certain targets also allow properties to set, e.g. persistence or an alias:
 

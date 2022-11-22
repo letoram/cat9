@@ -82,9 +82,9 @@ return
 	{
 		"$begin",
 		function() return os.date("%H:%M:%S") end,
-		"$begin",
---		"$battery_charging $battery_pct % $battery_power W",
 --		"$begin",
+--		"$battery_charging $battery_pct % $battery_power W",
+		"$begin",
 		"$jobs",
 		"$begin",
 		"$builtin_name",
@@ -126,5 +126,9 @@ return
 	{
 		dir_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1", "-type", "d"},
 		file_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1"}
-	}
+	},
+
+-- each set of builtins (including the default) gets a subtable in here that
+-- is populated when loading the set itself, and overlayed by config/setname.lua
+	builtins = {}
 }
