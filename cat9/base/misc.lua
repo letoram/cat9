@@ -43,6 +43,19 @@ function cat9.remove_match(tbl, ent)
 	end
 end
 
+-- assumes no cycles
+function table.copy_recursive(tbl)
+	local res = {}
+	for k,v in pairs(tbl) do
+		if type(v) == "table" then
+			res[k] = table.copy_recursive(v)
+		else
+			res[k] = v
+		end
+	end
+	return res
+end
+
 function table.equal(tbl1, tbl2)
 	if not tbl1 or not tbl2 then
 		return false
@@ -65,6 +78,13 @@ function cat9.system_path(ns)
 	end
 
 	return base
+end
+
+function cat9.run_in_dir(root, dir, cb)
+	local old = root:chdir()
+	root:chdir(dir)
+	cb()
+	root:chdir(old)
 end
 
 function cat9.chdir(step)
