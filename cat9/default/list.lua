@@ -1,15 +1,8 @@
---
--- basic bringup:
---
---  inotify refresh
---  input (move cursor, click)
---  type- coloring
---
-
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 local function resolve_path(path)
+	local old = root:chdir()
 	root:chdir(path)
 	path = root:chdir()
 	root:chdir(old)
@@ -31,9 +24,12 @@ local function parse_ls(data)
 		elseif string.sub(v, -1) == "*" and string.sub(v, -2) ~= "\\*" then
 			ent.executable = true
 			v = string.sub(v, 1, -2)
+		elseif string.sub(v, -1) == "@" and string.sub(v, -2) ~= "\\@" then
+			ent.link = true
+			v = string.sub(v, 1, -2)
 		end
 
-		ent.name = v
+		ent.name = string.gsub(v, "\\ ", " ")
 		table.insert(res, ent)
 	end
 
@@ -63,7 +59,7 @@ local function queue_monitor(src, trigger)
 
 	for i=1,#set do
 		if set[i] == "$path" then
-			set[i] = src.list_path
+			set[i] = src.dir
 		end
 	end
 
@@ -94,7 +90,7 @@ local function queue_ls(src, path)
 	end
 
 	if string.sub(path, 1, 1) ~= "/" then
-		path = resolve_path(src.list_path .. "/" .. path)
+		path = resolve_path(src.dir .. "/" .. path)
 	end
 
 	local _, out, _, pid = root:popen({"/bin/ls", "cat9-ls", "-1aFb", path}, "r")
@@ -117,7 +113,7 @@ local function queue_ls(src, path)
 				src.data = job.data
 				src.raw = path
 				src.short = path
-				src.list_path = path
+				src.dir = path
 				src.data.files_filtered = nil
 				src.last_view = nil
 				cat9.flag_dirty()
@@ -133,16 +129,23 @@ local function queue_ls(src, path)
 end
 
 local function filter_job(job, set)
-	local res = {bytecount = 0}
+	local res = {bytecount = 2}
+	local up = {directory = true, name = ".."}
+	table.insert(res, up)
+	res[up.name] = up
 
+-- ignore hidden?
 	for _,v in ipairs(set) do
-		if string.sub(v.name, 1, 1) == "." and v.name ~= ".." then
+		if v.name == ".." or v.name == "." then
+		elseif not builtin_cfg.hidden and
+			string.sub(v.name, 1, 1) == "." then
 		else
 			table.insert(res, v)
 			res.bytecount = res.bytecount + #v.name
 			res[v.name] = v
 		end
 	end
+
 	res.linecount = #res
 	return res
 end
@@ -159,11 +162,20 @@ local function slice_files(job, lines)
 		job.data.files_filtered = filter_job(job, job.data.files)
 	end
 
+	local res = {}
 	return
 		cat9.resolve_lines(
 			job, res, lines,
 			function(i)
-			if job.data.files_filtered[i] then
+				if not i then
+					local ret = {}
+					for _,v in ipairs(job.data) do
+						table.insert(ret, v .. "\n")
+					end
+					return ret
+				end
+
+				if job.data.files_filtered[i] then
 					return print_file(job, job.data.files_filtered[i])
 				else
 					return nil, 0, 0
@@ -175,8 +187,6 @@ end
 local function get_attr(job, set, i, pos, highlight)
 	local res = builtin_cfg.list.file
 
-	print("get_attr", set, i, pos, highlight)
-
 	if not job.data.files_filtered or not job.data.files_filtered[set[i]] then
 		return res
 	end
@@ -187,6 +197,15 @@ local function get_attr(job, set, i, pos, highlight)
 -- socket, directory, executable, might send to open for probe as well?
 	elseif job.data.files_filtered[set[i]].directory then
 		res = builtin_cfg.list.directory
+
+	elseif job.data.files_filtered[set[i]].socket then
+		res = builtin_cfg.list.socket
+
+	elseif job.data.files_filtered[set[i]].executable then
+		res = builtin_cfg.list.executable
+
+	elseif job.data.files_filtered[set[i]].link then
+		res = builtin_cfg.list.link
 	end
 
 	if job.mouse and job.mouse.on_row == i then
@@ -205,11 +224,15 @@ local function view_files(job, x, y, cols, rows, probe)
 
 	if not job.last_view or #job.last_view ~= #job.data.files_filtered then
 		job.last_view = {bytecount = 0, linecount = 0}
+		job.selections = {}
 		for _,v in ipairs(job.data.files_filtered) do
 			local name, bc, lc = print_file(job, v)
 			table.insert(job.last_view, name)
 			job.last_view.bytecount = job.last_view.bytecount + 1
 			job.last_view.linecount = job.last_view.linecount + 1
+			if job.last_selection and job.last_selection[name] then
+				job.selections[#job.last_view] = true
+			end
 		end
 	end
 
@@ -224,28 +247,32 @@ local function view_files(job, x, y, cols, rows, probe)
 end
 
 -- the cursor selection is already set so click is assumed to hit
-local function item_click(job, ind)
-	if not job.cursor_item then
+local function item_click(job, btn, ofs, yofs, mods)
+	local line_no_click = job.mouse and job.mouse.on_col == 1
+
+	if not job.cursor_item or (line_no_click and job.cursor_item.name ~= "..") then
 		return
 	end
 
--- on directory: queue a new path scan with the item appended to the list
-	if job.cursor_item.directory then
+-- on directory: special case for navigation where left click will take precedence
+	if mods == 0 and btn == 1 and job.cursor_item.directory then
 		queue_ls(job, "./" .. job.cursor_item.name)
-
--- default click action otherwise should be open with modifier or button
--- controls to determine if open in new, embed, ...
-	else
-
+		return true
 	end
 
--- drag is not covered by this still (e.g. drag from one job to another(
+-- different type actions, context popup etc. would go here
+	local mstr = cat9.modifier_string(mods) .. "m" .. tostring(btn)
+
+	if builtin_cfg.list[mstr] then
+		cat9.parse_string(nil, builtin_cfg.list[mstr])
+		return true
+	end
+
+-- drag is not covered by this still (e.g. drag from one job to another)
 	return true
 end
 
 function builtins.list(path)
-	local old = root:chdir()
-
 -- apply it by chdir-ir first
 	if not path then
 		path = "./"
@@ -266,20 +293,43 @@ function builtins.list(path)
 	}
 	cat9.import_job(job)
 
+-- since this can be called when new files appear the actual names of selected
+-- lines need to be saved and re-marked on discovery
 	job["repeat"] =
 	function()
 		job.last_view = nil
-		queue_ls(job, job.list_path)
+		job.last_selection = {}
+		for i,v in ipairs(job.selections) do
+			job.last_selection[job.data[i]] = true
+		end
+		job.selections = {}
+		job.data.files = {}
+		job.handlers.mouse_button = item_click
+		job:set_view(view_files, slice_files, {}, "list")
+		if not job.dir then
+			job.dir = path
+		end
+		queue_ls(job, job.dir)
 	end
-	job.data.files = {}
-	job.handlers.mouse_button = item_click
-	job:set_view(view_files, slice_files, {}, "list")
-	job.list_path = path
 
-	queue_ls(job, path)
+	job["repeat"]()
 end
 
 function suggest.list(args, raw)
+	local argv, prefix, flt, offset =
+		cat9.file_completion(args[2], cat9.config.glob.dir_argv)
 
+	cat9.filedir_oracle(argv,
+		function(set)
+			if #raw == 3 then
+				table.insert(set, 1, "..")
+				table.insert(set, 1, ".")
+			end
+			if flt then
+				set = cat9.prefix_filter(set, flt, offset)
+			end
+			cat9.readline:suggest(set, "substitute", "list \"" .. prefix, "/\"")
+		end
+	)
 end
 end

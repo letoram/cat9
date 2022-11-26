@@ -71,6 +71,23 @@ function table.equal(tbl1, tbl2)
 	return true
 end
 
+function cat9.modifier_string(mod)
+	local str = ""
+	if bit.band(mod, tui.modifiers.SHIFT) > 0 then
+		str = str .. "shift_"
+	end
+	if bit.band(mod, tui.modifiers.CTRL) > 0 then
+		str = str .. "ctrl_"
+	end
+	if bit.band(mod, tui.modifiers.ALT) > 0 then
+		str = str .. "alt_"
+	end
+	if bit.band(mod, tui.modifiers.META) > 0 then
+		str = str .. "meta_"
+	end
+	return str
+end
+
 function cat9.system_path(ns)
 	local base = lash.scriptdir .. "/cat9/config"
 	if cat9.env["XDG_STATE_HOME"] then
