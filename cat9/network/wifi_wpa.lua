@@ -428,7 +428,7 @@ local function reprobe(fn)
 		local fpath = "/var/run/wpa_supplicant/" .. fn
 		local mon = root:fopen(fpath, "unix")
 		if not mon then
-			cat9.add_message("net:wifi - couldn't open socket at " .. fn)
+			cat9.add_message("net:wifi - couldn't open socket at " .. fpath)
 			return
 		end
 

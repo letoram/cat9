@@ -103,27 +103,29 @@ local function load_builtins(base)
 
 -- load each command and append to the builtins/suggestions/views/config
 	for _,v in ipairs(set) do
-		local fptr, msg = loadfile(string.format("%s/cat9/%s/%s", lash.scriptdir, base, v))
 
+-- overlay any static user config
+		fptr, msg = loadfile(string.format("%s/cat9/config/%s.lua", lash.scriptdir, base))
+		if fptr then
+			local ret, msg = pcall(fptr)
+			if ret and type(msg) == "table" then
+				for k,v in pairs(msg) do
+					if not dcfg[k] then
+						dcfg[k] = v
+					end
+				end
+			else
+				cat9.add_message(string.format("builtin:%s broken config: %s", base, msg))
+			end
+		end
+
+-- then load the command itself
+		local fptr, msg = loadfile(string.format("%s/cat9/%s/%s", lash.scriptdir, base, v))
 		if fptr then
 			pcall(fptr(), cat9, lash.root, cat9.builtins, cat9.suggest, cat9.views, dcfg)
 		else
 			cat9.add_message(string.format("builtin{%s:%s} failed to load: %s", base, v, msg))
 			return false
-		end
-	end
-
--- overlay any static user config
-	fptr, msg = loadfile(string.format("%s/cat9/config/%s.lua", lash.scriptdir, base))
-	if fptr then
-		local ret, msg = pcall(fptr())
-		if type(ret) ~= "table" then
-			cat9.add_message(string.format("builtin:%s broken config: %s", base, msg))
-		end
-		for k,v in pairs(ret) do
-			if not dcfg[k] then
-				dcfg[k] = v
-			end
 		end
 	end
 
