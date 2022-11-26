@@ -7,7 +7,14 @@
 --
 
 return
-function(cat9, root, builtins, suggest)
+function(cat9, root, builtins, suggest, views, builtin_cfg)
+
+local function resolve_path(path)
+	root:chdir(path)
+	path = root:chdir()
+	root:chdir(old)
+	return path
+end
 
 local function parse_ls(data)
 	local res = {}
@@ -37,34 +44,92 @@ local function parse_ls(data)
 	data.files = res
 end
 
-local function queue_ls(src, args)
-	local _, out, _, pid = root:popen({"/bin/ls", "cat9-ls", "-1aFb"}, "r")
-	if not pid then
-		cat9.add_message("builtin:list - couldn't spawn /bin/ls")
-		return
-	end
-
+local function queue_monitor(src, trigger)
 	if src.monitor_pid then
 		root:psignal(src.monitor_pid, "kill")
 		src.monitor_pid = nil
 	end
 
--- when done we can add job.data or simply skip if the source token
-	local job =
-		cat9.add_background_job(
-			out, pid, {lf_strip = true},
-			function(job, code)
-				if code == 0 then
-					parse_ls(job.data)
-					src.data = job.data
-					src.data.files_filtered = nil
-					src.last_view = nil
-					cat9.flag_dirty()
-				else
-					cat9.add_message("list failed: " .. table.concat(job.data, ""))
-				end
+-- Watch is expected to match a binary and arguments to watch a path for
+-- changes to trigger on, might be a point to add event triggers here
+-- that could be hooked with trigger as well. The consequence for that
+-- is that the job structure would again gain more inputs/outputs in the
+-- form of dynamic triggers.
+	if type(builtin_cfg.list.watch) ~= "table" then
+		return
+	end
+
+	local set = table.copy_recursive(builtin_cfg.list.watch)
+
+	for i=1,#set do
+		if set[i] == "$path" then
+			set[i] = src.list_path
+		end
+	end
+
+	local _, out, _, pid = root:popen(set, "r")
+	if not pid then
+		return
+	end
+
+-- don't really care which trigger, repeat regardless
+	src.monitor_pid = pid
+	cat9.add_background_job(out, pid, {lf_strip = true},
+	function(job, code)
+		if src.monitor_pid == pid then
+			src.monitor_pid = nil
+
+			if code == 0 then
+				src["repeat"]()
 			end
-		)
+		end
+	end)
+end
+
+local function queue_ls(src, path)
+-- kill any outstanding ls request as it might be dated
+	if src.ls_pending then
+		root:psignal(src.ls_pending, "kill")
+		srfc.ls_pending = nil
+	end
+
+	if string.sub(path, 1, 1) ~= "/" then
+		path = resolve_path(src.list_path .. "/" .. path)
+	end
+
+	local _, out, _, pid = root:popen({"/bin/ls", "cat9-ls", "-1aFb", path}, "r")
+	if not pid then
+		cat9.add_message("builtin:list - couldn't spawn /bin/ls")
+		return
+	end
+
+-- and any listening monitor process
+	if src.monitor_pid then
+		root:psignal(src.monitor_pid, "kill")
+		src.monitor_pid = nil
+	end
+
+-- asynch a new background job with the spawned ls
+	cat9.add_background_job( out, pid, {lf_strip = true},
+		function(job, code)
+			if code == 0 then
+				parse_ls(job.data)
+				src.data = job.data
+				src.raw = path
+				src.short = path
+				src.list_path = path
+				src.data.files_filtered = nil
+				src.last_view = nil
+				cat9.flag_dirty()
+				queue_monitor(src)
+
+-- recovery here would be to strip away path until we get something that exist
+			else
+				cat9.add_message("list failed: " .. table.concat(job.data, ""))
+			end
+			src.ls_pending = nil
+		end
+	)
 end
 
 local function filter_job(job, set)
@@ -108,9 +173,11 @@ local function slice_files(job, lines)
 end
 
 local function get_attr(job, set, i, pos, highlight)
-	local res = {fc = tui.colors.ui, bc = tui.colors.ui}
+	local res = builtin_cfg.list.file
 
-	if not job.data.files_filtered[set[i]] then
+	print("get_attr", set, i, pos, highlight)
+
+	if not job.data.files_filtered or not job.data.files_filtered[set[i]] then
 		return res
 	end
 
@@ -119,10 +186,11 @@ local function get_attr(job, set, i, pos, highlight)
 
 -- socket, directory, executable, might send to open for probe as well?
 	elseif job.data.files_filtered[set[i]].directory then
-		res = {fc = tui.colors.alert, bc = tui.colors.alert}
+		res = builtin_cfg.list.directory
 	end
 
 	if job.mouse and job.mouse.on_row == i then
+		res = table.copy_recursive(res)
 		res.border_down = true
 		job.cursor_item = job.data.files_filtered[set[i]]
 	end
@@ -161,17 +229,9 @@ local function item_click(job, ind)
 		return
 	end
 
--- on directory: temporarily switch dir, queue a new ls
+-- on directory: queue a new path scan with the item appended to the list
 	if job.cursor_item.directory then
-		local old = root:chdir()
-		root:chdir(job.raw)
-		root:chdir(job.cursor_item.name)
-		local new = root:chdir()
-		job.short = new
-		job.raw = new
-		job.last_view = nil
-		queue_ls(job)
-		root:chdir(old)
+		queue_ls(job, "./" .. job.cursor_item.name)
 
 -- default click action otherwise should be open with modifier or button
 -- controls to determine if open in new, embed, ...
@@ -184,17 +244,39 @@ local function item_click(job, ind)
 end
 
 function builtins.list(path)
+	local old = root:chdir()
+
+-- apply it by chdir-ir first
+	if not path then
+		path = "./"
+	end
+
+	local ok, kind = root:fstatus(path)
+
+	if not ok or kind ~= "directory" then
+		cat9.add_message("list: path is not a directory")
+		return
+	end
+
 	local job = {
-		short = root:chdir(),
-		raw = root:chdir(),
+		short = path,
+		raw = path,
 		check_status = function() return true; end,
 		attr_lookup = get_attr,
 	}
 	cat9.import_job(job)
+
+	job["repeat"] =
+	function()
+		job.last_view = nil
+		queue_ls(job, job.list_path)
+	end
 	job.data.files = {}
 	job.handlers.mouse_button = item_click
 	job:set_view(view_files, slice_files, {}, "list")
-	queue_ls(job)
+	job.list_path = path
+
+	queue_ls(job, path)
 end
 
 function suggest.list(args, raw)
