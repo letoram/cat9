@@ -8,7 +8,8 @@ local dir_lut =
 	dnew = "split-d",
 	vnew = "split-d",
 	tab = "tab",
-	embed = "embed"
+	embed = "embed",
+	swallow = "swallow"
 }
 
 -- can't (yet) launch shmif- clients directly so start with hard-coded proto

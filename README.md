@@ -139,7 +139,7 @@ mark it with a ! to spawn a new window bound to a terminal emulator.
     !vim
 
 Window creation and process environment can be controlled (e.g. vertical
-split):
+split (v) or swallow (s)):
 
     v!vim
 
@@ -266,7 +266,7 @@ unpleasant surprises.
 
 ### Open
 
-    open file or #job [hex] [new | vnew | tab]
+    open file or #job [hex] [new | vnew | tab | swallow]
 
 This tries to open the contents of [file] through a designated handler. For the
 job mode specifically, it either switches the window to a text or hex buffer.
