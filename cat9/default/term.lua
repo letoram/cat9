@@ -95,6 +95,11 @@ function(...)
 	cat9.term_handover("join-d", ...)
 end
 
+builtins["s!"] =
+function(...)
+	cat9.term_handover("swallow", ...)
+end
+
 local function binarg_select(args, raw, sz, pref)
 -- if there are any pre-parser arguments, strip those first so they don't
 -- confuse the completion
