@@ -22,8 +22,11 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 				if job.mouse[1] ~= x or job.mouse[2] ~= y then
 					cat9.flag_dirty()
 				end
+				job.mouse[1] = x
+				job.mouse[2] = y
+			else
+				job.mouse = {x, y}
 			end
-			job.mouse = {x, y}
 			return
 		end
 
@@ -347,7 +350,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		end
 	end
 
--- Then check if we should act special on the data region of a jo
+-- Then check if we should act special on the data region of a job
 	local in_data = cat9.xy_to_data(x, y)
 	if not in_data then
 		return

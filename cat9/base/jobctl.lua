@@ -617,22 +617,23 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			break
 		end
 
+-- apply column offset
+		if job.col_offset > 0 and job.col_offset < #row then
+			row = string.sub(row, job.col_offset + 1)
+		end
+
 		local cx = x + config.content_offset
 		local ccols = cols
 
 -- updated on motion
-		local on_col = false
 		local on_row = false
 		if job.mouse and job.mouse[2] == y+i-1 then
 			on_row = true
 			job.mouse.on_row = ind
-			job.mouse.on_col = (job.mouse[1] <= cx + #row) and 2
-			on_col = true
 		end
 
 -- printing line numbers?
 		if job.show_line_number then
-
 -- left-justify
 			local num = tostring(ind)
 			if #num < digits then
@@ -642,23 +643,25 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- set inverse attribute if mouse cursor is on top of it
 			lineattr.inverse = job.mouse and
 				                 on_row    and
-				                 on_col    and
 				                 job.mouse[1] <= cx + 3 + digits
 
---  then we're actually on the first column
-			if lineattr.inverse then
-				job.mouse.on_col = 1
+-- this changes the row width and the column lookup
+			if on_row then
+				job.mouse.on_col = (job.mouse[1] <= cx + 3 + digits + #row) and 2
+--  and we might be on the first column
+				if lineattr.inverse then
+					job.mouse.on_col = 1
+				end
 			end
 
 			root:write_to(cx, y+i-1, num, lineattr)
 			root:write(": ", lineattr)
 			cx = cx + 3 + digits
 			ccols = cols - digits - 4
-		end
-
--- and apply column offset
-		if job.col_offset > 0 and job.col_offset < #row then
-			row = string.sub(row, job.col_offset + 1)
+		else
+			if on_row then
+				job.mouse.on_col = job.mouse[1] <= cx + #row and 2
+			end
 		end
 
 -- expanding tabs should go here, be configured per job and allow
@@ -671,7 +674,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 -- finally print it, hightlight any manually selected lines
 		root:write_to(cx, y+i-1, row,
-			            job:attr_lookup(set, i, 0, job.selections[ind]))
+			            job:attr_lookup(set, ind, 0, job.selections[ind]))
 	end
 
 	return lc
@@ -692,12 +695,13 @@ end
 
 local function do_line(dst, v, lookup)
 	local num = tonumber(v)
-
 	if num then
 		local line, bc, lc = lookup(num)
-		table.insert(dst, line)
-		dst.bytecount = dst.bytecount + bc
-		dst.linecount = dst.linecount + lc
+		if line then
+			table.insert(dst, line)
+			dst.bytecount = dst.bytecount + bc
+			dst.linecount = dst.linecount + lc
+		end
 		return true
 	end
 
@@ -716,9 +720,11 @@ local function do_line(dst, v, lookup)
 	local step = a > b and -1 or 1
 	for i=a,b,step do
 		local line, bc, lc = lookup(i)
-		table.insert(dst, line)
-		dst.bytecount = dst.bytecount + bc
-		dst.linecount = dst.linecount + lc
+		if line then
+			table.insert(dst, line)
+			dst.bytecount = dst.bytecount + bc
+			dst.linecount = dst.linecount + lc
+		end
 	end
 
 	return true
@@ -728,6 +734,14 @@ function cat9.resolve_lines(job, dst, lines, lookup)
 	if not lines or #lines == 0 then
 		return lookup()
 	end
+
+	if not dst or not type(dst) == "table" then
+		cat9.add_message("resolve_lines:invalid destination")
+		return lookup()
+	end
+
+	dst.bytecount = dst.bytecount or 0
+	dst.linecount = dst.linecount or 0
 
 -- special case, grab the current picking selection
 	if #lines == 1 and lines[1] == "sel" then
@@ -982,7 +996,6 @@ function cat9.import_job(v, noinsert)
 			linecount = 0,
 		}
 		local oe = v.err_buffer
-
 		v.err_buffer = {
 			bytecount = 0,
 			linecount = 0
