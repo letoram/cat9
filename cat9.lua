@@ -88,44 +88,52 @@ local function load_builtins(base)
 	cat9.builtin_name = base
 	cat9.suggest = {}
 	cat9.views = {}
-	local fptr, msg = loadfile(string.format("%s/cat9/%s.lua", lash.scriptdir, base))
 
-	if not fptr then
-		cat9.add_message(string.format("builtin: [" .. base .. "] failed to load: %s", msg))
-		return false
-	end
-	local set = fptr()
-
+-- first load / overlay any static user config
 	if not cat9.config.builtins[base] then
 		cat9.config.builtins[base] = {}
 	end
 	local dcfg = cat9.config.builtins[base]
+	local fptr, msg = loadfile(string.format("%s/cat9/config/%s.lua", lash.scriptdir, base))
+	if fptr then
+		local ret, msg = pcall(fptr)
+		if ret and type(msg) == "table" then
+			for k,v in pairs(msg) do
+				if not dcfg[k] then
+					dcfg[k] = v
+				end
+			end
+		else
+			cat9.add_message(string.format("builtin: [%s] broken config: %s", base, msg))
+		end
+	end
+
+-- then load the actual command-description
+--
+-- the base 'read-only' config is provided in the lash table rather than as argument due
+-- to the legacy of the builtin- set expected to return a table and not a function as the
+-- case is with the actual commands
+  lash.builtin_cfg = dcfg
+	local fptr, msg = loadfile(string.format("%s/cat9/%s.lua", lash.scriptdir, base))
+	if not fptr then
+		return false, string.format("builtin: [%s] failed to load: %s", base, msg)
+	end
+
+-- this can fail with an error message if there is some precondition that can't be
+-- fulfilled such as a missing support tool binary
+	local set = fptr()
+	if type(set) ~= "table" then
+		msg = type(set) == "string" and set or "unknown"
+		return false, string.format( "builtin: [%s] failed to run: %s", base, msg)
+	end
 
 -- load each command and append to the builtins/suggestions/views/config
 	for _,v in ipairs(set) do
-
--- overlay any static user config
-		fptr, msg = loadfile(string.format("%s/cat9/config/%s.lua", lash.scriptdir, base))
-		if fptr then
-			local ret, msg = pcall(fptr)
-			if ret and type(msg) == "table" then
-				for k,v in pairs(msg) do
-					if not dcfg[k] then
-						dcfg[k] = v
-					end
-				end
-			else
-				cat9.add_message(string.format("builtin:%s broken config: %s", base, msg))
-			end
-		end
-
--- then load the command itself
 		local fptr, msg = loadfile(string.format("%s/cat9/%s/%s", lash.scriptdir, base, v))
 		if fptr then
 			pcall(fptr(), cat9, lash.root, cat9.builtins, cat9.suggest, cat9.views, dcfg)
 		else
-			cat9.add_message(string.format("builtin{%s:%s} failed to load: %s", base, v, msg))
-			return false
+			return false, string.format("builtin: [%s:%s] failed to load: %s", base, v, msg)
 		end
 	end
 
@@ -150,9 +158,10 @@ local function load_builtins(base)
 
 -- and we cache the one used initially so hot-reloading a bad new builtin set
 -- won't actually break the previous one
-		if not load_builtins(a) then
-			cat9.add_message(string.format(
-				"missing requested builtin set [%s] - revert to default.", a))
+		local ok, msg = load_builtins(a)
+		if not ok then
+			local default = string.format("missing requested builtin set [%s] - revert to default.", a)
+			cat9.add_message(msg or default)
 			cat9.builtins = safe_builtins
 			cat9.builtin_name = "default"
 			cat9.suggest = safe_suggest
@@ -194,6 +203,7 @@ load_feature("parse.lua")   -- breaking up a command-line into actions and sugge
 load_feature("layout.lua")  -- drawing screen, decorations and related handlers
 load_feature("vt100.lua")   -- state machine to plugin decoding
 load_feature("jobmeta.lua") -- job contextual information providers
+load_feature("json.lua")    -- json parsing
 load_feature("promptmeta.lua") --  prompt contextual information providers
 load_feature("bindings.lua", "config")
 load_builtins("default")
