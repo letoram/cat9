@@ -42,34 +42,37 @@ end
 -- avoid using the config.lua provided scanner argument as some might want to
 -- switch that to fuzzy finder and similar tools
 local function glob_builtins(dst)
-local arg =
-{
-	"/usr/bin/find",
-	"find",
-	lash.scriptdir .. "cat9/",
-	"-maxdepth", "1",
-	"-type", "f"
-}
-local _, scan, _, pid = lash.root:popen(arg, "r", lash.root:getenv())
-if scan then
-	scan:lf_strip(true)
-	scan:data_handler(
-		function()
-			local msg, ok = scan:read()
-			if msg then
-				local base = string.match(msg, "[^/]*.lua$")
-				local name = base and string.sub(base, 0, #base - 4) or nil
-				if name == "default" then
-					table.insert(dst, 1, name)
-				else
-					table.insert(dst, name)
+	local arg =
+	{
+		"/usr/bin/find",
+		"find",
+		lash.scriptdir .. "cat9/",
+		"-maxdepth", "1",
+		"-type", "f"
+	}
+	local _, scan, _, pid = lash.root:popen(arg, "r", lash.root:getenv())
+
+	if scan then
+		scan:lf_strip(true)
+			scan:data_handler(
+			function()
+				local msg, ok = scan:read()
+				if msg then
+					local base = string.match(msg, "[^/]*.lua$")
+					local name = base and string.sub(base, 0, #base - 4) or nil
+					if name == "default" then
+						table.insert(dst, 1, name)
+					else
+						table.insert(dst, name)
+					end
+					return true
 				end
+
+				return ok
 			end
-			return ok
-		end
-	)
-	lash.root:pwait(pid)
-end
+		)
+		lash.root:pwait(pid)
+	end
 end
 
 -- zero env out so our launch properties doesn't propagate
