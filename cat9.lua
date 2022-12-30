@@ -86,11 +86,13 @@ local safe_suggest
 local safe_views
 builtin_completion = {}
 
-local function load_builtins(base)
-	cat9.builtins = {}
+local function load_builtins(base, flush)
 	cat9.builtin_name = base
-	cat9.suggest = {}
-	cat9.views = {}
+	if flush then
+		cat9.builtins = {}
+		cat9.suggest = {}
+		cat9.views = {}
+	end
 
 -- first load / overlay any static user config
 	if not cat9.config.builtins[base] then
@@ -145,25 +147,43 @@ local function load_builtins(base)
 	glob_builtins(set)
 	cat9.suggest["builtin"] =
 	function(args, raw)
-		if #args > 2 then
+		if #args > 3 then
 			cat9.add_message("builtin [set]: too many arguments")
 			return
+		elseif #args == 3 then
+			set = {"nodef"}
 		end
-		cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
+
+		cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
 	end
 
 -- force-inject loading builtin set so swapping works ok
 	cat9.builtins["builtin"] =
-	function(a)
+	function(a, opt)
 		if not a or #a == 0 then
-			a = "default"
+			a = "system"
 		end
 
--- and we cache the one used initially so hot-reloading a bad new builtin set
--- won't actually break the previous one
-		local ok, msg = load_builtins(a)
+-- We cache the one used initially so hot-reloading a bad new builtin set
+-- won't actually break the previous one.
+		local ok, msg
+		local flush = false
+		if opt then
+			if opt ~= "nodef" then
+				cat9.add_message("builtin [set] [nodef]: unknown option argument")
+				return
+			end
+			flush = true
+		else
+			if a ~= "default" then
+				load_builtins("default", true)
+			end
+		end
+		ok, msg = load_builtins(a, flush)
+
 		if not ok then
-			local default = string.format("missing requested builtin set [%s] - revert to default.", a)
+			local default = string.format(
+				"missing requested builtin set [%s] - revert to system.", a)
 			cat9.add_message(msg or default)
 			cat9.builtins = safe_builtins
 			cat9.builtin_name = "default"
@@ -214,6 +234,7 @@ cat9.path_set = nil -- binary completion for exec is statically cached
 safe_builtins = cat9.builtins
 safe_suggest = cat9.suggest
 safe_views = cat9.views
+load_builtins("system")
 end
 cat9.reload()
 
