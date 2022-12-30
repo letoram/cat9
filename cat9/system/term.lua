@@ -176,4 +176,5 @@ suggest["!!"] = wrap
 suggest["v!"] = wrap
 suggest["p!"] = wrap
 suggest["a!"] = wrap
+suggest["s!"] = wrap
 end

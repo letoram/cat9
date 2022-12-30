@@ -172,7 +172,7 @@ typing:
 
 and pressing enter would copy the lines 1 to 5 into a new job.
 
-## Customisation
+# Customisation
 
 The config/config.lua file can be edited to change presentation, layout and
 similar options, including the formats for prompts and titlebars. Most of these
@@ -197,20 +197,27 @@ Would apply the builtin view command on the mouse-selected job at the current
 row offset if the second mouse button was clicked on the first column
 (line-number).
 
-## Builtins
+# Builtins
 
-There are a number of builtin commands. These are defined by a basedir, filled
-with separate files per builtin command along with a chainloader that match
-the name of the basedir:
+There are a number of 'builtin' commands. This is traditionally commands
+implemented by the shell itself rather than outsourcing it to some external
+program. Most shells has this as a global namespace, but in cat9 it is
+hierarchical. There is a small default set, and then a number of
+interchangeable ones.
+
+These are defined by a basename, that is reflected in how files are organised
+in the project:
 
     cat9/default.lua
-    cat9/default/cd.lua
+    cat9/default/open.lua
+		cat9/config/default.lua
     ...
 
 The reason for this structure is to allow lash to be reused for building CLI
 frontends to other tools, maintain a unified look and feel and swap between
-them quickly at will. You can also modify/extend this to mimic the behaviour
-of other common shells.
+them quickly at will.
+
+You can also modify/extend this to mimic the behaviour of other common shells.
 
 These also include a set of views. A view is a script that defines how to
 present the data within a job, and controls things like colour and formatting,
@@ -220,7 +227,24 @@ These have a separate config store that follows the pattern:
 
     cat9/config/(basedir).lua
 
-The commands included in the default set are as follows:
+Two sets of builtins are of additional importance, 'default' that contains cat9
+related commands and 'system' which contains many of the normal commands one
+would expect from a traditional shell such as 'cd'.
+
+## Builtins:Default
+
+The commands included in the default set are:
+builtin, input, view, open, config, forget, repeat, trigger
+
+### Builtin
+
+The command for switching between sets of builtins is also a builtin, albeit
+a special one that is always present. It takes the arguments:
+
+    builtin [setname=system] [nodef]
+
+This will cause a hot reload of the set of builtins, including the default
+unless nodef is provided as the second argument.
 
 ### Input
 
@@ -232,13 +256,6 @@ grab can be released with CTRL+ESCAPE.
 
 This will only trigger for jobs that have a working input sink, and retain
 current focus if it does not.
-
-### Signal
-
-    signal #jobid or pid [signal: kill, hup, user1, user2, stop, quit, continue]
-
-The signal commands send a signal to an active running job or a process based
-on a process identifier (number).
 
 ### Config
 
@@ -296,24 +313,6 @@ is specified, any collected data from its previous run will be discarded. If
 the edit argument is specified, the command-line which spawned the job will be
 copied into the command line - and if executed, will append or flush into the
 existing job identifier.
-
-### Cd
-
-    cd directory
-    cd #job
-
-Change the current directory to the specified one, with regular absolute or
-relative syntax. It is also possible to cd back into the directory that was
-current when a specific job was created.
-
-Cd also tracks which directories commands are being run from and adds them
-to a history. This can be accessed via the special:
-
-    cd f ...
-
-Where the f will be omitted and the set of suggested completions will come
-from the list of favourites. This can be manually altered, using f- to
-remove a path and f+ . or f+ /some/path to add it to the favorites.
 
 ### View
 
@@ -376,18 +375,6 @@ Copy destinations do not have to be files, they can also be other interactive
 jobs, or special ones like clipboard: that would forward to the outer WM
 clipboard.
 
-### Env
-
-    env [#job] key value
-
-This is used to change the environment for new jobs. It can also be used to
-update the cached environment for an existing job. This environment will be
-applied if the job is repeated, or if a new job is derived from the context
-of one:
-
-    env #0 LS_COLOR yes
-    #0 ls /tmp
-
 ### Trigger
 
     trigger #job condition [delay n] action
@@ -406,6 +393,72 @@ A common case for trigger is to repeat a job that finished:
 Would keep the job #0 relaunching 10 seconds after completing until removed:
 
     trigger #0 ok flush
+
+## Builtins:System
+
+The commands included in the system set are:
+
+### Signal
+
+    signal #jobid or pid [signal: kill, hup, user1, user2, stop, quit, continue]
+
+The signal commands send a signal to an active running job or a process based
+on a process identifier (number).
+
+### Cd
+
+    cd directory
+    cd #job
+
+Change the current directory to the specified one, with regular absolute or
+relative syntax. It is also possible to cd back into the directory that was
+current when a specific job was created.
+
+Cd also tracks which directories commands are being run from and adds them
+to a history. This can be accessed via the special:
+
+    cd f ...
+
+Where the f will be omitted and the set of suggested completions will come
+from the list of favourites. This can be manually altered, using f- to
+remove a path and f+ . or f+ /some/path to add it to the favorites.
+
+### Env
+
+    env [#job] key value
+
+This is used to change the environment for new jobs. It can also be used to
+update the cached environment for an existing job. This environment will be
+applied if the job is repeated, or if a new job is derived from the context
+of one:
+
+    env #0 LS_COLOR yes
+    #0 ls /tmp
+
+### List
+
+    list [path]
+
+List is similar to that of traditional 'ls', but adds mouse navigation, re-use
+of the same job window to step in / out of directories and automatic refresh on
+changes to the directory (if inotifytools are present).
+
+### Term (prefix + \!)
+
+This exposes a number of ways to spawn a legacy terminal device and emulator,
+with a prefix which hints at how the command line is translated and how the
+window management should work.
+
+the \!\! form disables parsing, expansion and so on and forwards the line
+verbatim through /bin.sh (config:sh\_runner).
+
+The different prefixes are:
+* v : spawn as a new-vertical window
+* t : spawn as a new tab
+* s : spawn as a 'swallow' window that takes the place of the current until closed
+* p : spawn as a pseudoterminal embedded job with the internal vt100 view applied
+
+(a and l are reserved prefixes that will be used for arcan clients specifically)
 
 Backstory
 =========
