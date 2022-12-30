@@ -422,7 +422,7 @@ function cat9.suggest_history()
 			function(self, prefix, msg, suggest)
 				self:suggest(cat9.prefix_filter(lash.history, msg, 0, "replace"))
 			end
-		}))
+		}), "history")
 	cat9.get_prompt = function()
 		return {"(history)"}
 	end
