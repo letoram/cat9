@@ -183,7 +183,8 @@ function builtins.copy(src, opt1, opt2, opt3)
 	elseif type(src) == "userdata" then
 		srclbl = "(ext-io)"
 	else
-		cat9.add_message("copy >src< dst : unknown source type")
+		cat9.add_message("copy >src< dst : unknown source type ( " .. type(src) .. " )")
+		return
 	end
 
 	if type(dst) == "table" then
