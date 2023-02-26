@@ -14,7 +14,9 @@ return
 		verbose = false,
 		hidden = false,
 		watch = {
-			"/usr/bin/inotifywait", "inotifywait",
+			"/usr/bin/env",
+			"/usr/bin/env",
+			"inotifywait",
 			"-e", "move",
 			"-e", "create",
 			"-e", "delete",
