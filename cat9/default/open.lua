@@ -36,7 +36,7 @@ local function fname_to_decode(cat9, root, dstenv, wdir, fn, closure)
 	root:chdir(wdir)
 
 	cat9.set_scanner(
-		{"/usr/bin/file", "file", "-b", "--mime-type", fn},
+		{"/usr/bin/env", "/usr/bin/env", "file", "-b", "--mime-type", fn},
 		function(res)
 			local proto
 			if res and res[1] then
