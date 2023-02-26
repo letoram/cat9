@@ -93,9 +93,9 @@ local function queue_ls(src, path)
 		path = resolve_path(src.dir .. "/" .. path)
 	end
 
-	local _, out, _, pid = root:popen({"/bin/ls", "cat9-ls", "-1aFb", path}, "r")
+	local _, out, _, pid = root:popen({"/usr/bin/env", "/usr/bin/env", "ls", "-1aFb", path}, "r")
 	if not pid then
-		cat9.add_message("builtin:list - couldn't spawn /bin/ls")
+		cat9.add_message("builtin:list - couldn't spawn ls")
 		return
 	end
 

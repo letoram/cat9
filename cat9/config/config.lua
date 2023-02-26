@@ -124,8 +124,8 @@ return
 
 	glob =
 	{
-		dir_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1", "-type", "d"},
-		file_argv = {"/usr/bin/find", "find", "$path", "-maxdepth", "1"}
+		dir_argv = {"/usr/bin/env", "/usr/bin/env", "find", "$path", "-maxdepth", "1", "-type", "d"},
+		file_argv = {"/usr/bin/env", "/usr/bin/env", "find", "$path", "-maxdepth", "1"}
 	},
 
 -- each set of builtins (including the default) gets a subtable in here that
