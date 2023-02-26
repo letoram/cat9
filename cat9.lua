@@ -44,7 +44,8 @@ end
 local function glob_builtins(dst)
 	local arg =
 	{
-		"/usr/bin/find",
+		"/usr/bin/env",
+		"/usr/bin/env",
 		"find",
 		lash.scriptdir .. "cat9/",
 		"-maxdepth", "1",

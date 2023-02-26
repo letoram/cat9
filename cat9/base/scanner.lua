@@ -132,8 +132,9 @@ function cat9.pathexec_oracle()
 
 	local path = root:getenv()["PATH"]
 	local argv = string.split(path, ":")
-	table.insert(argv, 1, "/usr/bin/find")
-	table.insert(argv, 2, "find")
+	table.insert(argv, 1, "/usr/bin/env")
+	table.insert(argv, 2, "/usr/bin/env")
+	table.insert(argv, 3, "find")
 	table.insert(argv, "-executable")
 	local dupcheck = {}
 	cat9.path_set = {}
