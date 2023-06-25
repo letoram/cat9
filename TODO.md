@@ -58,12 +58,13 @@ Builtins-Misc:
 - [ ] Durden/Acfgfs (monitor and paths..)
 
 List:
-- [ ] wrap ls
-- [ ] check for inotifytools or similar kqueue options
-- [ ] apply to ls directory
-- [ ] refresh on changes (with queue + invalidate)
+- [x] wrap ls
+- [x] check for inotifytools or similar kqueue options
+- [x] apply to ls directory
+- [x] refresh on changes (with queue + invalidate)
 - [ ] register trigger (on-change, ...)
-- [ ] test: ls, + rm or touch
+- [ ] keyboard input
+- [ ] set actions
 
 Ui:
 - [ ] job history scroll
