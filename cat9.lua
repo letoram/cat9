@@ -93,6 +93,8 @@ local function load_builtins(base, flush)
 		cat9.builtins = {}
 		cat9.suggest = {}
 		cat9.views = {}
+	else
+		cat9.builtins["_default"] = nil
 	end
 
 -- first load / overlay any static user config
@@ -137,7 +139,11 @@ local function load_builtins(base, flush)
 	for _,v in ipairs(set) do
 		local fptr, msg = loadfile(string.format("%s/cat9/%s/%s", lash.scriptdir, base, v))
 		if fptr then
-			pcall(fptr(), cat9, lash.root, cat9.builtins, cat9.suggest, cat9.views, dcfg)
+			local ret, msg = pcall(fptr(),
+				cat9, lash.root, cat9.builtins, cat9.suggest, cat9.views, dcfg)
+			if not ret then
+				return false, string.format("builtin: [%s:%s] setup failure: %s", base, v, msg)
+			end
 		else
 			return false, string.format("builtin: [%s:%s] failed to load: %s", base, v, msg)
 		end
