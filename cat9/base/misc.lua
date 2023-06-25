@@ -417,6 +417,37 @@ function cat9.from_b64(b64)
 	return concat( t )
 end
 
+function cat9.reader_factory(io, tick, cb)
+	local cd = tick
+	local buf = {}
+
+-- perform a read into a buffer, on timeout or eof submit the buffer
+	table.insert(
+		cat9.timers,
+		function()
+			local oc = #buf
+			local _, ok = io:read(buf)
+			if not ok then
+				cb(buf, true)
+				buf = {}
+				return false
+			end
+
+			if #buf == oc and #buf > 0 then
+				cd = cd - 1
+				if cd <= 0 then
+					cd = tick
+				end
+				local ob = buf
+				buf = {}
+				return cb(ob, false)
+			end
+
+			return true
+		end
+	)
+end
+
 function cat9.add_job_suggestions(set, allow_hidden, filter)
 	local filter = filter or function() return true end
 

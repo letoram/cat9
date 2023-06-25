@@ -203,6 +203,32 @@ To add more interactive behaviour, there are event handlers that can be attached
 				-- a readable lshift_lctrl like representation.
 		end
 
+Input
+=====
+There are other ways of getting data than by adding a background job and letting
+cat9 itself perform the reading and buffering. This might be needed when you want
+stream processing or interactively work with an external application.
+
+While root:popen -> in, out, err, pid is used to spawn and setup the io streams
+for a command line, there is alsop root:fopen(path, [mode]) for accessing files
+or unix stream/datagram sockets. This returns a non-blocking IO stream as covered
+in the tui-bindings documentation.
+
+To balance between throughput and interactivity, there is the option of adding
+a timer:
+
+    table.insert(cat9.timers,
+			function()
+-- read and process data or dequeue / run command, return true to be reinvoked
+-- or false to have the timer removed
+			end
+		)
+
+The actual frequency the timer will invoke is up to an internal setting and
+just represents 'about how often background data polling should be processed'
+as that is something that could/should be defered to the user, but the default
+is about 25Hz.
+
 Other
 =====
 Lash itself comes with some minor support functions, one with much utility here is:
