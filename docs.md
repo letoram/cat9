@@ -59,7 +59,7 @@ Expands any `#jobid(lineNb)` in the prompt
 
 Refers to the range of lines in `#jobid` going from line 3 to line 8.
 
-### `!``
+### `!`
 
 Since commands are executed as non-tty jobs by default, `!` can be used
 to override the default behaviour.
@@ -68,15 +68,14 @@ to override the default behaviour.
 
 Spawns a new window with a real terminal emulator to execute `command`
 
-	v!command
-	s!command
-	h!command
+ - vertical split: `v!command`
+ - horizontal split: `h!command`
+ - swallow window: `s!command`
 
 Instructs the window manager on how to spawn the new window
 
- - v= vertical
- - h = horizontal
- - s = swallow
+It's also possible to run simple tty commands like `sudo` without spawning
+a new window.
 
 	p!command
 
