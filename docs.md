@@ -68,11 +68,11 @@ to override the default behaviour.
 
 Spawns a new window with a real terminal emulator to execute `command`
 
+Lash can tell window managers how to handle a new window:
+
  - vertical split: `v!command`
  - horizontal split: `h!command`
  - swallow window: `s!command`
-
-Instructs the window manager on how to spawn the new window
 
 It's also possible to run simple tty commands like `sudo` without spawning
 a new window.
