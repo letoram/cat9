@@ -178,6 +178,9 @@ function builtins.copy(src, opt1, opt2, opt3)
 			end
 		end
 
+  elseif string.sub(src, 1, 3) == "in:" then
+		pick_pending_in =  "*"
+
 -- any sort of incoming file stream (bchunk, ...) that might've resolved earlier with $..
 -- we don't have a way of tagging the nbio right now, which might be needed.
 	elseif type(src) == "userdata" then
@@ -240,9 +243,13 @@ function builtins.copy(src, opt1, opt2, opt3)
 	local destroy_hook
 
 	if pick_pending_in then
+		local reqpick = true
+
 		if type(cat9.resources.bin) == "function" then
 			cat9.add_message("picking rejected, already queued")
 			return
+
+-- we already have a job to go from, because of a drag-n-drop like action
 		elseif type(cat9.resources.bin) == "table" then
 			job.src = cat9.resources.bin[2]
 			job.short = "copy: [preknown-io] -> " .. dstlbl
@@ -250,6 +257,8 @@ function builtins.copy(src, opt1, opt2, opt3)
 			cat9.resources.bin = nil
 			cat9.import_job(job)
 			deploy_copy(cat9, root, job)
+			reqpick = false
+
 		else
 			job.short = "copy: [waiting for pick] -> " .. dstlbl
 			job.raw = job.short
@@ -270,10 +279,14 @@ function builtins.copy(src, opt1, opt2, opt3)
 					end
 				end
 		end
+
 -- create placeholder job, mark that we are waiting so that gets added to the bchunk hnd,
 -- something needs to be done if the job gets forgotten while we are waiting for the pick
 -- (reset whatever resources[key] that was used at least).
-		root:request_io(pick_pending_in, pick_pending_out)
+		if reqpick then
+			root:request_io(pick_pending_in, pick_pending_out)
+		end
+
 		cat9.import_job(job)
 		if destroy_hook then
 			table.insert(job.hooks.on_destroy, destroy_hook)
