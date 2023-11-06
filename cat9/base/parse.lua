@@ -394,6 +394,10 @@ end
 -- isn't hijacked, whatever prompt is set will be overwritten almost
 -- immediately.
 --
+local function history_prompt()
+	return {"(history)"}
+end
+
 function cat9.suggest_history()
 	if cat9.readline then
 		cat9.laststr = cat9.readline:get()
@@ -401,13 +405,17 @@ function cat9.suggest_history()
 		cat9.set_readline(nil, "history")
 	end
 
-	local old_prompt = cat9.get_prompt
+-- triggering suggest twice would cause the history prompt to hijack forever
+	if cat9.get_prompt ~= history_prompt then
+		cat9.old_prompt = cat9.get_prompt
+	end
 
 	cat9.set_readline(
 	root:readline(
 		function(self, line)
 			cat9.set_readline(nil, "history_cb")
-			cat9.get_prompt = old_prompt
+			cat9.get_prompt = cat9.old_prompt
+			cat9.old_prompt = nil
 			if line then
 				cat9.laststr = line
 			end
@@ -423,9 +431,7 @@ function cat9.suggest_history()
 				self:suggest(cat9.prefix_filter(lash.history, msg, 0, "replace"))
 			end
 		}), "history")
-	cat9.get_prompt = function()
-		return {"(history)"}
-	end
+	cat9.get_prompt = history_prompt
 	cat9.readline:suggest(true)
 	cat9.readline:suggest(lash.history)
 	cat9.flag_dirty()

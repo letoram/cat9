@@ -331,12 +331,14 @@ local function draw_job(job, x, y, cols, rows, cc)
 	return rows + 2
 end
 
-function cat9.get_prompt()
+function cat9.default_prompt()
 	local template = cat9.focused and config.prompt_focus or config.prompt
 	local res = cat9.template_to_str(template, cat9.promptmeta)
 
 	return res
 end
+
+cat9.get_prompt = cat9.default_prompt
 
 -- walk set and draw from bottom up, remove items as consumed
 local function
