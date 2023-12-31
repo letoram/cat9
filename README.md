@@ -197,6 +197,10 @@ Would apply the builtin view command on the mouse-selected job at the current
 row offset if the second mouse button was clicked on the first column
 (line-number).
 
+It is also possible to work with 'chorded' input bindings where one binding
+sets a 'consume on use' input, e.g. Ctrl-w to Ctrl-a. See bindings.lua for
+examples on how that is configured.
+
 # Builtins
 
 There are a number of 'builtin' commands. This is traditionally commands
@@ -250,7 +254,7 @@ unless nodef is provided as the second argument.
 
 The input command is for controlling how parts of the UI responds to mouse or
 keyboard inputs. By default the keyboard is grabbed by the command-line. This
-grab can be released with CTRL+ESCAPE.
+grab can be toggled with CTRL+ESCAPE.
 
     input #jobid
 

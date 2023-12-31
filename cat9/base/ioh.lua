@@ -124,7 +124,25 @@ end
 
 -- custom keybinds go here (or forward routing to selected window)
 function handlers.key(self, sub, keysym, code, mods)
-	if bit.band(mods, tui.modifiers.CTRL) > 0 then
+	local bnd = cat9.bindings
+	local mod = bnd.modifier and bnd.modifier or tui.modifiers.CTRL
+
+	if bit.band(mods, mod) > 0 then
+
+-- check chorded input first, this is always consumed and reset afterwards
+		if cat9.in_chord then
+			if cat9.in_chord[keysym] then
+				cat9.parse_string(false, cat9.in_chord[keysym])
+			end
+			cat9.in_chord = nil
+			cat9.flag_dirty()
+			return
+		elseif bnd.chord[keysym] then
+			cat9.in_chord = bnd.chord[keysym]
+			return
+		end
+
+-- hard-coded defaults, these should also move into bindings
 		if keysym == tui.keys.ESCAPE then
 -- to disable readline there should be >= 1 valid jobs, and then
 -- we move selection with CTRL+ARROW|CTRL+HJLK

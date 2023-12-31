@@ -7,3 +7,5 @@
 * wm integration modes have added 'swallow' (s!)
 * builtins now have split config files (config/setname.lua)
 * json parser helper included in base
+* modifier key is now configurable
+* added support for chorded inputs

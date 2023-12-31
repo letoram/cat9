@@ -132,6 +132,11 @@ function battery.synch(self)
 	end
 end
 
+cat9.promptmeta["chord_state"] =
+function()
+	return cat9.in_chord and "(C)" or ""
+end
+
 cat9.promptmeta["lastdir"] =
 function()
 	return #cat9.lastdir > 0 and cat9.lastdir or "/"

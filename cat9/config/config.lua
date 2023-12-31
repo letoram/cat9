@@ -80,6 +80,7 @@ return
 -- possible specials defined in base/promptmeta.lua
 	prompt_focus =
 	{
+		"$chord_state",
 		"$begin",
 		function() return os.date("%H:%M:%S") end,
 --		"$begin",
