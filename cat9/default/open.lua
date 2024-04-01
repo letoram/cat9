@@ -131,7 +131,7 @@ local function open_string(file, spawn, context)
 	function(par, wnd)
 		local dir = root:chdir()
 		root:chdir(wdir)
-		local _, _, _, pid = par:phandover("/usr/bin/afsrv_decode", "", {"afsrv_decode"}, dstenv)
+		local _, _, _, pid = par:phandover(cat9.config.plumber, "", {"afsrv_decode"}, dstenv)
 		root:chdir(dir)
 
 		if not pid then

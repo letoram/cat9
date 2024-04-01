@@ -22,6 +22,8 @@ return
 	show_line_number = true, -- default line number view
 	autokill_quiet_bad = 100, -- timeout for jobs that failed with just errc.
 
+	plumber = "/usr/bin/afsrv_decode", -- path to decode framesrever
+
 	default_job_view = "crop",
 
 	main_column_width = 80, -- let one column be wider
