@@ -250,11 +250,12 @@ function builtins.copy(src, opt1, opt2, opt3)
 			return
 
 -- we already have a job to go from, because of a drag-n-drop like action
-		elseif type(cat9.resources.bin) == "table" then
+		elseif type(cat9.resources.bin) == "table" and #cat9.resource.bin > 0 then
+			local item = table.remove(cat9.resource.bin, 1)
+
 			job.src = cat9.resources.bin[2]
 			job.short = "copy: [preknown-io] -> " .. dstlbl
 			job.raw = job.short
-			cat9.resources.bin = nil
 			cat9.import_job(job)
 			deploy_copy(cat9, root, job)
 			reqpick = false

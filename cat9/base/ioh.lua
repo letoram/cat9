@@ -18,15 +18,26 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 -- deselect current unless the same
 	if cat9.selectedjob then
 		if job and cat9.selectedjob == job then
+
+-- we have motion within the active job
 			if job.mouse then
 				if job.mouse[1] ~= x or job.mouse[2] ~= y then
+
+-- is it also a drag action with a modifier held?
+-- announce what corresponds to copy(#csel, :pick)
+					if mstate[1] and mods > 0 and not cat9.in_pending_dnd then
+						cat9.in_pending_dnd = job
+					end
+
 					cat9.flag_dirty()
 				end
+
 				job.mouse[1] = x
 				job.mouse[2] = y
 			else
 				job.mouse = {x, y}
 			end
+
 			return
 		end
 
@@ -297,8 +308,11 @@ function handlers.bchunk_in(self, blob, id)
 	if type(cat9.resources.bin) == "function" then
 		cat9.resources.bin(id, blob)
 	else
-		cat9.add_message("got incoming binary blob")
-		cat9.resources.bin = {id, blob}
+		if not cat9.resource.bin then
+			cat9.resource.bin = {}
+		end
+		table.insert(cat9.resources.bin, {id, blob})
+		cat9.add_message("input queued: " .. id)
 	end
 end
 
@@ -342,7 +356,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		return
 	end
 
--- completed click? (trigger on falling edge)
+-- completed click? (trigger on falling edge and no delta in x, y)
 	mstate[index] = nil
 	local cols, _ = root:dimensions()
 
@@ -358,6 +372,18 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 -- first check if we are on the job bar, and the bar handler for the job
 -- has a mouse action assigned to the group index at the cursor position
 	local id, job = cat9.xy_to_hdr(x, y)
+	if job and job.mouse then
+		if job.mouse[1] ~= x or job.mouse[2] ~= y then
+			return
+		end
+	end
+
+-- we used to have a drag action and this cancels it
+	if index == 1 and cat9.in_pending_dnd then
+		cat9.in_pending_dnd = nil
+		return
+	end
+
 	if job and id > 0 then
 		local mind = "m" .. tostring(index)
 		local cfgrp = config[job.last_key][mind]
