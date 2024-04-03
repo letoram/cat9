@@ -3,6 +3,7 @@ return
 	'env.lua',
 	'cd.lua',
 	'list.lua',
+	'stash.lua',
 	'term.lua',
 	'signal.lua'
 }

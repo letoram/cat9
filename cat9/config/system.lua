@@ -1,5 +1,13 @@
 return
 {
+	stash = {
+		file = {fc = tui.colors.ref_green, bc = tui.colors.text},
+		descriptor = {fc = tui.colors.ref_yellow, bc = tui.colors.text},
+		directory = {fc = tui.colors.ref_blue, bc = tui.colors.text},
+		bchunk = true,
+		autocheck = false,
+		checksum = {"/usr/bin/env", "/usr/bin/env", "sha256sum", "$path"}
+	},
 	list =
 	{
 		file = {fc = tui.colors.ref_green, bc = tui.colors.text},

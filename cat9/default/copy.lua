@@ -106,6 +106,8 @@ end
 return
 function(cat9, root, builtins, suggest)
 
+builtins.hint["copy"] = "Copy data or files in/out/through Lash"
+
 local function set_clipboard(src)
 	if type(src) == "string" then
 		root:to_clipboard(src)

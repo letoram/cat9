@@ -235,6 +235,10 @@ Two sets of builtins are of additional importance, 'default' that contains cat9
 related commands and 'system' which contains many of the normal commands one
 would expect from a traditional shell such as 'cd'.
 
+Many of these builtins have a toggleable help descriptor for their commands and
+subcommands. This can be toggled by pressing F1 at any time during the readline
+prompt.
+
 ## Builtins:Default
 
 The commands included in the default set are:
@@ -463,6 +467,18 @@ The different prefixes are:
 * p : spawn as a pseudoterminal embedded job with the internal vt100 view applied
 
 (a and l are reserved prefixes that will be used for arcan clients specifically)
+
+### Stash
+
+The stash command lets you queue filenames and then applying group actions on
+them all at once. It also monitors the queue of drag-and-drop items.
+
+This is useful for hand-picking sets of files.
+
+    stash add [file] [file2] ...
+
+This adds the specified files to an existing stash (or create a new if there
+isn't one) that is visible as a job.
 
 Backstory
 =========

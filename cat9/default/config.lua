@@ -1,6 +1,7 @@
 return
 function(cat9, root, builtins, suggest)
 
+builtins.hint["config"] = "View or change current Lash or job configuration"
 cat9.state.import["config"] =
 function(tbl)
 	for k,v in pairs(tbl) do

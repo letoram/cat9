@@ -171,6 +171,7 @@ function suggest.open(args, raw)
 	cat9.readline:suggest({}, "substitute", raw)
 end
 
+builtins.hint["open"] = "Open a file or object"
 function builtins.open(file, ...)
 	local trigger
 	local opts = {...}

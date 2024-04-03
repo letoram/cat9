@@ -104,6 +104,7 @@ local function forget_lines(job, set)
 	cat9.flag_dirty()
 end
 
+builtins.hint["forget"] = "Remove jobs or parts of a job"
 function builtins.forget(...)
 	local forget =
 	function(job, sig)

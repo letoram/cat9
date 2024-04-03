@@ -45,6 +45,8 @@ function(tbl)
 	end
 end
 
+builtins.hint["cd"] = "Change Directory"
+
 function builtins.cd(step, opt)
 	if type(step) == "table" then
 		if step.dir then

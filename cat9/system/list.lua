@@ -9,6 +9,8 @@ local function resolve_path(path)
 	return path
 end
 
+builtins.hint["list"] = "Interactive wrapper around 'ls'"
+
 local function parse_ls(data)
 	local res = {}
 

@@ -10,7 +10,7 @@ local cat9 =  -- vtable for local support functions
 
 -- all these tables are built / populated through the various builtin
 -- sets currently available, as well as the dynamic scanning in jobmeta/promptmeta
-	builtins = {},
+	builtins = { hint = {}},
 	suggest = {},
 	handlers = {},
 	views = {},
@@ -92,7 +92,7 @@ builtin_completion = {}
 local function load_builtins(base, flush)
 	cat9.builtin_name = base
 	if flush then
-		cat9.builtins = {}
+		cat9.builtins = {hint = {}}
 		cat9.suggest = {}
 		cat9.views = {}
 	else
@@ -166,6 +166,8 @@ local function load_builtins(base, flush)
 		cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
 	end
 
+	cat9.builtins.hint.builtin = "Swap set of active commands"
+
 -- force-inject loading builtin set so swapping works ok
 	cat9.builtins["builtin"] =
 	function(a, opt)
@@ -201,13 +203,15 @@ local function load_builtins(base, flush)
 		end
 	end
 
+-- build the indexed table, sort and resolve-overlay the hints
 	builtin_completion = {}
 	for k, _ in pairs(cat9.builtins) do
-		if string.sub(k, 1, 1) ~= "_" then
+		if string.sub(k, 1, 1) ~= "_" and k ~= "hint" then
 			table.insert(builtin_completion, k)
 		end
 	end
 	table.sort(builtin_completion)
+	builtin_completion.hint = cat9.builtins.hint
 
 	return true
 end

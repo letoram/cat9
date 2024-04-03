@@ -11,6 +11,7 @@ local oksig = {
 }
 
 return function(cat9, root, builtins, suggest)
+builtins.hint["signal"] = "Send a signal to a job or pid"
 
 function builtins.signal(job, sig)
 	if not sig then

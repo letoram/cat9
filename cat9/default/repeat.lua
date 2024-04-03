@@ -1,6 +1,6 @@
 return
 function(cat9, root, builtins, suggest)
-
+builtins.hint["repeat"] = "Repeat existing job execution"
 builtins["repeat"] =
 function(job, ...)
 	if type(job) ~= "table" then

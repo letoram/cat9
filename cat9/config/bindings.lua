@@ -2,7 +2,7 @@ return
 function(cat9, root, config)
 	local bnd = cat9.bindings
 	bnd.modifier = tui.modifiers.CTRL -- default, shared with readline, bitmap so only tui.modifiers.[symbol]
---	bnd[tui.keys.D] = "forget #last"
+	bnd[tui.keys.D] = "forget #last"
 	bnd[tui.keys.Q] = "repeat #last edit flush"
 	bnd.m1_click = "view #csel toggle"
 	bnd.m2_click = "open #csel hex"

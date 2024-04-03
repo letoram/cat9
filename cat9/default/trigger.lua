@@ -1,6 +1,6 @@
 return
 function(cat9, root, builtins, suggest)
-
+builtins.hint["trigger"] = "Add or Remove job event triggers"
 function builtins.trigger(job, action, ...)
 	if not job then
 		cat9.add_message("trigger >job< ... - job missing")

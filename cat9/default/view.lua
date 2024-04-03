@@ -1,5 +1,7 @@
 return
 function(cat9, root, builtins, suggest)
+
+builtins.hint["view"] = "Change job data view mode"
 local viewlut = {}
 function viewlut.out(set, i, job)
 	job.view = cat9.view_raw

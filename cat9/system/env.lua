@@ -72,6 +72,8 @@ local special =
 -- to saving / configuring a job.
 }
 
+builtins.hint["env"] = "Change new process environment"
+
 function suggest.env(args, raw)
 	local set = {}
 

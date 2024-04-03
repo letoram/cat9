@@ -270,7 +270,16 @@ function cat9.prefix_filter(intbl, prefix, offset)
 			end
 			if #str > 0 then
 				table.insert(res, str)
-				table.insert(res.hint, intbl.hint and intbl.hint[i] or "")
+
+				local hint = ""
+				if intbl.hint then
+					if intbl.hint[i] then -- 1:1 matching
+						hint = intbl.hint[i]
+					elseif intbl.hint[str] then -- indexed by value
+						hint = intbl.hint[str]
+					end
+				end
+				table.insert(res.hint, hint)
 			end
 		end
 	end

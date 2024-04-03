@@ -310,7 +310,7 @@ local function suggest_for_context(prefix, tok, types)
 	end
 
 	if #tok == 0 then
-		cat9.readline:suggest(builtin_completion)
+		cat9.readline:suggest(cat9.prefix_filter(builtin_completion, ""))
 		return
 	end
 
@@ -398,22 +398,22 @@ local function history_prompt()
 	return {"(history)"}
 end
 
-function cat9.suggest_history()
+function cat9.lock_readline(name, msg, prompt, verify)
 	if cat9.readline then
 		cat9.laststr = cat9.readline:get()
 		root:revert()
-		cat9.set_readline(nil, "history")
+		cat9.set_readline(nil, msg)
 	end
 
 -- triggering suggest twice would cause the history prompt to hijack forever
-	if cat9.get_prompt ~= history_prompt then
+	if cat9.get_prompt ~= prompt then
 		cat9.old_prompt = cat9.get_prompt
 	end
 
 	cat9.set_readline(
 	root:readline(
 		function(self, line)
-			cat9.set_readline(nil, "history_cb")
+			cat9.set_readline(nil, name)
 			cat9.get_prompt = cat9.old_prompt
 			cat9.old_prompt = nil
 			if line then
@@ -426,15 +426,20 @@ function cat9.suggest_history()
 			forward_meta = false,
 			forward_paste = false,
 			forward_mouse = false,
-			verify =
-			function(self, prefix, msg, suggest)
-				self:suggest(cat9.prefix_filter(lash.history, msg, 0, "replace"))
-			end
-		}), "history")
-	cat9.get_prompt = history_prompt
+			verify = verify,
+		}), msg)
+	cat9.get_prompt = prompt
+	cat9.flag_dirty()
+end
+
+function cat9.suggest_history()
+	cat9.lock_readline("history_cb", "history", history_prompt,
+		function(self, prefix, msg, suggest)
+			self:suggest(cat9.prefix_filter(lash.history, msg, 0, "replace"))
+		end
+	)
 	cat9.readline:suggest(true)
 	cat9.readline:suggest(lash.history)
-	cat9.flag_dirty()
 end
 
 function cat9.readline_verify(self, prefix, msg, suggest)

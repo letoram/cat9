@@ -34,16 +34,19 @@ local function spawn_arcan(...)
 end
 
 -- alias for handover into vt100
+builtins.hint["!"] = "Run command in a terminal in a new window"
 builtins["!"] =
 function(...)
 	cat9.term_handover("join-r", ...)
 end
 
+builtins.hint["!!"] = "Run a raw command string in a terminal"
 builtins["!!"] =
 function(...)
 	shc_helper("rwe", ...)
 end
 
+builtins.hint["a!"] = "Run an arcan-shmif compatible client"
 builtins["a!"] =
 function(...)
 	local args = {...}
@@ -66,6 +69,7 @@ function(...)
 	cat9.shmif_handover(cmode, omode, args[1], root:getenv(), args)
 end
 
+builtins.hint["l!"] = "Run a command in a new Lash shell"
 builtins["l!"] =
 function(...)
 -- lash helper, just retain ARCAN_... args for now.
@@ -75,6 +79,7 @@ function(...)
 	cat9.term_handover("join-r", ...)
 end
 
+builtins.hint["p!"] = "Run a legacy shell command as a lash job"
 builtins["p!"] =
 function(...)
 --
@@ -90,11 +95,13 @@ function(...)
 	end
 end
 
+builtins.hint["v!"] = "Run command in a terminal in a new vertical-child window"
 builtins["v!"] =
 function(...)
 	cat9.term_handover("join-d", ...)
 end
 
+builtins.hint["s!"] = "Run command in a terminal in a new swallowed window"
 builtins["s!"] =
 function(...)
 	cat9.term_handover("swallow", ...)

@@ -1,6 +1,7 @@
 return
 function(cat9, root, builtins, suggest)
 
+builtins.hint["input"] = "Modify job interactive input routing"
 function builtins.input(job, action)
 	if type(job) ~= "table" then
 		cat9.add_message("input: expected job argument")
