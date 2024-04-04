@@ -29,8 +29,9 @@ return
 	main_column_width = 80, -- let one column be wider
 	min_column_width = 40, -- if we can add more side columns
 
-	open_spawn_default = "embed", -- split, tab, ...
+	open_spawn_default = "swallow", -- embed, split, join-r, tab, ...
 	open_embed_collapsed_rows = 4,
+--	open_external = "/usr/bin/nvim", -- set to skip the internal viewer
 
 	clipboard_job = true,     -- create a new job that absorbs all paste action
 	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
@@ -133,5 +134,10 @@ return
 
 -- each set of builtins (including the default) gets a subtable in here that
 -- is populated when loading the set itself, and overlayed by config/setname.lua
-	builtins = {}
+	builtins = {
+		open =
+		{
+			external = "/usr/bin/nvim"
+		}
+	}
 }

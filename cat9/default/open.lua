@@ -84,7 +84,7 @@ local function spawn_trigger(cat9, root, wndtype, spawn, trigger)
 end
 
 return
-function(cat9, root, builtins, suggest)
+function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 function embed_handlers.resized(wnd)
 	cat9.flag_dirty()
@@ -177,6 +177,7 @@ function builtins.open(file, ...)
 	local opts = {...}
 	local spawn = false
 	local context = nil
+	local parg
 
 	if type(opts[1]) == "table" and opts[1].parg then
 		parg = table.remove(opts, 1)
@@ -198,6 +199,12 @@ function builtins.open(file, ...)
 		file = set and set[1]
 		if file then
 			file = string.gsub(file, "\n", "")
+		end
+		if cat9.config.open_external then
+			print("run with", cat9.config.open_external, cat9.config.open_spawn_default)
+			cat9.term_handover(cat9.config.open_spawn_default,
+				cat9.config.open_external .. " " .. file, "")
+			return
 		end
 	end
 
