@@ -195,15 +195,14 @@ function builtins.open(file, ...)
 -- thousand windows.
 	if type(file) == "table" and parg then
 		context = file
-		local set = file:slice(parg)
+		local set = context:slice(parg)
 		file = set and set[1]
 		if file then
 			file = string.gsub(file, "\n", "")
 		end
 		if cat9.config.open_external then
-			print("run with", cat9.config.open_external, cat9.config.open_spawn_default)
 			cat9.term_handover(cat9.config.open_spawn_default,
-				cat9.config.open_external .. " " .. file, "")
+				cat9.config.open_external .. " " .. context.dir .. "/" .. file, "")
 			return
 		end
 	end

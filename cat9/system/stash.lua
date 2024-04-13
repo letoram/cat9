@@ -8,7 +8,7 @@
 --
 
 return
-function(cat9, root, builtins, suggest)
+function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 -- we need to build a temporary directory where we expand the files
 -- if they come from bchunk and symlink if they come from files and
@@ -68,6 +68,27 @@ local function add_stash_job()
 -- we want to add a factory that exposes the stash to the saveset
 end
 
+local function add_file(v)
+	local ok, kind = root:fstatus(v)
+	local map =
+	{
+		map = v
+	}
+
+	if not ok then
+		map.error = kind
+		map.kind = "bad"
+	else
+		map.kind = kind
+	end
+
+	table.insert(active_job.data, v)
+	table.insert(active_job.set, {map = v})
+
+	active_job.data.linecount = active_job.data.linecount + 1
+	active_job.data.bytecount = active_job.data.bytecount + #v
+end
+
 function commands.add(...)
 	local set = {...}
 
@@ -75,25 +96,29 @@ function commands.add(...)
 		add_stash_job()
 	end
 
-	for i,v in ipairs(set) do
-		local ok, kind = root:fstatus(v)
-		local map =
-		{
-			map = v
-		}
+-- handle job (args) to slice out and add to set, this requires that
+-- the source (typically list) slices out into absolute and useful path
+	local parg
+	if type(set[1]) == "table" and
+		type(set[2]) == "table" and set[2].parg then
+		local job = table.remove(set, 1)
+		local parg = table.remove(set, 1)
+		local res = job:slice(parg)
 
-		if not ok then
-			map.error = kind
-			map.kind = "bad"
-		else
-			map.kind = kind
+		if res then
+			for i, v in ipairs(res) do
+				if type(v) == "string" then
+					table.insert(set, i, job.dir .. "/" .. v)
+				end
+			end
 		end
+	end
 
-		table.insert(active_job.data, v)
-		table.insert(active_job.set, {map = v})
-
-		active_job.data.linecount = active_job.data.linecount + 1
-		active_job.data.bytecount = active_job.data.bytecount + #v
+	for i,v in ipairs(set) do
+		if type(v) == "table" then
+		elseif type(v) == "string" then
+			add_file(v)
+		end
 	end
 end
 
