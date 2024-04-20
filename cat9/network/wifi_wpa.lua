@@ -684,7 +684,7 @@ function builtin_split.connect(dev, ssid, psk)
 			)
 
 -- if there is no password needed, key management need to be manually disabled
-			if psk then
+			if psk and #psk > 0 then
 				queue_rep(dev, string.format("SET_NETWORK %d psk \"%s\"", id, psk))
 			else
 				queue_rep(dev, string.format("SET_NETWORK %d key_mgmt NONE", id))
