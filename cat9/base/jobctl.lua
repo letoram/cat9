@@ -882,6 +882,40 @@ function(intbl)
 	root:chdir(dir)
 end
 
+function cat9.add_fglob_job(out, path, cbh)
+	local ioh = root:fglob(path)
+	if not ioh then
+		cat9.add_message("fglob: " .. path " rejected")
+		return
+	end
+
+	local job =
+	{
+		hidden = true,
+		ioh = ioh
+	}
+
+	cat9.import_job(job)
+
+	ioh:lf_strip(true, "\0")
+	ioh:data_handler(
+		function()
+			local line, alive = ioh:read()
+			while line do
+				cbh(line)
+				line, alive = ioh:read()
+			end
+
+			if not alive then
+				cbh()
+				cat9.remove_job(job)
+			end
+		end
+	)
+
+	return ioh
+end
+
 function cat9.add_background_job(out, pid, opts, closure)
 	local job =
 	{
