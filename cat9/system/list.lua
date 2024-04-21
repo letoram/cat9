@@ -1,3 +1,10 @@
+-- missing:
+-- extended mode formatting
+--    - print category format more fine
+--
+-- sort
+-- right-click actions
+
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
@@ -76,7 +83,14 @@ end
 -- current set of files with different coloring and details options. Use the
 -- normal helper to extract the desired range (lines).
 local function print_file(job, line)
-	return line.name, #line.name, 1, line.name
+	if job.compact or not line.meta then
+		return line.name, #line.name, 1, line.name
+	else
+		local m = line.meta
+		local ts = os.date(builtin_cfg.list.time_str, m[builtin_cfg.list.time_key])
+		return line.name, #line.name, 1,
+			string.format("%s %s %s %s %s", m.mode_string, m.user, m.group, ts, line.name)
+	end
 end
 
 local function slice_files(job, lines)
@@ -113,37 +127,66 @@ local function slice_files(job, lines)
 		)
 end
 
-local function get_attr(job, set, i, pos, highlight)
-	local res = builtin_cfg.list.file
+local function get_attr(job, set, i, pos, highlight, str)
+	local fattr = builtin_cfg.list.file
 
-	if not job.data.files_filtered or not job.data.files_filtered[set[i]] then
-		return res
+-- fallback, shouldn't happen
+	if not job.data.files_filtered then
+		return {{builtin_cfg.list.file, str}}
 	end
+
+	local m = job.data.files_filtered[i]
 
 	if highlight then
-		res = cat9.config.styles.data_highlight
+		fattr = cat9.config.styles.data_highlight
 
 -- socket, directory, executable, might send to open for probe as well?
-	elseif job.data.files_filtered[set[i]].directory then
-		res = builtin_cfg.list.directory
+	elseif m.directory then
+		fattr = builtin_cfg.list.directory
 
-	elseif job.data.files_filtered[set[i]].socket then
-		res = builtin_cfg.list.socket
+	elseif m.socket then
+		fattr = builtin_cfg.list.socket
 
-	elseif job.data.files_filtered[set[i]].executable then
-		res = builtin_cfg.list.executable
+	elseif m.executable then
+		fattr = builtin_cfg.list.executable
 
-	elseif job.data.files_filtered[set[i]].link then
-		res = builtin_cfg.list.link
+	elseif m.link then
+		fattr = builtin_cfg.list.link
 	end
 
+-- highlight on mouse
 	if job.mouse and job.mouse.on_row == i then
-		res = table.copy_recursive(res)
-		res.border_down = true
-		job.cursor_item = job.data.files_filtered[set[i]]
+		fattr = table.copy_recursive(fattr)
+		fattr.border_down = true
+		job.cursor_item = m
 	end
 
-	return res
+-- it is a bit weird that we first provide the verbose text list
+-- and repeat the expansion here, but the first one is for alloc
+-- when layouting, then here for actually rendering the view.
+--
+	if not job.compact and m.meta then
+		return
+		{
+			{builtin_cfg.list.permission, m.meta.mode_string .. " "},
+			{builtin_cfg.list.user, m.meta.user .. " "},
+			{builtin_cfg.list.group, m.meta.group .. " "},
+			{builtin_cfg.list.time,
+				os.date(builtin_cfg.list.time_str,
+					m.meta[builtin_cfg.list.time_key]) .. " "},
+			{fattr, m.name}
+		}
+	end
+
+	return {{fattr, str}}
+end
+
+local function write_at(job, x, y, str, set, i, pos, highlight)
+	local attr = get_attr(job, set, i, pos, highlight, str)
+	local ok
+	for _, v in ipairs(attr) do
+		ok, x, y = root:write_to(x, y, v[2], v[1])
+	end
 end
 
 local function view_files(job, x, y, cols, rows, probe)
@@ -203,7 +246,24 @@ local function item_click(job, btn, ofs, yofs, mods)
 	return true
 end
 
-function builtins.list(path)
+function builtins.list(path, opt)
+
+-- are we trying to run a new list or configure an existing one?
+	if type(path) == "table" then
+		if path.list then
+			if opt then
+				if opt == "toggle" then
+					path.compact = not path.compact
+				else
+					path.compact = opt == "short"
+				end
+				path["repeat"]()
+			end
+		end
+
+		return
+	end
+
 -- apply it by chdir-ir first
 	if not path then
 		path = "./"
@@ -220,8 +280,10 @@ function builtins.list(path)
 		raw = path,
 		dir = path,
 		check_status = function() return true; end,
-		attr_lookup = get_attr,
-		last_selection = {}
+		write_override = write_at,
+		last_selection = {},
+		compact = builtin_cfg.list.compact,
+		list = true
 	}
 	cat9.import_job(job)
 
@@ -303,12 +365,16 @@ function(src, path)
 end
 
 function suggest.list(args, raw)
-	local argv, prefix, flt, offset =
-		cat9.file_completion(args[2], cat9.config.glob.dir_argv)
-
-	if #raw == 4 then
+	if #raw == 4 or #args > 2 then
+		if args[2] and type(args[2]) == "table" and args[2].list then
+			local set = cat9.prefix_filter({"full", "short", "toggle"}, args[3])
+			cat9.readline:suggest(set, "word")
+		end
 		return
 	end
+
+	local argv, prefix, flt, offset =
+		cat9.file_completion(args[2], cat9.config.glob.dir_argv)
 
 	cat9.filedir_oracle(argv,
 		function(set)

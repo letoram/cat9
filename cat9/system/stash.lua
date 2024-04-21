@@ -18,20 +18,16 @@ local commands = {}
 local active_job
 builtins.hint["stash"] = "Define a set of objects to manipulate"
 
-local function monitor_inqueue(id, blob)
+local function monitor_inqueue(id, blob, lref)
 	local map = {
 		map = id,
 		kind = "fifo",
 		nbio = blob
 	}
 
--- On some OSes, we could try and map the descriptor back to some local backing
--- file even though there might not be one, but the nbio abstraction doesn't
--- expose a fd, so that'd take monitoring proc/fds and notice the change when
--- we receive it. Better would be to let NBIO try and expose if there is a
--- valid and (at the time) accurate reverse-mapping. The main point is knowing
--- if the resource is local and can be treated as a file or a socket/fifo.
-	table.insert(active_job.data, "(fifo:" .. id .. ")")
+-- on OSes where we can resolve the origin of the descriptor backing
+-- a blob, it'll be provided in lref
+	table.insert(active_job.data, lref or "(fifo:" .. id .. ")")
 	table.insert(active_job.set, map)
 
 	active_job.data.linecount = active_job.data.linecount + 1
@@ -53,11 +49,13 @@ local function add_stash_job()
 			return true -- feedback if job
 		end,
 		raw = "",
+		view_name = "stash",
 		short = "Stash",
 		old_ioh = cat9.resources.bin
 	}
 
 	cat9.import_job(job)
+
 --	job.attr_lookup = get_attr
 	table.insert(job.hooks.on_destroy, unregister)
 	job.handlers.mouse_button = button
@@ -108,7 +106,7 @@ function commands.add(...)
 		if res then
 			for i, v in ipairs(res) do
 				if type(v) == "string" then
-					table.insert(set, i, job.dir .. "/" .. v)
+					table.insert(set, i, v)
 				end
 			end
 		end
@@ -127,7 +125,12 @@ end
 
 builtins["stash"] =
 function(cmd, ...)
-	if not cmd or not commands[cmd] then
+	if not cmd then
+		if not active_job then
+			add_stash_job()
+		end
+		return
+	elseif not commands[cmd] then
 		cat9.add_message("system:stash - unknown command : " .. tostring(cmd))
 		return
 	end
@@ -193,13 +196,16 @@ end
 
 suggest["stash"] =
 function(args, raw)
+	if #raw == 5 then
+		return
+	end
+
 	table.remove(args, 1) -- don't need 'stash'
 	local rem = string.sub(raw, 7)
 	local cmd = table.remove(args, 1)
 
 	if cmd and cmdsug[cmd] then
 		return cmdsug[cmd](args, rem)
-
 	elseif #args > 1 then
 		cat9.add_message("stash: unknown command >" .. args[1] .. "<")
 	else

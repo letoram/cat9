@@ -133,6 +133,10 @@ function builtins.copy(src, opt1, opt2, opt3)
 	local srcarg
 	local dstarg
 	local srclbl, dstlbl
+	if not src or type(src) == "string" and #src == 0 then
+		cat9.add_message("copy: >src< missing")
+		return
+	end
 
 --
 -- the possibles are:

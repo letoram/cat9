@@ -672,9 +672,17 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			row = string.sub(row, 1, ccols)
 		end
 
+	-- some jobs override this to have different formatting for different
+	-- offsets and not just 'per line attributes'
+		if job.write_override then
+			job:write_override(cx,
+				y+i-1, row, set, ind, 0, job.selections[ind])
+		else
+
 -- finally print it, hightlight any manually selected lines
-		root:write_to(cx, y+i-1, row,
-			            job:attr_lookup(set, ind, 0, job.selections[ind]))
+			root:write_to(cx, y+i-1, row,
+				            job:attr_lookup(set, ind, 0, job.selections[ind]))
+		end
 	end
 
 	return lc
@@ -950,7 +958,11 @@ end
 local function view_set(job, view, slice, state, name)
 	job.view = view
 	job.view_state = state or {linecount = 0, bytecount = 0}
-	job.view_name = name or "unknown"
+	if name then
+		job.view_name = name
+	elseif not job.view_name then
+		job.view_name = "unknown"
+	end
 	job.selections = {}
 	job.slice = slice or cat9.default_slice
 	job.row_offset = 0
