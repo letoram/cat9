@@ -9,3 +9,7 @@
 * json parser helper included in base
 * modifier key is now configurable
 * added support for chorded inputs
+* added 'stash' command for building a set of paths to apply actions to
+* drag and drop / file picker actions will now attach to stash if possible
+* started migrating 'find' and 'ls' parsing to proper shell based glob for safe 'bad' file name handling
+* started adding F1 toggle one-line helpers for command explanation

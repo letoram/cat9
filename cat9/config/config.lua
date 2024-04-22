@@ -1,3 +1,4 @@
+-- powerline glyphs for easy cut'n'paste:   
 local group_sep = lash.root:has_glyph("") and " " or "> "
 local collapse_sym = lash.root:has_glyph("▲") and "▲" or "[-]"
 local expand_sym = lash.root:has_glyph("▼") and "▼" or "[+]"
@@ -10,6 +11,7 @@ local fmt_data = {fc = tui.colors.inactive, bc = tui.colors.text}
 return
 {
 	autoexpand_latest = true, -- the latest job always starts view expanded
+	autocontract_last = false, -- the previous job will contract when a new one is spawned
 	autosuggest = true, -- start readline with tab completion enabled
 	debug = true, -- dump parsing output / data to the command-line
 
@@ -52,16 +54,18 @@ return
 --
 	job_bar_collapsed =
 	{
+		group_sep = group_sep,
 		{expand_sym},
 		{"#", "$id", group_sep, group_sep, "$pid_or_exit", group_sep, "$memory_use"},
-		{group_sep, "$short"},
+		{"$short"},
 	},
 
 	job_bar_selected =
 	{
+		group_sep = group_sep,
 		{selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
-		{group_sep, "$short", group_sep},
-		{group_sep, "repeat/flush", group_sep},
+		{"$short"},
+		{"repeat/flush"},
 		{"X"},
 		m1 = {
 			[3] = "repeat #csel flush",
@@ -69,12 +73,12 @@ return
 		}
 	},
 
--- powerline glyphs for easy cut'n'paste:   
 	job_bar_expanded =
 	{
+		group_sep = group_sep,
 		{ collapse_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
-		{ group_sep, "$view"},
-		{ group_sep, "$full"},
+		{"$view"},
+		{"$full"},
 		prefix = {fmt_sep, "[", fmt_data},
 		suffix = {fmt_sep, "]", fmt_data}
 	},

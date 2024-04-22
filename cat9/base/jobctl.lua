@@ -1089,7 +1089,7 @@ function cat9.import_job(v, noinsert)
 
 -- mark latest one as expanded, and the previously 'latest' back to collapsed
 	if not v.hidden then
-		if config.autoexpand_latest and cat9.latestjob then
+		if config.autocontract_last and cat9.latestjob then
 			cat9.latestjob.expanded = false
 		end
 

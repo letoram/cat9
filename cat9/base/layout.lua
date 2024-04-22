@@ -122,18 +122,13 @@ function cat9.xy_to_hdr(x, y)
 		return id, nil
 	end
 
-	if not job.hdr_to_id or not job.hdr_to_id.y or y ~= job.hdr_to_id.y then
+	if not job.hdr_to_id or
+		not job.hdr_to_id.y or y ~= job.hdr_to_id.y or
+		not job.hdr_to_id[x] then
 		return id, job
 	end
 
-	for i=1,#job.hdr_to_id do
-		id = i
-		if col < job.hdr_to_id[i] then
-			break
-		end
-	end
-
-	return id, job
+	return job.hdr_to_id[x], job
 end
 
 function cat9.xy_to_data(x, y)
@@ -163,6 +158,12 @@ function draw_job_header(job, x, y, cols, rows, cc)
 		hdrattr.bc = tui.colors.highlight
 	end
 
+	local hdrattr_border = {
+		fc = hdrattr.fc,
+		bc = hdrattr.bc,
+		border_down = true
+	}
+
 	job.hdr_to_id = {}
 	job.hdr_to_id.y = y
 	job.last_key = job_key
@@ -173,10 +174,41 @@ function draw_job_header(job, x, y, cols, rows, cc)
 		return
 	end
 
+	local gs = itemstack.group_sep or " "
+	local gs_len = root:utf8_len(gs)
+
+--
+-- FUTURE NOTE:
+-- this itemstack could / should get extended with:
+--
+-- builtin_cfg[job.name].job_bar_[selected | job_bar] so that we can have both
+-- a generic base-set of actions and a set of per-item ones.
+--
+-- similarly the itemstack should be filtered by the availability of some
+-- property so that we can have contextual items that only trigger if we
+-- have say, a 'pid' or if #err > 0
+--
 	local function draw_item(i, cur)
-		job.hdr_to_id[i] = x - startx
-		root:write_to(x, y, cur, hdrattr)
-		x = x + root:utf8_len(cur)
+		local x2 = x + root:utf8_len(cur)
+		local attr = hdrattr
+
+	-- on active row?
+		if job.mouse and job.mouse[2] == y and
+			job.mouse[1] >= x and job.mouse[1] <= x2 then
+
+	-- on this item and it has a mouse action? fill out the
+	-- reverse xy to id map and change the visual attribute
+			if (itemstack.m1 and itemstack.m1[i]) or
+				 (itemstack.m2 and itemstack.m2[i]) then
+				attr = hdrattr_border
+				for l=x,x2-1 do
+					job.hdr_to_id[l] = i
+				end
+			end
+		end
+
+		root:write_to(x, y, cur, attr)
+		x = x2
 	end
 
 	for i,v in ipairs(itemstack) do
@@ -195,6 +227,10 @@ function draw_job_header(job, x, y, cols, rows, cc)
 				cat9.add_message("bad config: expected string ot table, not " .. type(w))
 				return
 			end
+		end
+		if i ~= #itemstack then
+			root:write_to(x, y, gs, hdrattr)
+			x = x + gs_len
 		end
 	end
 end

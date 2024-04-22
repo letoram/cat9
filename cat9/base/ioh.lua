@@ -308,8 +308,8 @@ function handlers.bchunk_in(self, blob, id, lref)
 	if type(cat9.resources.bin) == "function" then
 		cat9.resources.bin(id, blob, lref)
 	else
-		if not cat9.resource.bin then
-			cat9.resource.bin = {}
+		if not cat9.resources.bin then
+			cat9.resources.bin = {}
 		end
 		table.insert(cat9.resources.bin, {id, blob, lref})
 		cat9.add_message("input queued: " .. id)
