@@ -15,6 +15,7 @@
 -- g. dpp? qr?
 -- h. captive portal detection?
 -- i. set key to = to query for password (mask_character = *)
+-- j. on-ip-retrieved, on-ip-not-retrieved
 --
 
 local poll_cmd
@@ -25,6 +26,12 @@ function(cat9, root, builtins, suggest, argv)
 local scanarg = {"/usr/bin/ls", "cat9-wifi", "/var/run/wpa_supplicant"}
 local suggest_split = {}
 local builtin_split = {}
+local builtin_hints = {
+	connect = "Pick a base station to connect to",
+	monitor = "Track wireless status",
+	flush = "Remove all networks assigned to device",
+}
+
 local config = cat9.config
 
 -- for command passthrough, having a separate job that absorbs the
@@ -587,6 +594,14 @@ local function build_status_string(dev, set)
 	return res
 end
 
+function builtin_split.flush(dev)
+	queue_rep(dev,
+	"REMOVE_NETWORK all",
+	function(set, status, msg)
+	end
+	)
+end
+
 function builtin_split.monitor(dev, mode, ...)
 	if mode == "prompt" then
 
@@ -693,6 +708,8 @@ function builtin_split.connect(dev, ssid, psk)
 		end
 	)
 end
+
+builtins.hint["wifi"] = "Configure and monitor wireless networking"
 
 function builtins.wifi(...)
 	local args = {...}
@@ -851,13 +868,15 @@ end
 function suggest.wifi(args, raw)
 -- args[2] can be device otherwise we assume first and just go with results
 	local dev = "=default"
-	local set = {}
+	local set = {hint = {}}
 	local carg = args[#args]
 
 	if #args <= 2 then
-		table.insert(set, "dev");
+		table.insert(set, "dev")
+		table.insert(set.hint, "Specify device (=default)")
 		for k, v in pairs(builtin_split) do
 			table.insert(set, k)
+			table.insert(set.hint, builtin_hints[k] or "")
 		end
 		cat9.readline:suggest(cat9.prefix_filter(set, carg), "word")
 		return
