@@ -178,16 +178,18 @@ local function drop_prompt()
 		end
 	end
 
-	print("drop prompt", tgt_i)
 	if tgt_i then
 		table.remove(config.prompt_focus, tgt_i-1) -- drop $begin
 		table.remove(config.prompt_focus, tgt_i-1) -- drop update_prompt
 		table.remove(config.prompt_focus, tgt_i-1) -- drop $end
 	end
 
+-- if we own the monitor, just clear it and the handles
 	if not in_monitor.imported then
 		cat9.dir_monitor[in_monitor] = nil
 		in_monitor = nil
+	else -- otherwise just remove the prompt tracking
+		in_monitor.prompt = nil
 	end
 end
 
@@ -202,6 +204,7 @@ end
 
 local function attach_prompt()
 	local insert_ind
+
 	for i,v in ipairs(config.prompt_focus) do
 		if v == '$dynamic' then
 			insert_ind = i
@@ -220,16 +223,14 @@ end
 
 local function cmd_monitor(arg)
 -- 'prompt' form
-	local prompt = (arg and arg == "prompt") and ""
+	local prompt = (arg and arg == "prompt") or nil
 
 -- toggle prompt form on / off
-	if prompt and in_monitor and in_monitor.prompt then
-		drop_prompt()
-		return
-
--- otherwise it is a nop, regular job control to remove
-	elseif in_monitor then
-		return
+	if in_monitor and in_monitor.prompt then
+		if prompt then
+			drop_prompt()
+			return
+		end
 	end
 
 -- necessary tracking: where we are
@@ -244,18 +245,23 @@ local function cmd_monitor(arg)
 
 -- find where in the prompt we can attach
 	if prompt then
-		if not attach_prompt() or in_monitor then
+		if not attach_prompt() then
 			return
 		end
 
--- don't need to do more, there is a job and tracking already
+-- already got a monitor session, mark prompt as available
 		if in_monitor then
+			in_monitor.prompt = prompt
 			return
 		end
 
 -- or import the job as a 'proper' one
 	else
 		if in_monitor then
+			if in_monitor.imported then -- unless it already is
+				return
+			end
+
 			job = in_monitor
 		end
 
@@ -264,9 +270,12 @@ local function cmd_monitor(arg)
 		table.insert(
 			job.hooks.on_destroy,
 			function()
-				drop_prompt()
-				in_monitor = nil
-				cat9.dir_monitor[job] = nil
+				job.imported = false
+
+				if not job.prompt then -- only release if we don't also have a prompt monitor
+					in_monitor = nil
+					cat9.dir_monitor[job] = nil
+				end
 			end
 		)
 	end

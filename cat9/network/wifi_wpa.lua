@@ -16,6 +16,7 @@
 -- h. captive portal detection?
 -- i. set key to = to query for password (mask_character = *)
 -- j. on-ip-retrieved, on-ip-not-retrieved
+-- k. map rfkill block on-off
 --
 
 local poll_cmd
