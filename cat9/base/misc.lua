@@ -107,6 +107,16 @@ end
 function cat9.chdir(step)
 	cat9.prevdir = root:chdir()
 	root:chdir(step)
+
+	if (step) then
+		local new = root:chdir()
+		if new ~= cat9.prevdir then
+			for k, v in pairs(cat9.dir_monitor) do
+				v(new, cat9.prevdir)
+			end
+		end
+	end
+
 	cat9.scanner_path = nil
 	cat9.update_lastdir()
 end

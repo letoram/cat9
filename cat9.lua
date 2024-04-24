@@ -27,6 +27,7 @@ local cat9 =  -- vtable for local support functions
 
 	resources = {}, -- used for clipboard and bchunk ops
 	state = {export = {}, import = {}, orphan = {}},
+	dir_monitor = {},
 
 	idcounter = 0, -- monotonic increment for each command dispatched
 	lastdir = "",

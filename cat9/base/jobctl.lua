@@ -270,6 +270,36 @@ local function finish_job(job, code)
 	end
 end
 
+-- sweep commands,
+-- map them to a popen call and when all are consumed, trigger the closure.
+-- [cmdopt] specifies the options to the background job processing
+-- [arg] is passed verbatim to the handler in the command set and to [closure]
+-- which is called last.
+function cat9.background_chain(commands, cmdopt, arg, closure)
+	local run_command
+	local refjob = in_monitor
+
+-- regular chain runner, take the next command in question, setup runner
+	run_command =
+	function(tbl)
+		if not tbl then
+			closure(arg)
+			return
+		end
+		local cmd = cat9.table_copy_shallow(tbl)
+		table.insert(cmd, 1, "/usr/bin/env")
+		table.insert(cmd, 1, "/usr/bin/env")
+		local _, out, _, pid = root:popen(cmd, "r")
+		cat9.add_background_job(out, pid, cmdopt,
+		function(job, code)
+			tbl.handler(job, arg, code)
+			run_command(table.remove(commands))
+		end)
+	end
+
+	run_command(table.remove(commands))
+end
+
 function cat9.process_jobs()
 	local upd = false
 
@@ -970,6 +1000,12 @@ local function view_set(job, view, slice, state, name)
 	cat9.flag_dirty()
 end
 
+local function add_line(job, line)
+	table.insert(job.data, line)
+	job.data.linecount = job.data.linecount + 1
+	job.data.bytecount = job.data.bytecount + #line
+end
+
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
@@ -985,6 +1021,10 @@ function cat9.import_job(v, noinsert)
 	v.col_offset = 0
 	v.job = true
 	v.hide = hide_job
+
+	if not v.add_line then
+		v.add_line = add_line
+	end
 
 	if not v.set_view then
 		v.set_view = view_set
