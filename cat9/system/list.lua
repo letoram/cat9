@@ -246,6 +246,8 @@ local function item_click(job, btn, ofs, yofs, mods)
 	return true
 end
 
+builtins.hint["list"] = "List the contents of a directory"
+
 function builtins.list(path, opt)
 
 -- are we trying to run a new list or configure an existing one?
@@ -367,7 +369,18 @@ end
 function suggest.list(args, raw)
 	if #raw == 4 or #args > 2 then
 		if args[2] and type(args[2]) == "table" and args[2].list then
-			local set = cat9.prefix_filter({"full", "short", "toggle"}, args[3])
+			local set = cat9.prefix_filter(
+				{
+					"full",
+					"short",
+					"toggle",
+				hint =
+				{
+					"Set the list to verbose (permission, user, ...)",
+					"Set the item list to compact (name-only)",
+					"Toggle between verbose and compact"
+				}
+			}, args[3])
 			cat9.readline:suggest(set, "word")
 		end
 		return
