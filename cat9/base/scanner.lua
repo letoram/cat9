@@ -259,7 +259,7 @@ function cat9.path_for_bin(fn, path)
 end
 
 function cat9.prefix_filter(intbl, prefix, offset)
-	local res = {hint = {}}
+	local res = {hint = {}, title = intbl.title}
 	prefix = prefix and prefix or ""
 
 	for i,v in ipairs(intbl) do

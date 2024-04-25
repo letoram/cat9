@@ -134,7 +134,7 @@ function suggest.cd(args, raw)
 		local set = {}
 
 		cat9.add_job_suggestions(set, false, function(job)
-			return job.dir ~= nil
+			return job.dir ~= nil, job.dir
 		end)
 
 		cat9.readline:suggest(cat9.prefix_filter(set, string.sub(raw, 4)), "word")

@@ -460,20 +460,34 @@ end
 
 function cat9.add_job_suggestions(set, allow_hidden, filter)
 	local filter = filter or function() return true end
-
-	if cat9.selectedjob and filter(cat9.selectedjob) then
-		table.insert(set, "#csel")
+	if not set.hint then
+		set.hint = {}
 	end
 
-	if cat9.latestjob and filter(cat9.latestjob) then
-		table.insert(set, "#last")
+	if cat9.selectedjob then
+		local ok, hint = filter(cat9.selectedjob)
+		if ok then
+			table.insert(set, "#csel")
+			table.insert(set.hint, hint or "")
+		end
+	end
+
+	if cat9.latestjob then
+		local ok, hint = filter(cat9.latestjob)
+		if ok then
+			table.insert(set, "#last")
+			table.insert(set.hint, hint or "")
+		end
 	end
 
 	for _,v in ipairs(lash.jobs) do
-		if filter(v) and (not v.hidden or allow_hidden) then
+		local ok, hint = filter(v)
+		if ok and (not v.hidden or allow_hidden) then
 			table.insert(set, "#" .. tostring(v.id))
+			table.insert(set.hint, hint or "")
 			if v.alias then
 				table.insert(set, "#" .. v.alias)
+				table.insert(set.hint, hint or "")
 			end
 		end
 	end
