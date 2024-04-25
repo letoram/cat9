@@ -310,8 +310,9 @@ local function suggest_for_context(prefix, tok, types)
 	end
 
 	if #tok == 0 then
-		cat9.readline:suggest(cat9.prefix_filter(builtin_completion, ""))
-		return
+		local ret, ofs =
+			cat9.readline:suggest(cat9.prefix_filter(builtin_completion, ""))
+		return ret, ofs
 	end
 
 -- still in suggesting the initial command, use prefix to filter builtin
@@ -320,14 +321,17 @@ local function suggest_for_context(prefix, tok, types)
 	if #tok == 1 and tok[1][1] == types.STRING then
 		local set = cat9.prefix_filter(builtin_completion, prefix)
 		if #set > 1 or (#set == 1 and #prefix < #set[1]) then
-			cat9.readline:suggest(set)
-			return
+			local ret, ofs = cat9.readline:suggest(set)
+			return ret, ofs
 		end
 	end
 
 -- clear suggestion by default first
 	if cat9.readline then
-		cat9.readline:suggest({})
+		local ret, ofs = cat9.readline:suggest({})
+		if ret == false then
+			return ret, ofs
+		end
 	end
 
 	local res, err = cat9.parse_resolve(tok, types, true)
@@ -356,7 +360,11 @@ local function suggest_for_context(prefix, tok, types)
 		if string.sub(prefix, -1) == " " then
 			res[#res+1] = ""
 		end
-		cat9.suggest[res[1]](res, prefix)
+		local err, ofs = cat9.suggest[res[1]](res, prefix)
+		if err == false then
+			closure()
+			return err, ofs
+		end
 		return closure()
 	end
 
@@ -450,7 +458,10 @@ function cat9.readline_verify(self, prefix, msg, suggest)
 
 	if suggest then
 		local tokens, msg, ofs, types = lash.tokenize_command(prefix, true, lex_opts)
-		suggest_for_context(prefix, tokens, types)
+		local ret, ofs = suggest_for_context(prefix, tokens, types)
+		if ret == false then
+			return ofs
+		end
 	end
 
 	cat9.laststr = msg
