@@ -5,5 +5,6 @@ return
 	'list.lua',
 	'stash.lua',
 	'term.lua',
-	'signal.lua'
+	'signal.lua',
+	'link.lua'
 }
