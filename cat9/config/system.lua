@@ -6,6 +6,7 @@ return
 		directory = {fc = tui.colors.ref_blue, bc = tui.colors.text},
 		bchunk = true,
 		autocheck = false,
+		right_arrow = lash.root:has_glyph("►") and " ► " or "->",
 		checksum = {"/usr/bin/env", "/usr/bin/env", "sha256sum", "$path"}
 	},
 	list =

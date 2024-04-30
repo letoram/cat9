@@ -70,7 +70,8 @@ local function add_file(v)
 	local ok, kind = root:fstatus(v)
 	local map =
 	{
-		map = v
+		source = v,
+		map = v,
 	}
 
 	if not ok then
@@ -80,11 +81,52 @@ local function add_file(v)
 		map.kind = kind
 	end
 
-	table.insert(active_job.data, v)
-	table.insert(active_job.set, {map = v})
+-- O(n) ignore duplicates
+	for i=1,#active_job.set do
+		if v == active_job.set[i].source then
+			return
+		end
+	end
+
+	table.insert(active_job.data, v .. builtin_cfg.stash.right_arrow .. v)
+	table.insert(active_job.set, map)
 
 	active_job.data.linecount = active_job.data.linecount + 1
 	active_job.data.bytecount = active_job.data.bytecount + #v
+end
+
+function commands.unlink(arg)
+	if type(arg) == "table" then
+		if not arg.parg then
+			return false
+		end
+	elseif type(arg) ~= "string" or arg ~= "yes" then
+		cat9.add_message("unlink: please add 'yes' to confirm deleting all files referenced by the stash")
+		return false
+	end
+
+-- this does not recurse into directories, need an explicit 'expand' to glob- commit
+	local rv = true
+
+	for i=#active_job.set,1,-1 do
+		if active_job.set[i].kind == "file" then
+			local ok, msg = root:funlink(active_job.set[i].source)
+			if not ok then
+				cat9.add_message(string.format("unlink (%s) failed: %s, stopping.", active_job.set[i], msg))
+				rv = false
+				break
+			end
+
+			table.remove(active_job.set, i)
+			local count = table.remove(active_job.data, i)
+
+			active_job.data.linecount = active_job.data.linecount - 1
+			active_job.data.bytecount = active_job.data.bytecount - #count
+		end
+	end
+
+	cat9.flag_dirty(active_job)
+	return rv
 end
 
 function commands.add(...)
@@ -106,7 +148,7 @@ function commands.add(...)
 		if res then
 			for i, v in ipairs(res) do
 				if type(v) == "string" then
-					table.insert(set, i, v)
+					add_file(v)
 				end
 			end
 		end
@@ -147,19 +189,24 @@ local commands =
 	"verify",
 	"expand",
 	"remove",
+	"prefix",
 	hint = {
 		"Create a stash and add a file to it, will append if a stash already exists",
 		"Step through the stash and build an archive for it",
-		"Unlink and remove all the files and directories referenced in the stash",
+		"Unlink/Delete all the files and directories referenced in the stash",
 		"Specify a name for an item in the stash",
 		"Sweep the stash and checksum each file entry",
 		"Resolve directories to individual files",
 		"Remove one or a range of items from the stash",
+		"Add or remove a number of characters to the beginning of a range of items in the stash",
 	}
 }
 
 local function get_attr(job, set, i, pos, highlight)
 	return builtin_cfg.stash.file
+end
+
+local function slice()
 end
 
 local function button(job, ind, x, y, mods, active)
