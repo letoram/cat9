@@ -72,6 +72,11 @@ function suggest.link(args, raw)
 			pick_file(set, args[2], cat9.config.glob.file_argv)
 
 		elseif #args == 3 then
+			if type(args[2]) == "table" then
+	-- need to check if this is a parg and if we can slice a single from it
+				return
+			end
+
 			local ok, kind = root:fstatus(args[2])
 			if not ok then
 				return false, #args[1] + 2
