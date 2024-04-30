@@ -1021,6 +1021,7 @@ function cat9.import_job(v, noinsert)
 	v.col_offset = 0
 	v.job = true
 	v.hide = hide_job
+	v.cursor = {0, 0} -- realtive input cursor
 
 	if not v.add_line then
 		v.add_line = add_line

@@ -219,8 +219,10 @@ function cat9.build_tmpjob_files(args, dispatch, fail)
 end
 
 -- expected to return nil (block_reset) to fit in with expectations of builtins
-function cat9.add_message(msg, use)
-	if type(msg) ~= "string" then
+function cat9.add_message(msg)
+	if not msg then
+		lastmsg = ""
+	elseif type(msg) ~= "string" then
 		print("add_message(" .. type(msg) .. ")" .. debug.traceback())
 	else
 		lastmsg = msg
@@ -713,6 +715,7 @@ function cat9.hide_readline(root)
 
 	cat9.laststr = cat9.readline:get()
 	root:revert()
+	cat9.flag_dirty()
 end
 
 function cat9.set_readline(rl, src)

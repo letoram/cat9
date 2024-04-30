@@ -13,7 +13,7 @@ return
 	autoexpand_latest = true, -- the latest job always starts view expanded
 	autocontract_last = false, -- the previous job will contract when a new one is spawned
 	autosuggest = true, -- start readline with tab completion enabled
-	debug = true, -- dump parsing output / data to the command-line
+	debug = false, -- dump parsing output / data to the command-line
 
 	hex_mode = "hex_detail_meta", -- hex, hex_detail hex_detail_meta
 

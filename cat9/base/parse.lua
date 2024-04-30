@@ -272,9 +272,9 @@ function cat9.parse_resolve(tokens, types, suggest)
 			if msg then
 				return fail(msg)
 
--- make sure dangling last error/fail message is cleared
 			else
-				cat9.add_message("")
+-- make sure dangling last error/fail message is cleared
+				cat9.add_message()
 			end
 			seq = {}
 			ent = nil

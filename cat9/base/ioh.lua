@@ -140,6 +140,16 @@ function handlers.key(self, sub, keysym, code, mods)
 
 	if bit.band(mods, mod) > 0 then
 
+-- if the readline is hidden, also block the other keybindings
+-- to avoid them clashing
+		if not cat9.readline then
+			if keysym == tui.keys.ESCAPE then
+				cat9.block_readline(root, false)
+				cat9.setup_readline(root)
+			end
+			return
+		end
+
 -- check chorded input first, this is always consumed and reset afterwards
 		if cat9.in_chord then
 			if cat9.in_chord[keysym] then
@@ -148,6 +158,7 @@ function handlers.key(self, sub, keysym, code, mods)
 			cat9.in_chord = nil
 			cat9.flag_dirty()
 			return
+
 		elseif bnd.chord[keysym] then
 			cat9.in_chord = bnd.chord[keysym]
 			return
@@ -155,18 +166,19 @@ function handlers.key(self, sub, keysym, code, mods)
 
 -- hard-coded defaults, these should also move into bindings
 		if keysym == tui.keys.ESCAPE then
+
 -- to disable readline there should be >= 1 valid jobs, and then
 -- we move selection with CTRL+ARROW|CTRL+HJLK
-			if cat9.readline then
-				cat9.hide_readline(root)
-			else
-				cat9.block_readline(root, false)
-				cat9.setup_readline(root)
+			cat9.hide_readline(root)
+			if not cat9.selectedjob then
+				cat9.selectedjob = cat9.latestjob
 			end
+
 			return
 
 		elseif keysym == tui.keys.SPACE then
 			alias_expand()
+			cat9.flag_dirty()
 
 		elseif cat9.bindings[keysym] then
 			cat9.parse_string(false, cat9.bindings[keysym])
@@ -180,8 +192,12 @@ function handlers.key(self, sub, keysym, code, mods)
 		end
 	end
 
-	if (cat9.selectedjob and cat9.selectedjob.write) then
-		cat9.selectedjob:write(keysym)
+	if cat9.selectedjob then
+		if cat9.selectedjob.key_input then
+			cat9.selectedjob:key_input(sub, keysym, code, mods)
+		elseif cat9.selectedjob.write then
+			cat9.selectedjob:write(keysym)
+		end
 	end
 end
 
@@ -481,8 +497,13 @@ end
 function handlers.utf8(self, ch)
 -- the :write is likely an nbio- table, but can be swapped out if interleaving/
 -- queuing mechanisms are needed
-	if cat9.selectedjob and cat9.selectedjob.inp then
-		cat9.selectedjob:write(ch)
+	local sj = cat9.selectedjob
+	if not sj then
+		return
+	end
+
+	if sj.write then
+		sj:write(ch)
 		return true
 	end
 end

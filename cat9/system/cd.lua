@@ -120,8 +120,7 @@ function suggest.cd(args, raw)
 		if #args > 4 then
 			cat9.add_message("cd favorite - too many arguments")
 			return
-		else
-			cat9.add_message("cd - too many arguments")
+		else -- might be in incoming parg
 			return
 		end
 

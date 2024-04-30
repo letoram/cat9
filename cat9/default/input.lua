@@ -10,7 +10,8 @@ function builtins.input(job, action)
 
 -- no readline + selected job that is capable of input means interactive
 -- input will be routed to the job
-	if not job.inp then
+	if not job.inp and not job.key_input then
+		cat9.add_message("input: job does not accept any inputs")
 		return
 	end
 
@@ -32,9 +33,11 @@ function suggest.input(args, raw)
 	if #args == 2 then
 		local set = {}
 
-		cat9.add_job_suggestions(set, false, function(job)
-			return job.dir ~= nil
-		end)
+		cat9.add_job_suggestions(set, false,
+			function(job)
+				return job.inp ~= nil or job.write ~= nil
+			end
+		)
 
 		cat9.readline:suggest(cat9.prefix_filter(set, args[2]), "word")
 		return

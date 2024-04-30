@@ -87,7 +87,7 @@ end
 local function view_monitor()
 	for _,v in ipairs(lash.jobs) do
 		if v.monitor then
-			print("view >monitor< : output job already exists")
+			cat9.add_message("view >monitor< : output job already exists")
 			return
 		end
 	end
@@ -115,19 +115,21 @@ local function view_monitor()
 		local lst = string.split(msg, "\n")
 		for _,v in ipairs(lst) do
 			table.insert(job.data, v)
+			job.data.linecount = job.data.linecount + 1
 		end
-		job.data.linecount = job.data.linecount + 1
 		cat9.flag_dirty()
 	end
 	cat9.add_message =
 	function(msg)
 		if type(msg) == "string" then
-			local list = string.split(msg, "\n")
-			for _v in ipairs(list) do
-				table.insert(job.data, v)
+			if #msg == 0 then
+			else
+				table.insert(job.data, msg)
+				job.data.linecount = job.data.linecount + 1
+				job.data.bytecount = job.data.bytecount + #msg
 			end
+			cat9.flag_dirty()
 		end
-		cat9.flag_dirty()
 --		oldam(msg)
 	end
 	table.insert(job.hooks.on_destroy,

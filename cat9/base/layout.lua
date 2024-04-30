@@ -41,7 +41,7 @@ end
 local function inside(job, x, y)
 	return
 		x >= job.region[1] and y >= job.region[2] and
-		x < job.region[3] and y < job.region[4]
+	 	x < job.region[3] and y < job.region[4]
 end
 
 function cat9.xy_to_job(x, y)
@@ -509,7 +509,15 @@ function cat9.redraw()
 		if cat9.readline then
 			cat9.readline:bounding_box(0, last_row, cols, last_row)
 			cat9.readline:set_prompt(cat9.get_prompt())
+		else
+			if cat9.selectedjob then
+				root:cursor_to(
+					cat9.selectedjob.region[1] + cat9.selectedjob.cursor[1] + 0,
+					cat9.selectedjob.region[2] + cat9.selectedjob.cursor[2] + 1
+				)
+			end
 		end
+
 		return
 	end
 
