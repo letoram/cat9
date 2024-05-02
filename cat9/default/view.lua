@@ -68,10 +68,16 @@ function viewlut.scroll(set, i, job)
 		return prefix == "+" or prefix == "-"
 	end
 
--- something to go to beginning/end?
+	local page_bound = 1
+	if set[2] == "page" then
+		table.remove(set, 2)
+		page_bound = job.region[4] - job.region[2] - 2
+		page_bound = page_bound < 1 and 1 or page_bound
+	end
+
 	local row = 0
 	job.row_offset_relative = is_rel(set[2])
-	local row = cat9.opt_number(set, 2, 0)
+	local row = cat9.opt_number(set, 2, 0) * page_bound
 	local col = cat9.opt_number(set, 3, 0)
 
 	sind = sind and sind or 0

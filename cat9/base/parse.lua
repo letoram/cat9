@@ -42,12 +42,18 @@ local function lookup_res(s, v)
 	local base = s[2][2]
 -- special: $=row
 	if base == "=crow" or base == "=crow:" then
-		if not cat9.selectedjob or
-			 not cat9.selectedjob.mouse or
-			 not cat9.selectedjob.mouse.on_row then
-			return "cursor not on job row"
+		local sj = cat9.selectedjob
+		if sj then
+			if sj.cursor[3] then
+				table.insert(v, sj.cursor[2] + 1)
+			elseif sj.mouse and sj.mouse.on_row then
+				table.insert(v, sj.mouse.on_row)
+			else
+				return "cursor not on job row"
+			end
+		else
+			return "no job selected"
 		end
-		table.insert(v, cat9.selectedjob.mouse.on_row)
 		return
 	end
 

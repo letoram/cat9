@@ -28,6 +28,22 @@ return
 		time_str = "%x %X",
 		time_key = "mtime", -- ctime, atime
 		compact = false,
+
+		bindings = {
+			up = tui.keys.UP,
+			down = tui.keys.DOWN,
+			page_down = tui.keys.PAGEDOWN,
+			page_up = tui.keys.PAGEUP,
+			search = tui.keys.SLASH,
+			dir_up = tui.keys.ESCAPE,
+			activate = tui.keys.RETURN,
+			[tui.keys.PAGEDOWN] = "view #csel scroll page +1",
+			[tui.keys.PAGEUP] = "view #csel scroll page -1",
+			[tui.keys.HOME] = "view #csel scroll 0",
+			[tui.keys.END] = "view #csel scroll page +100000",
+			[tui.keys.SPACE] = "view #csel select $=crow",
+		},
+
 		watch = {
 			"/usr/bin/env",
 			"/usr/bin/env",

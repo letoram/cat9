@@ -662,6 +662,11 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			job.mouse.on_row = ind
 		end
 
+-- or manually by the job
+		if job.cursor and job.cursor[2]+1 == i then
+			job.cursor.on_row = ind
+		end
+
 -- printing line numbers?
 		if job.show_line_number then
 -- left-justify
@@ -1021,7 +1026,7 @@ function cat9.import_job(v, noinsert)
 	v.col_offset = 0
 	v.job = true
 	v.hide = hide_job
-	v.cursor = {0, 0} -- realtive input cursor
+	v.cursor = {0, 0, false} -- realtive input cursor, last field is priority over mouse
 
 	if not v.add_line then
 		v.add_line = add_line

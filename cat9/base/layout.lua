@@ -509,13 +509,10 @@ function cat9.redraw()
 		if cat9.readline then
 			cat9.readline:bounding_box(0, last_row, cols, last_row)
 			cat9.readline:set_prompt(cat9.get_prompt())
-		else
-			if cat9.selectedjob then
-				root:cursor_to(
-					cat9.selectedjob.region[1] + cat9.selectedjob.cursor[1] + 0,
-					cat9.selectedjob.region[2] + cat9.selectedjob.cursor[2] + 1
-				)
-			end
+		end
+
+		if cat9.selectedjob and cat9.selectedjob.redraw then
+				cat9.selectedjob:redraw()
 		end
 
 		return
@@ -551,6 +548,10 @@ function cat9.redraw()
 	if cat9.readline then
 		cat9.readline:bounding_box(0, rows - 1, cols, rows - 1)
 		cat9.readline:set_prompt(cat9.get_prompt())
+	end
+
+	if cat9.selectedjob and cat9.selectedjob.redraw then
+		cat9.selectedjob:redraw()
 	end
 end
 
