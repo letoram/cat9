@@ -626,20 +626,28 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		job.mouse.on_col = false
 	end
 
+	local base = ofs
+	if job.row_offset_relative then
+		base = set.linecount - lc + ofs
+		if base <= 0 then
+			job.row_offset = job.row_offset - base
+			base = 1
+		end
+	end
+
+-- clamp and adjust row_offset so we stay in data range
+	if base <= 0 then
+		base = 1
+	end
+
+	job.view_base = base
+
+	if job.redraw then
+		job:redraw(false, cat9.selectedjob == job)
+	end
+
 	for i=1,lc do
-		local ind
-
--- apply offset as either an offset relative to end or absolute position
-		if job.row_offset_relative then
-			ind = set.linecount - lc + i + ofs
-		else
-			ind = ofs + i
-		end
-
--- clamp
-		if ind <= 0 then
-			ind = i
-		end
+		local ind = base + i - 1
 
 -- bad .data early out
 		local row = set[ind]
@@ -660,11 +668,6 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		if job.mouse and job.mouse[2] == y+i-1 then
 			on_row = true
 			job.mouse.on_row = ind
-		end
-
--- or manually by the job
-		if job.cursor and job.cursor[2]+1 == i then
-			job.cursor.on_row = ind
 		end
 
 -- printing line numbers?

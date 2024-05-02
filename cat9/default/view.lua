@@ -88,6 +88,8 @@ function viewlut.scroll(set, i, job)
 	if job.row_offset_relative and job.row_offset > 0 then
 		job.row_offset = 0
 	end
+
+	cat9.flag_dirty(job)
 end
 
 local function view_monitor()

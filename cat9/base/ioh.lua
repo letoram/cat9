@@ -503,8 +503,7 @@ function handlers.utf8(self, ch)
 	end
 
 	if sj.write then
-		sj:write(ch)
-		return true
+		return sj:write(ch)
 	end
 end
 

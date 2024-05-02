@@ -1,18 +1,7 @@
--- missing:
+-- improvements:
 --
--- view filter doesn't work here,
---      but it's not that easy with our custom presentation,
---      slice versus filter should probably work differently
---
--- sort
---
--- right-click actions
---
--- track selection across directory changes
---
--- ctrl+escape works for getting input but we can't step jobs (ioh)
---
--- mouse cursor input not quite up to snuff
+--  add view sort [default=step, size, type, date, ctime/mtime] [reverse]
+--      and apply to files_filtered
 --
 
 return
@@ -166,12 +155,14 @@ local function get_attr(job, set, i, pos, highlight, str)
 
 -- highlight on mouse, but cursor_item can also be set by keyboard,
 -- switch to the latest known as the dominant for any cursor-action
-	if job.mouse and job.mouse.on_row == i then
-		job.cursor_item = m
-		job.cursor[3] = false
-	end
+	if job.mouse then
+		if job.mouse.on_row == i then
+			job.cursor_item = m
+			fattr = table.copy_recursive(fattr)
+			fattr.border_down = true
+		end
 
-	if job.cursor_item == m then
+	elseif job.cursor_item == m then
 		fattr = table.copy_recursive(fattr)
 		fattr.border_down = true
 	end
@@ -194,6 +185,21 @@ local function get_attr(job, set, i, pos, highlight, str)
 	end
 
 	return {{fattr, str}}
+end
+
+local function on_redraw(job, over, selected)
+	if not job.data.files_filtered then
+		return
+	end
+
+	if not job.mouse then
+		job.cursor_item = job.data.files_filtered[job.view_base + job.cursor[2]]
+	end
+
+-- we are in control over the cursor, move it to the view_base+cursor
+	if over and selected and not cat9.readline then
+		root:cursor_to(0, job.region[2] + job.cursor[2] + 1)
+	end
 end
 
 local function write_at(job, x, y, str, set, i, pos, highlight)
@@ -261,66 +267,83 @@ local function item_click(job, btn, ofs, yofs, mods)
 	return true
 end
 
-local function synch_cursor_item(job)
--- fake-move the cursor, the calculation is somewhat involved as the actual
--- visible offset base can be defined either absolute or last-position
--- relative due to scrolling on a streaming / truncating source.
+local function list_text_input(job, ch)
+	local start = job.view_base + job.cursor[2] + 1
+	local found
 
--- job.cursor_item = m
-	job.mouse = nil
-	if job.cursor.on_row then
-		job.cursor_item = job.data.files_filtered[job.cursor.on_row]
-		cat9.add_message(
-			string.format(
-				"on_row: %d %s %d %d", job.cursor.on_row, job.cursor_item.name, job.cursor[2], job.cursor[1]))
-		job.cursor[3] = true
-		cat9.flag_dirty(job)
+	for i=start,job.data.files_filtered.linecount do
+		local item = job.data.files_filtered[i]
+		if string.sub(item.name, 1, #ch) == ch then
+			found = i
+			break
+		end
 	end
+
+	if not found then
+		return
+	end
+
+-- now we need to jump such that job.data.files_filtered[i] is in view
+-- and then set the cursor to that position
+	local nitems = found - start + 1
+	local rh = job.region[4] - job.region[2]
+
+	if job.cursor[2] + nitems > rh + job.cursor[2] then
+		cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll " .. found)
+		cat9.redraw()
+
+		return list_text_input(job, ch)
+	else
+		job.cursor[2] = job.cursor[2] + nitems
+	end
+
+	cat9.flag_dirty(job)
+
+	return true
 end
 
 local function list_input(job, sub, keysym, code, mods)
+	job.mouse = nil
+
 	if keysym == builtin_cfg.list.bindings.up then
--- fake job.mouse and set job.mouse.on_row and then just flag dirty,
--- also need to modify job.row_offset
-		cat9.flag_dirty(job)
 		if job.cursor[2] == 0 then
 			cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll -1")
-
--- just move the cursor, it is the layouter that actually moves it around
 		else
 			job.cursor[2] = job.cursor[2] - 1
 		end
 
-		synch_cursor_item(job)
-
 -- jump up one directory
 	elseif keysym == builtin_cfg.list.bindings.dir_up then
 		queue_glob(job, "..")
+
 		return true
 
 	elseif keysym == builtin_cfg.list.bindings.down then
 		local rh = job.region[4] - job.region[2]
 		job.cursor[2] = job.cursor[2] + 1
-		cat9.flag_dirty(job)
 
+-- should we scroll down?
 		if job.cursor[2] >= rh-3 then
-			job.cursor[2] = rh-3
-			cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll +1")
-		end
 
-		synch_cursor_item(job)
+-- but only if we aren't at the end
+			if job.view_base + job.cursor[2] + 1 < job.data.files_filtered.linecount then
+				cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll +1")
+				job.cursor[2] = job.cursor[2] - 1
+
+-- otherwise clamp
+			else
+				job.cursor[2] = rh-3
+			end
+		end
 
 	elseif keysym == builtin_cfg.list.bindings.activate then
 		item_click(job, 1, 0, 0, mods)
-		cat9.flag_dirty(job)
 
 	elseif builtin_cfg.list.bindings[keysym] then
 		cat9.parse_string(nil, builtin_cfg.list.bindings[keysym])
 	end
-end
 
-local function list_write(job, ch)
--- jump to first charadcter match?
+	cat9.flag_dirty(job)
 end
 
 builtins.hint["list"] = "List the contents of a directory"
@@ -362,11 +385,14 @@ function builtins.list(path, opt)
 		write_override = write_at,
 		last_selection = {},
 		compact = builtin_cfg.list.compact,
-		list = true
+		list = true,
+		redraw = on_redraw,
+		dir_history = {}
 	}
 	cat9.import_job(job)
 
 	job.key_input = list_input
+	job.write = list_text_input
 
 -- since this can be called when new files appear the actual names of selected
 -- lines need to be saved and re-marked on discovery
@@ -409,6 +435,11 @@ function(src, path)
 		src.monitor_pid = nil
 	end
 
+-- remember so that we can meta+ESCAPE back
+	if src.dir ~= path then
+		table.insert(src.dir_history, src.dir)
+	end
+
 -- reset data store
 	src.data.files = {}
 	src.short = path
@@ -429,6 +460,7 @@ function(src, path)
 			src.last_view = nil
 			src:set_view(view_files, slice_files, {}, "list")
 			src.cursor = {0, 0}
+			src.row_offset = -#src.data.files
 			cat9.flag_dirty(src)
 		else
 			local entry = {

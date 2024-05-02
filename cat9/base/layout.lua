@@ -512,7 +512,7 @@ function cat9.redraw()
 		end
 
 		if cat9.selectedjob and cat9.selectedjob.redraw then
-				cat9.selectedjob:redraw()
+			cat9.selectedjob:redraw(true, true)
 		end
 
 		return
@@ -551,12 +551,15 @@ function cat9.redraw()
 	end
 
 	if cat9.selectedjob and cat9.selectedjob.redraw then
-		cat9.selectedjob:redraw()
+		cat9.selectedjob:redraw(true, true)
 	end
 end
 
-function cat9.flag_dirty()
+function cat9.flag_dirty(job)
 	if cat9.readline then
+	end
+	if job then
+		job.cookie = 0
 	end
 	cat9.dirty = true
 end

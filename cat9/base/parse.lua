@@ -44,7 +44,7 @@ local function lookup_res(s, v)
 	if base == "=crow" or base == "=crow:" then
 		local sj = cat9.selectedjob
 		if sj then
-			if sj.cursor[3] then
+			if not sj.mouse then
 				table.insert(v, sj.cursor[2] + 1)
 			elseif sj.mouse and sj.mouse.on_row then
 				table.insert(v, sj.mouse.on_row)
