@@ -28,6 +28,9 @@ return
 		time_str = "%x %X",
 		time_key = "mtime", -- ctime, atime
 		compact = false,
+		track_changes = true,
+		suffix = {fc = tui.colors.alert, bc = tui.colors.text},
+		new_suffix = " [new]",
 
 		bindings = {
 			up = tui.keys.UP,

@@ -53,7 +53,7 @@ local function queue_monitor(src, trigger)
 			src.monitor_pid = nil
 
 			if code == 0 then
-				src["repeat"]()
+				src["repeat"](src, nil, builtin_cfg.list.track_changes)
 			end
 		end
 	end)
@@ -127,11 +127,13 @@ local function slice_files(job, lines)
 end
 
 local function get_attr(job, set, i, pos, highlight, str)
-	local fattr = builtin_cfg.list.file
+	local lcfg = builtin_cfg.list
+
+	local fattr = lcfg.file
 
 -- fallback, shouldn't happen
 	if not job.data.files_filtered then
-		return {{builtin_cfg.list.file, str}}
+		return {{lcfg.file, str}}
 	end
 
 	local m = job.data.files_filtered[i]
@@ -141,16 +143,16 @@ local function get_attr(job, set, i, pos, highlight, str)
 
 -- socket, directory, executable, might send to open for probe as well?
 	elseif m.directory then
-		fattr = builtin_cfg.list.directory
+		fattr = lcfg.directory
 
 	elseif m.socket then
-		fattr = builtin_cfg.list.socket
+		fattr = lcfg.socket
 
 	elseif m.executable then
-		fattr = builtin_cfg.list.executable
+		fattr = lcfg.executable
 
 	elseif m.link then
-		fattr = builtin_cfg.list.link
+		fattr = lcfg.link
 	end
 
 -- highlight on mouse, but cursor_item can also be set by keyboard,
@@ -167,6 +169,11 @@ local function get_attr(job, set, i, pos, highlight, str)
 		fattr.border_down = true
 	end
 
+	local suffix
+	if m.new and lcfg.new_suffix then
+		suffix = {lcfg.suffix or fattr, lcfg.new_suffix}
+	end
+
 -- it is a bit weird that we first provide the verbose text list
 -- and repeat the expansion here, but the first one is for alloc
 -- when layouting, then here for actually rendering the view.
@@ -174,13 +181,14 @@ local function get_attr(job, set, i, pos, highlight, str)
 	if not job.compact and m.meta then
 		return
 		{
-			{builtin_cfg.list.permission, m.meta.mode_string .. " "},
-			{builtin_cfg.list.user, m.meta.user .. " "},
-			{builtin_cfg.list.group, m.meta.group .. " "},
-			{builtin_cfg.list.time,
-				os.date(builtin_cfg.list.time_str,
-					m.meta[builtin_cfg.list.time_key]) .. " "},
-			{fattr, m.name}
+			{lcfg.permission, m.meta.mode_string .. " "},
+			{lcfg.user, m.meta.user .. " "},
+			{lcfg.group, m.meta.group .. " "},
+			{lcfg.time,
+				os.date(lcfg.time_str,
+					m.meta[lcfg.time_key]) .. " "},
+			{fattr, m.name},
+			suffix
 		}
 	end
 
@@ -397,7 +405,7 @@ function builtins.list(path, opt)
 -- since this can be called when new files appear the actual names of selected
 -- lines need to be saved and re-marked on discovery
 	job["repeat"] =
-	function()
+	function(ctx, _, track)
 		job.last_view = nil
 		job.last_selection = {}
 
@@ -407,18 +415,20 @@ function builtins.list(path, opt)
 			end
 		end
 
+		local oldfiles = job.data.files
+
 		job.selections = {}
 		job.data.files = {}
 		job.handlers.mouse_button = item_click
 
-		queue_glob(job, "")
+		queue_glob(job, "", track and oldfiles or nil)
 	end
 
 	job["repeat"]()
 end
 
 queue_glob =
-function(src, path)
+function(src, path, ref)
 -- kill any outstanding glob request
 	if src.ioh then
 		src.ioh:close()
@@ -471,6 +481,22 @@ function(src, path)
 			if status then
 				entry[kind] = true
 				entry.meta = ext
+			end
+
+	-- Anything missing in 'ref' is lost, new entries are marked as
+	-- new and can be used to pick a different coloring attribute or
+	-- other indicator. Unfortunately we can't trigger before the
+	-- unlink happens and keeping the descriptors in the list 'held'
+	-- isn't viable or we would have the makings of an undo.
+			if ref then
+				entry.new = true
+				for i,v in ipairs(ref) do
+					if v.name == entry.name then
+						table.remove(ref, i)
+						entry.new = false
+						break
+					end
+				end
 			end
 			table.insert(src.data.files, entry)
 		end
