@@ -1,3 +1,5 @@
+-- missing: doesn't provide help or suggestions for builtin- config sets
+
 return
 function(cat9, root, builtins, suggest)
 
@@ -105,12 +107,19 @@ end
 
 function suggest.config(args, raw)
 	local set = {"=reload"}
+
 	for k,v in pairs(cat9.config) do
 		if type(v) ~= "table" then
 			table.insert(set, k)
 		end
 	end
 	table.sort(set)
+
+	set.hint = {}
+-- we don't n-index hints as done elsewhere, so k- match and build post sort
+	for _, v in ipairs(set) do
+		table.insert(set.hint, cat9.config.hint[v] or "")
+	end
 
 	if #args == 2 then
 -- actually finished with the argument but hasn't begun on the next

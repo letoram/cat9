@@ -7,38 +7,64 @@ local selected_sym = lash.root:has_glyph("►") and "►" or ">"
 local fmt_sep = {fc = tui.colors.label, bc = tui.colors.text}
 local fmt_data = {fc = tui.colors.inactive, bc = tui.colors.text}
 
+-- hints match their config key here
+local hintbl = {
+	autoexpand_latest = "The latest job always starts as 'view expanded'",
+	autocontract_last = "The previous job will contract when a new one is spawned",
+	autosuggest = "Toggle completion without manually pressing TAB",
+	allow_state = "Permit external WM to control state load/store",
+	debug = "Write parser debug information to 'view monitor'",
+	hex_mode = "Builtin hex editor default presentation (hex, hex_detail, hex_detail_meta)",
+	content_offset = "Number of columns of padding between line column and content",
+	job_pad = "Number of empty rows between job views",
+	collapsed_rows = "Number of visible rows for a contracted job",
+	autoclear_empty = "Automatically forget #jobid for completed silent jobs",
+	show_line_number = "Set view linenumber for new jobs",
+	autokill_quiet_bad = "Timeout for silent jobs that failed with EXIT_FAILURE",
+	plumber = "Binary used for external open",
+	main_column_width = "Number of columns for main jobs",
+	min_column_width = "Number of columns for side jobs",
+	open_spawn_default = "Suggested open mode (embed, split, join-r, tab, swallow)",
+	clipboard_job = "Create a new job that absorbs all pasted input",
+	sh_runner = "Program to invoke for subshell commands",
+	default_job_view = "Default view action for new jobs",
+	open_embed_collapsed_rows = "Number of rows for downscaled contract open embed",
+	["=reload"] = "Re-parse and apply config.lua",
+	mouse_mode = string.format(
+		"(Advanced) override mouse mode flag (%d, %d)", tui.flags.mouse, tui.flags.mouse_full),
+}
+ -- tui.flags.mouse_full blocks meta+drag-select
 -- simpler toggles for dynamically controlling presentation
 return
 {
-	autoexpand_latest = true, -- the latest job always starts view expanded
-	autocontract_last = false, -- the previous job will contract when a new one is spawned
-	autosuggest = true, -- start readline with tab completion enabled
-	debug = false, -- dump parsing output / data to the command-line
+	hint = hintbl,
+	autoexpand_latest = true,
+	autocontract_last = false,
+	autosuggest = true,
+	debug = false,
+	hex_mode = "hex_detail_meta",
 
-	hex_mode = "hex_detail_meta", -- hex, hex_detail hex_detail_meta
+	content_offset = 1,
+	job_pad        = 1,
+	collapsed_rows = 4,
+	autoclear_empty = true,
+	show_line_number = true,
+	autokill_quiet_bad = 100,
 
-	content_offset = 1, -- columns to skip when drawing contents
-	job_pad        = 1, -- space after job data and next job header
-	collapsed_rows = 4, -- number of rows of contents to show when collapsed
-	autoclear_empty = true, -- forget jobs without output
-	show_line_number = true, -- default line number view
-	autokill_quiet_bad = 100, -- timeout for jobs that failed with just errc.
-
-	plumber = "/usr/bin/afsrv_decode", -- path to decode framesrever
+	plumber = "/usr/bin/afsrv_decode",
 
 	default_job_view = "crop",
 
-	main_column_width = 80, -- let one column be wider
-	min_column_width = 40, -- if we can add more side columns
+	main_column_width = 80,
+	min_column_width = 40,
 
-	open_spawn_default = "swallow", -- embed, split, join-r, tab, ...
+	open_spawn_default = "swallow",
 	open_embed_collapsed_rows = 4,
 --	open_external = "/usr/bin/nvim", -- set to skip the internal viewer
 
-	clipboard_job = true,     -- create a new job that absorbs all paste action
-	mouse_mode = tui.flags.mouse, -- tui.flags.mouse_full blocks meta+drag-select
-
-	allow_state = true, -- load/store persistent state at startup or at wm request
+	clipboard_job = true,
+	mouse_mode = tui.flags.mouse,
+	allow_state = true,
 
 -- sh-runner is configurable, will be rebuilt into argv through string.split(" ")
 -- this means that we can have a privileged root default, but default to run
