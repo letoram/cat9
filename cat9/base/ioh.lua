@@ -18,6 +18,7 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 -- deselect current unless the same
 	if cat9.selectedjob then
 		if job and cat9.selectedjob == job then
+			cat9.selectedjob.selected = true
 
 -- we have motion within the active job
 			if job.mouse then
@@ -146,6 +147,9 @@ function handlers.key(self, sub, keysym, code, mods)
 			if keysym == tui.keys.ESCAPE then
 				cat9.block_readline(root, false)
 				cat9.setup_readline(root)
+				if cat9.selectedjob then
+					cat9.selectedjob.selected = false
+				end
 			end
 			return
 		end
@@ -169,11 +173,14 @@ function handlers.key(self, sub, keysym, code, mods)
 
 -- to disable readline there should be >= 1 valid jobs, and then
 -- we move selection with CTRL+ARROW|CTRL+HJLK
-			cat9.hide_readline(root)
-			if not cat9.selectedjob then
-				cat9.selectedjob = cat9.latestjob
-			end
 
+			if not cat9.selectedjob and cat9.latestjob then
+				cat9.selectedjob = cat9.latestjob
+			elseif not cat9.selectedjob then
+				return
+			end
+			cat9.selectedjob.selected = true
+			cat9.hide_readline(root)
 			return
 
 		elseif keysym == tui.keys.SPACE then
