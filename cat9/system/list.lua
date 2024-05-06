@@ -9,6 +9,15 @@ local MiB = 1024 * 1024
 local GiB = 1024 * 1024 * 1024
 local TiB = 1024 * 1024 * 1024 * 1024
 
+local group_score =
+{
+	["file"] = 5,
+	["directory"] = 1,
+	["fifo"] = 2,
+	["socket"] = 3,
+	["link"] = 4
+}
+
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
@@ -54,39 +63,71 @@ local function string_justify(source, len)
 	return source
 end
 
-local function build_sort(job, method, inv)
+local function sort_group(a, b)
+	local as = group_score[a.kind] or 10
+	local bs = group_score[b.kind] or 10
+	return as < bs
+end
+
+local function build_sort(job, method, inv, group)
 	if method == "alphabetic" then
 		if inv then
 			return function(a, b)
-				return not sort_az_nat(a.name, b.name)
+				if not group or a.kind == b.kind then
+					if a.kind == b.kind then
+						return not sort_az_nat(a.name, b.name)
+					end
+				else
+					return sort_group(a, b)
+				end
 			end
 		else
 			return function(a, b)
-				return sort_az_nat(a.name, b.name)
+				if not group or a.kind == b.kind then
+					return sort_az_nat(a.name, b.name)
+				else
+					return sort_group(a, b)
+				end
 			end
 		end
 	elseif method == "size" then
 		if inv then
 			return
 			function(a, b)
-				return a.meta.size < b.meta.size
+				if not group or a.kind == b.kind then
+					return a.meta.size < b.meta.size
+				else
+					return sort_group(a, b)
+				end
 			end
 		else
 			return
 			function(a, b)
-				return a.meta.size > b.meta.size
+				if not group or a.kind == b.kind then
+					return a.meta.size > b.meta.size
+				else
+					return sort_group(a, b)
+				end
 			end
 		end
 	elseif method == "date" then
 		if inv then
 			return
 			function(a, b)
-				return a.meta.mtime < b.meta.mtime
+				if not group or a.kind == b.kind then
+					return a.meta.mtime < b.meta.mtime
+				else
+					return sort_group(a, b)
+				end
 			end
 		else
 			return
 			function(a, b)
-				return a.meta.mtime > b.meta.mtime
+				if not group or a.kind == b.kind then
+					return a.meta.mtime > b.meta.mtime
+				else
+					return sort_group(a, b)
+				end
 			end
 		end
 	end
@@ -483,7 +524,7 @@ function builtins.list(path, opt, ...)
 					job.sort_group = not job.sort_group
 				end
 			end
-			job.sort = build_sort(job, job.sort_kind, job.sort_inv)
+			job.sort = build_sort(job, job.sort_kind, job.sort_inv, job.sort_group)
 			job.data.files_filtered = nil
 			return
 		end
@@ -519,8 +560,9 @@ function builtins.list(path, opt, ...)
 		sort_inv = false,
 		sort_kind = builtin_cfg.list.sort,
 		size_prefix = builtin_cfg.list.size_prefix,
+		sort_group = true,
 	}
-	job.sort = build_sort(job, job.sort_kind, job.sort_inv)
+	job.sort = build_sort(job, job.sort_kind, job.sort_inv, job.sort_group)
 	cat9.import_job(job)
 
 	job.key_input = list_input
@@ -618,6 +660,7 @@ function(src, path, ref)
 			if status then
 				entry[kind] = true
 				entry.meta = ext
+				entry.kind = kind
 
 				if #ext.user > src.max_user_length then
 					src.max_user_length = #ext.user
