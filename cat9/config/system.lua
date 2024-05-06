@@ -1,3 +1,5 @@
+local group_sep = lash.root:has_glyph("") and " " or "> "
+
 return
 {
 	stash = {
@@ -35,6 +37,16 @@ return
 		sort_group = true,
 		sort = "alphabetic",
 		size_prefix = true,
+
+		job_bar_selected =
+		{
+			{"Size"},
+			{"Name"},
+			m1 = {
+				[1] = "list #csel sort size",
+				[2] = "list #csel sort alphabetic"
+			}
+		},
 
 		bindings = {
 			up = tui.keys.UP,

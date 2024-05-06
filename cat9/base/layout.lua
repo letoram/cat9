@@ -177,12 +177,31 @@ function draw_job_header(job, x, y, cols, rows, cc)
 	local gs = itemstack.group_sep or " "
 	local gs_len = root:utf8_len(gs)
 
---
--- FUTURE NOTE:
--- this itemstack could / should get extended with:
---
--- builtin_cfg[job.name].job_bar_[selected | job_bar] so that we can have both
--- a generic base-set of actions and a set of per-item ones.
+-- each view (mainly custom ones) can have a different set of tbar options
+	local cfg = lash.builtin_cfg
+	local bar = cfg and cfg[job.view_name] and cfg[job.view_name][job_key]
+	if not itemstack.m1 then
+		itemstack.m1 = {}
+	end
+	if not itemstack.m2 then
+		itemstack.m2 = {}
+	end
+
+	if bar then
+		itemstack = cat9.table_copy_shallow(itemstack)
+		local ofs = #itemstack
+
+		for i=1,#bar do
+			table.insert(itemstack, bar[i])
+			if bar.m1 then
+				itemstack.m1[ofs + i] = bar.m1[i]
+			end
+			if bar.m2 then
+				itemstack.m2[ofs + i] = bar.m2[i]
+			end
+		end
+	end
+
 --
 -- similarly the itemstack should be filtered by the availability of some
 -- property so that we can have contextual items that only trigger if we

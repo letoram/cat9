@@ -1030,6 +1030,10 @@ function cat9.import_job(v, noinsert)
 	v.hide = hide_job
 	v.cursor = {0, 0, false} -- realtive input cursor, last field is priority over mouse
 
+	if not v.view_name then
+		v.view_name = "unknown"
+	end
+
 	if not v.add_line then
 		v.add_line = add_line
 	end

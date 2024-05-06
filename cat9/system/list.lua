@@ -69,24 +69,24 @@ local function build_sort(job, method, inv)
 		if inv then
 			return
 			function(a, b)
-				return a.size < b.size
+				return a.meta.size < b.meta.size
 			end
 		else
 			return
 			function(a, b)
-				return a.size > b.size
+				return a.meta.size > b.meta.size
 			end
 		end
 	elseif method == "date" then
 		if inv then
 			return
 			function(a, b)
-				return a.mtime < b.mtime
+				return a.meta.mtime < b.meta.mtime
 			end
 		else
 			return
 			function(a, b)
-				return a.mtime > b.mtime
+				return a.meta.mtime > b.meta.mtime
 			end
 		end
 	end
@@ -448,21 +448,47 @@ end
 
 builtins.hint["list"] = "List the contents of a directory"
 
-function builtins.list(path, opt)
+function builtins.list(path, opt, ...)
 
 -- are we trying to run a new list or configure an existing one?
 	if type(path) == "table" then
-		if path.list then
-			if opt then
-				if opt == "toggle" then
-					path.compact = not path.compact
-				else
-					path.compact = opt == "short"
-				end
-				path["repeat"]()
-			end
+		local job = path
+		if not job.list then
+			cat9.add_message("list >path< does not refer to a list job")
+			return
 		end
 
+		if type(opt) ~= "string" then
+			cat9.add_message("list path >opt< unexpected type or missing")
+			return
+		end
+
+		if opt == "toggle" then
+			job.compact = not job.compact
+
+		elseif opt == "short" then
+			job.compact = true
+
+		elseif opt == "sort" then
+			local extra = {...}
+
+			for _,v in ipairs(extra) do
+				if v == "alphabetic" or v == "size" or v == "date" then
+					if job.sort_kind == v then
+						job.sort_inv = not job.sort_inv
+					end
+					job.sort_kind = v
+
+				elseif v == "type" then
+					job.sort_group = not job.sort_group
+				end
+			end
+			job.sort = build_sort(job, job.sort_kind, job.sort_inv)
+			job.data.files_filtered = nil
+			return
+		end
+
+		job["repeat"]()
 		return
 	end
 
@@ -488,11 +514,13 @@ function builtins.list(path, opt)
 		list = true,
 		redraw = on_redraw,
 		dir_history = {},
+		view_name = "list",
 		sort_group = builtin_cfg.list.sort_group,
 		sort_inv = false,
+		sort_kind = builtin_cfg.list.sort,
 		size_prefix = builtin_cfg.list.size_prefix,
 	}
-	job.sort = build_sort(job, "alphabetic") --builtin_cfg.list.sort)
+	job.sort = build_sort(job, job.sort_kind, job.sort_inv)
 	cat9.import_job(job)
 
 	job.key_input = list_input
@@ -689,7 +717,7 @@ function suggest.list(args, raw)
 					"Sort by size, repeat to invert",
 					"Sort by date, repeat to invert",
 					"Group by type, within group last sort operation applies",
-					"Just present items in the order shown",
+					"Present items as they arrived",
 				}
 			},
 				args[4]
