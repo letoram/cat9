@@ -7,7 +7,7 @@ return
 		bchunk = true,
 		autocheck = false,
 		right_arrow = lash.root:has_glyph("►") and " ► " or "->",
-		checksum = {"/usr/bin/env", "/usr/bin/env", "sha256sum", "$path"}
+		checksum = {"/usr/bin/env", "/usr/bin/env", "sha256sum", "--tag", "$path"}
 	},
 	list =
 	{
@@ -20,6 +20,7 @@ return
 		user = {fc = tui.colors.ref_light_grey, bc = tui.colors.text},
 		group = {fc = tui.colors.ref_light_grey, bc = tui.colors.text},
 		time = {fc = tui.colors.ref_blue, bc = tui.colors.text},
+		size = {fc = tui.colors.ref_blue, bc = tui.colors.text},
 		shift_m1 = "open #csel($=crow) new",
 		m2 = "stash add #csel($=crow)",
 		m1 = "open #csel($=crow) swallow",
@@ -31,6 +32,9 @@ return
 		track_changes = true,
 		suffix = {fc = tui.colors.alert, bc = tui.colors.text},
 		new_suffix = " [new]",
+		sort_group = true,
+		sort = "alphabetic",
+		size_prefix = true,
 
 		bindings = {
 			up = tui.keys.UP,

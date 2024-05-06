@@ -1,8 +1,13 @@
--- improvements:
+-- filter- view through fuzzy match or~
 --
---  add view sort [default=step, size, type, date, ctime/mtime] [reverse]
---      and apply to files_filtered
+-- with long paths we need to compact the path for titlebar to not overflow
+-- justify pad user/group
 --
+
+local KiB = 1024
+local MiB = 1024 * 1024
+local GiB = 1024 * 1024 * 1024
+local TiB = 1024 * 1024 * 1024 * 1024
 
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
@@ -15,6 +20,76 @@ local function resolve_path(path)
 	path = root:chdir()
 	root:chdir(old)
 	return path
+end
+
+local function sort_az_nat(a, b)
+-- find first digit point
+	local s_a, e_a = string.find(a, "%d+");
+	local s_b, e_b = string.find(b, "%d+");
+
+-- if they exist and are at the same position
+	if (s_a ~= nil and s_b ~= nil and s_a == s_b) then
+
+-- extract and compare the prefixes
+		local p_a = string.sub(a, 1, s_a-1);
+		local p_b = string.sub(b, 1, s_b-1);
+
+-- and if those match, compare the values
+		if (p_a == p_b) then
+			return
+				tonumber(string.sub(a, s_a, e_a)) <
+				tonumber(string.sub(b, s_b, e_b));
+		end
+	end
+
+-- otherwise normal a-Z
+	return string.lower(a) < string.lower(b);
+end
+
+local function string_justify(source, len)
+-- left-justify
+	if #source < len then
+		source = string.rep(" ", len - #source) .. source
+	end
+	return source
+end
+
+local function build_sort(job, method, inv)
+	if method == "alphabetic" then
+		if inv then
+			return function(a, b)
+				return not sort_az_nat(a.name, b.name)
+			end
+		else
+			return function(a, b)
+				return sort_az_nat(a.name, b.name)
+			end
+		end
+	elseif method == "size" then
+		if inv then
+			return
+			function(a, b)
+				return a.size < b.size
+			end
+		else
+			return
+			function(a, b)
+				return a.size > b.size
+			end
+		end
+	elseif method == "date" then
+		if inv then
+			return
+			function(a, b)
+				return a.mtime < b.mtime
+			end
+		else
+			return
+			function(a, b)
+				return a.mtime > b.mtime
+			end
+		end
+	end
 end
 
 local function queue_monitor(src, trigger)
@@ -61,9 +136,6 @@ end
 
 local function filter_job(job, set)
 	local res = {bytecount = 2}
-	local up = {directory = true, name = ".."}
-	table.insert(res, up)
-	res[up.name] = up
 
 	for _,v in ipairs(set) do
 		if v.name == ".." or (#v.name == 1 and v.name == ".") then
@@ -72,6 +144,17 @@ local function filter_job(job, set)
 			res.bytecount = res.bytecount + #v.name
 			res[v.name] = v
 		end
+	end
+
+-- insertion is a better bet here though
+	if job.sort then
+		table.sort(res, job.sort)
+	end
+
+	if job.dir ~= "/" then
+		local up = {directory = true, name = ".."}
+		table.insert(res, 1, up)
+		res[up.name] = up
 	end
 
 	res.linecount = #res
@@ -88,7 +171,14 @@ local function print_file(job, line)
 		local m = line.meta
 		local ts = os.date(builtin_cfg.list.time_str, m[builtin_cfg.list.time_key])
 		return line.name, #line.name, 1,
-			string.format("%s %s %s %s %s", m.mode_string, m.user, m.group, ts, line.name)
+			string.format("%s %s %s %s %s %s",
+				m.mode_string,
+				m.user,
+				m.group,
+				ts,
+				string_justify(tostring(m.size), job.max_size),
+				line.name
+			)
 	end
 end
 
@@ -179,14 +269,16 @@ local function get_attr(job, set, i, pos, highlight, str)
 -- when layouting, then here for actually rendering the view.
 --
 	if not job.compact and m.meta then
+		local meta = m.meta
 		return
 		{
-			{lcfg.permission, m.meta.mode_string .. " "},
-			{lcfg.user, m.meta.user .. " "},
-			{lcfg.group, m.meta.group .. " "},
+			{lcfg.permission, meta.mode_string .. " "},
+			{lcfg.user, string_justify(meta.user, job.max_user_length) .. " "},
+			{lcfg.group, string_justify(meta.group, job.max_group_length) .. " "},
 			{lcfg.time,
 				os.date(lcfg.time_str,
-					m.meta[lcfg.time_key]) .. " "},
+					meta[lcfg.time_key]) .. " "},
+			{lcfg.size, string_justify(meta.size_string, job.max_size) .. " "},
 			{fattr, m.name},
 			suffix
 		}
@@ -395,8 +487,12 @@ function builtins.list(path, opt)
 		compact = builtin_cfg.list.compact,
 		list = true,
 		redraw = on_redraw,
-		dir_history = {}
+		dir_history = {},
+		sort_group = builtin_cfg.list.sort_group,
+		sort_inv = false,
+		size_prefix = builtin_cfg.list.size_prefix,
 	}
+	job.sort = build_sort(job, "alphabetic") --builtin_cfg.list.sort)
 	cat9.import_job(job)
 
 	job.key_input = list_input
@@ -454,15 +550,16 @@ function(src, path, ref)
 	src.data.files = {}
 	src.short = path
 	src.dir = path
+	src.max_size = 0
+	src.max_user_length = 0
+	src.max_group_length = 0
 
 -- special case out hidden files as a separate list
-	if string.sub(path, -2) == ".*" then
-		path = string.sub(path, 1, -3)
-	end
+	local hidden = string.sub(path, -1) == "."
 
 -- asynch a new background job with the spawned ls
 	src.ioh =
-	cat9.add_fglob_job( out, path .. "/*",
+	cat9.add_fglob_job( out, path,
 	function(line)
 		if not line then
 			queue_monitor(src)
@@ -473,14 +570,66 @@ function(src, path, ref)
 			src.row_offset = -#src.data.files
 			cat9.flag_dirty(src)
 		else
+-- filter unwanted / hidden
+			if line == ".." or line == "." then
+				return
+			end
+
+			local fh = string.sub(line, 1, 1) == "."
+			if (fh and not hidden) or (not fh and hidden) then
+				return
+			end
+
 			local entry = {
-				name = string.sub(line, #path + (path == "/" and 1 or 2)),
-				full = line
+				name = line,
+				full = path .. "/" .. line
 			}
-			local status, kind, ext = root:fstatus(line, true)
+
+			local status, kind, ext = root:fstatus(entry.full, true)
+
 			if status then
 				entry[kind] = true
 				entry.meta = ext
+
+				if #ext.user > src.max_user_length then
+					src.max_user_length = #ext.user
+				end
+
+				if #ext.group > src.max_group_length then
+					src.max_group_length = #ext.group
+				end
+
+-- for human-readable presentation
+				if ext.size < KiB then
+					ext.prefix = "B"
+					ext.size_prefix = ext.size
+
+				elseif ext.size < MiB then
+					ext.prefix = "K"
+					ext.size_prefix = ext.size / KiB
+
+				elseif ext.size < GiB then
+					ext.prefix = "M"
+					ext.size_prefix = ext.size / MiB
+
+				elseif ext.size < TiB then
+					ext.prefix = "G"
+					ext.size_prefix = ext.size / GiB
+
+				else
+					ext.prefix = "T"
+					ext.size_prefix = ext.size / TiB
+				end
+
+				if src.size_prefix then
+					ext.size_string = string.format("%.1f%s", ext.size_prefix, ext.prefix)
+				else
+					ext.size_string = tostring(ext.size)
+				end
+
+				if #ext.size_string > src.max_size then
+					src.max_size = #ext.size_string
+				end
 			end
 
 	-- Anything missing in 'ref' is lost, new entries are marked as
@@ -506,21 +655,48 @@ end
 
 function suggest.list(args, raw)
 	if #raw == 4 or #args > 2 then
-		if args[2] and type(args[2]) == "table" and args[2].list then
+		if not args[2] or not type(args[2]) == "table" or not args[2].list then
+			return
+		end
+
+		if #args == 3 then
 			local set = cat9.prefix_filter(
 				{
 					"full",
 					"short",
 					"toggle",
+					"sort",
 				hint =
 				{
 					"Set the list to verbose (permission, user, ...)",
 					"Set the item list to compact (name-only)",
-					"Toggle between verbose and compact"
+					"Toggle between verbose and compact",
+					"Change sort criteria",
 				}
 			}, args[3])
 			cat9.readline:suggest(set, "word")
+
+		elseif #args == 4 then
+			local set = cat9.prefix_filter(
+				{
+					"alphabetic",
+					"size",
+					"date",
+					"type",
+					"unordered",
+				hint = {
+					"Sort by alphabetic name, repeat to invert",
+					"Sort by size, repeat to invert",
+					"Sort by date, repeat to invert",
+					"Group by type, within group last sort operation applies",
+					"Just present items in the order shown",
+				}
+			},
+				args[4]
+			)
+			cat9.readline:suggest(set, "word")
 		end
+
 		return
 	end
 

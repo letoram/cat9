@@ -277,7 +277,6 @@ end
 -- which is called last.
 function cat9.background_chain(commands, cmdopt, arg, closure)
 	local run_command
-	local refjob = in_monitor
 
 -- regular chain runner, take the next command in question, setup runner
 	run_command =
@@ -681,11 +680,11 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- set inverse attribute if mouse cursor is on top of it
 			lineattr.inverse = job.mouse and
 				                 on_row    and
-				                 job.mouse[1] <= cx + 3 + digits
+				                 job.mouse[1] <= cx + 1 + digits
 
 -- this changes the row width and the column lookup
 			if on_row then
-				job.mouse.on_col = (job.mouse[1] <= cx + 3 + digits + #row) and 2
+				job.mouse.on_col = (job.mouse[1] <= cx + 1 + digits + #row) and 2
 --  and we might be on the first column
 				if lineattr.inverse then
 					job.mouse.on_col = 1
@@ -694,7 +693,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 			root:write_to(cx, y+i-1, num, lineattr)
 			root:write(": ", lineattr)
-			cx = cx + 3 + digits
+			cx = cx + 2 + digits
 			ccols = cols - digits - 4
 		else
 			if on_row then

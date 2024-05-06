@@ -18,6 +18,21 @@ local commands = {}
 local active_job
 builtins.hint["stash"] = "Define a set of objects to manipulate"
 
+local function all_by_type(type)
+	local set = {}
+	if not active_job or not active_job.set then
+		return set
+	end
+
+	for _,v in ipairs(active_job.set) do
+		if v.kind == type then
+			table.insert(set, v)
+		end
+	end
+
+	return set
+end
+
 local function monitor_inqueue(id, blob, lref)
 	local map = {
 		map = id,
@@ -68,6 +83,7 @@ end
 
 local function add_file(v)
 	local ok, kind = root:fstatus(v)
+
 	local map =
 	{
 		source = v,
@@ -79,6 +95,12 @@ local function add_file(v)
 		map.kind = "bad"
 	else
 		map.kind = kind
+	end
+
+	if string.sub(v, 1, 2) == "./" then
+		v = root:chdir() .. string.sub(v, 2)
+		map.map = v
+		map.source = v
 	end
 
 -- O(n) ignore duplicates
@@ -160,6 +182,72 @@ function commands.add(...)
 			add_file(v)
 		end
 	end
+end
+
+function commands.verify(...)
+	local set = {...}
+	if not active_job then
+		cat9.add_message("stash verify: no active stash")
+		return
+	end
+
+	if active_job.verify_set then
+		cat9.add_message("stash verify: verification still pending")
+		return
+	end
+
+	local set = all_by_type("file")
+	if #set == 0 then
+		cat9.add_message("stash verify: no files in current stash")
+		return
+	end
+
+	local job = {}
+
+-- copy the command, swap in our current file path and attach the
+-- queue data handler
+	for i=1,#set do
+		local cmd = cat9.table_copy_shallow(builtin_cfg.stash.checksum)
+		for i=1,#cmd do
+			if cmd[i] == "$path" then
+				cmd[i] = set[i]
+			end
+			local chain = cmd.handler
+
+-- let the parse- action be part of the config file, but provide
+-- a default matching --tag otherwise
+			cmd[i].handler =
+			function(job, arg, code)
+				local alg, sum
+				if code ~= 0 then
+					set[i].verify = false
+					return
+				end
+
+				if chain then
+					alg, sum = chain(job.data)
+
+				elseif job.data[1] then
+					print("parse", job.data[1])
+					local pref = string.split(job.data[1], "=")
+					set[i].verify = false
+					return
+				end
+			end
+		end
+
+		table.insert(job, cmd)
+	end
+
+	cat9.background_chain(job, {lf_strip = true}, active_job,
+		function(job)
+			if job ~= active_job then -- stash was removed / rebuilt while processing
+				return
+			end
+		end
+	)
+
+	active_job.verify_set = set
 end
 
 function commands.compress(fn)
