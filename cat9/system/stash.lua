@@ -120,6 +120,7 @@ local function add_stash_job()
 	local job =
 	{
 		set = {},
+		alias = "stash",
 		check_status =
 		function()
 			return true -- feedback if job
