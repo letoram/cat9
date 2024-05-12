@@ -10,17 +10,12 @@
 --       just for providing parsing state feedback on input error, or emit
 --       completion suggestions.
 --
---       expand_arg(dst, str, closure) - each argument in a command-line (as
---       part of term- handover) can be passed through this before being
---       forwarded, allowing each [str] to expand into something more by
---       inserting into [dst].
---
---       The main use being something like test[0..9].jpg or `find /usr` that
---       need to attach to a hidden job before it can be turned into a proper
---       one.
---
---       If this happens, expand_arg is expected to invoke closure() when done
---       and return a function that cancels the job if it fails. (incomplete).
+--       ok, err = expand_arg(dst, args, escape) -- take the argument list
+--       in [args] and resolve / expand into arguments inserted into ok. If
+--       escape is set to an n-indexed table of [sym,val] tables, each
+--       string will also be filtered through the indices in order, gsub:ing
+--       sym into val, for instance: {{'\', '\\', {'"', '\"'}, {' ', '\ '}}
+--       would turn: hi "there" \what into: hi\ \"there\"\ \\what
 --
 
 -- change the default lexer operator treatment so that /hi would becomes
@@ -477,43 +472,78 @@ function cat9.readline_verify(self, prefix, msg, suggest)
 	end
 end
 
--- nop right now, the value later is to allow certain symbols to expand with
--- data from job or other variable references, glob patterns being a typical
--- one. Returns 'false' if there is an error with the expansion
---
--- do that by just adding the 'on-complete' function into dst
-function cat9.expand_arg(dst, str)
-	return str
+function cat9.expand_arg(dst, args, escape)
+	local escape_str =
+	function(s)
+		if not escape then
+			return s
+		end
+		for i,v in ipairs(escape) do
+			s = string.gsub(s, v[1], v[2])
+		end
+		return s
+	end
+
+	local job = nil
+	local i = 1
+	while i < #args do
+		local v = args[i]
+		local vn = args[i+1]
+
+		if type(v) == "string" then
+			table.insert(dst, escape_str(args[i]))
+
+-- #job reference,
+		elseif type(v) == "table" then
+			if v.parg then
+				return false, "() without backing job"
+
+			elseif not v.slice then
+				return false, "job reference can't slice"
+
+			else
+-- check if we have #id(...) and not #id1 #id2, let the slicer work
+				local arg = nil
+				if type(vn) == "table" and vn.parg then
+					arg = vn
+					i = i + 1
+				end
+
+-- and inject-escape the results, could reduce this from 2n to n by
+-- overriding resolver to return pre-escaped
+				for _,v in ipairs(v:slice()) do
+					table.insert(dst, escape_str(v))
+				end
+
+			end
+		end
+
+		i = i + 1
+	end
+
+	return true
 end
 
 function cat9.default_fallthrough(commands, inp, line)
 -- validation, all entries in commands should be strings now - otherwise the
 -- data needs to be extracted as argument (with certain constraints on length,
 -- ...)
-	for _,v in ipairs(commands) do
-		if type(v) ~= "string" then
-			cat9.add_message("parsing error in commands, non-string in argument list")
-			if revert then
-				cat9.switch_env()
-			end
-			return
-		end
+	local dst = {}
+	local ok, err = cat9.expand_arg(dst, commands)
+	if not ok then
+		cat9.add_message("couldn't expand command line: " .. err)
+		return
 	end
 
 -- throw in that awkward and uncivilised unixy 'application name' in argv
-	local lst = string.split(commands[1], "/")
-	table.insert(commands, 2, lst[#lst])
+	local lst = string.split(dst[1], "/")
+	table.insert(dst, 2, lst[#lst])
 
-	local job = cat9.setup_shell_job(commands,
+	local job = cat9.setup_shell_job(dst,
 		inp and "wre" or "re", cat9.env, line, {close = true})
 
 	if job and job.write and inp then
 		job:write(inp)
-	end
-
--- return to normal
-	if revert then
-		cat9.switch_env()
 	end
 end
 

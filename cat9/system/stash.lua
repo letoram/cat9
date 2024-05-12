@@ -1,8 +1,9 @@
 --
 -- missing:
+--
+--  colorize
 --  edit / define mapping
---  expand filepath
---  expand directory (shallow / recursive)
+--  expand directories (shallow / recursive)
 --  checksum / verify
 --  compress
 --
@@ -55,6 +56,38 @@ local function unregister()
 	active_job = nil
 end
 
+local function write_at(job, x, y, str, set, i, pos, highlight, width)
+	if root:utf8_len(set[i]) < width then
+		root:write_to(x, y, str)
+		return
+	end
+
+-- so we don't fit, priority:
+	local src = active_job.set[i].source
+	local map = active_job.set[i].map
+
+	local ras = builtin_cfg.stash.right_arrow
+	local ent = cat9.compact_path(src)
+	local ral = root:utf8_len(ras)
+	local ull = root:utf8_len(ent)
+	local dul = root:utf8_len(map)
+
+--  1. short_path + right_arrow + map_name
+	if ull + ral + dul <= width then
+		str = ent .. ras .. map
+--  (missing) 2. shared_prefix (if any) + right_arrow + map_name
+--            3. shortened_source_shared + right_arrow + map_name
+	elseif ral + dul < width then
+--  4. right_arrow + map_name
+		str = ras .. map
+	else
+--  5. right_arrow + shorten_map_name
+		str = ras .. cat9.compact_path(map)
+	end
+
+	root:write_to(x, y, str)
+end
+
 local function add_stash_job()
 	local job =
 	{
@@ -63,6 +96,7 @@ local function add_stash_job()
 		function()
 			return true -- feedback if job
 		end,
+		write_override = write_at,
 		raw = "",
 		view_name = "stash",
 		short = "Stash",
@@ -228,7 +262,6 @@ function commands.verify(...)
 					alg, sum = chain(job.data)
 
 				elseif job.data[1] then
-					print("parse", job.data[1])
 					local pref = string.split(job.data[1], "=")
 					set[i].verify = false
 					return

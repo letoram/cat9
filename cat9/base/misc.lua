@@ -71,6 +71,22 @@ function table.equal(tbl1, tbl2)
 	return true
 end
 
+function cat9.compact_path(str, lastcap)
+	local set = string.split(str, "/")
+	local compact = {}
+
+-- build to /a/b/c/filename
+	for i=1,#set do
+		if i < #set then
+			local next = root.utf8_step(set[i], 1, 1)
+			table.insert(compact, next == -1 and set[i] or string.sub(set[i], 1, next))
+		else
+			table.insert(compact, set[i])
+		end
+	end
+	return table.concat(compact, "/")
+end
+
 function cat9.modifier_string(mod)
 	local str = ""
 	if bit.band(mod, tui.modifiers.SHIFT) > 0 then

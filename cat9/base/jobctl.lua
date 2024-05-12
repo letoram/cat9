@@ -437,7 +437,6 @@ end
 
 local function term_handover(mode, env, bin, ...)
 	local argtbl = {...}
-	local argv = {}
 
 -- any special !(a,b,c) options go here, mainly embedding or wm open hint
 -- more unpacking to be done here, especially overriding env
@@ -448,61 +447,29 @@ local function term_handover(mode, env, bin, ...)
 
 -- some arguments may need to be resolved asynchronously, so sweep argv and
 -- add to a list of runners that resolve into the final argv
-	local dynamic = false
-	local runners = {}
-	for _,v in ipairs(argtbl) do
-		ok, msg = cat9.expand_arg(argv, v)
-		if not ok then
-			cat9.add_message(msg)
-			return
-		end
-		table.insert(runners, ok)
+	argv = {}
+	local ok, err = cat9.expand_arg(argv, argtbl, {
+		{[[\]], [[\\]]},
+		{'"', '\\"'},
+		{' ', '\\ '}
+	})
+
+	if not ok then
+		cat9.add_message(err)
+		return
 	end
 
--- Dispatched when the queue of runners is empty - argv is passed in env due to
--- afsrv_terminal being used to implement the vt100 machine. Dir needs to be
--- tracked as with a slow desktop connection, run can resolve after the user
--- has chdir:ed root away.
 	local dir = root:chdir()
-	local run =
-	function()
-		env["ARCAN_TERMINAL_EXEC"] = table.concat(argv, " ")
-		if string.find(open_mode, "e") then
+	local list = table.concat(argv, " ")
+
+	env["ARCAN_TERMINAL_EXEC"] = list
+
+	if string.find(open_mode, "e") then
 			env["ARCAN_ARG"] =
 				env["ARCAN_ARG"] and (env["ARCAN_ARG"] .. ":keep_stderr") or "keep_stderr"
 		end
 
-		cat9.shmif_handover(cmode, open_mode, bin, env, {})
-	end
-
--- Asynch-serialise - each runner is a function (or string) that, on finish,
--- appends arguments to argv and when there are no runners left - hands over
--- and executes. Even if the job can be resolved immediately (static) the same
--- code is reused to avoid further branching.
-	local step_job
-	step_job =
-	function()
-		if #runners == 0 then
-			run()
-			return
-		end
-
-		local job = table.remove(runners, 1)
-		if type(job) == "string" then
-			local res = string.gsub(job, "\"", "\\\"")
-			table.insert(argv, res)
-			step_job()
-		else
-			local ret, err = job()
-			if not ret then
-				cat9.add_message(err)
-			else
-				ret.closure = {step_job}
-			end
-		end
-	end
-
-	step_job()
+	cat9.shmif_handover(cmode, open_mode, bin, env, {})
 end
 
 function cat9.term_handover(cmode, ...)
@@ -713,7 +680,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	-- offsets and not just 'per line attributes'
 		if job.write_override then
 			job:write_override(cx,
-				y+i-1, row, set, ind, 0, job.selections[ind])
+				y+i-1, row, set, ind, 0, job.selections[ind], ccols)
 		else
 
 -- finally print it, hightlight any manually selected lines
