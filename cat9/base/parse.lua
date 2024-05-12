@@ -486,7 +486,7 @@ function cat9.expand_arg(dst, args, escape)
 
 	local job = nil
 	local i = 1
-	while i < #args do
+	while i <= #args do
 		local v = args[i]
 		local vn = args[i+1]
 
@@ -511,7 +511,7 @@ function cat9.expand_arg(dst, args, escape)
 
 -- and inject-escape the results, could reduce this from 2n to n by
 -- overriding resolver to return pre-escaped
-				for _,v in ipairs(v:slice()) do
+				for _,v in ipairs(v:slice(arg)) do
 					table.insert(dst, escape_str(v))
 				end
 

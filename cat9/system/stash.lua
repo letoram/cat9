@@ -56,6 +56,34 @@ local function unregister()
 	active_job = nil
 end
 
+local function expand_set(key)
+	local res = {linecount = 0, bytecount = 0}
+	for i,v in ipairs(active_job.set) do
+		table.insert(res, v[key])
+		res.linecount = res.linecount + 1
+		res.bytecount = res.bytecount + #v[key]
+	end
+	return res, res.linecount, res.bytecount
+end
+
+local function stash_slice(job, lines, set)
+	local data = set or job.data
+
+	return
+	cat9.resolve_lines(
+		job, {}, lines,
+			function(i)
+				if not i then
+					return expand_set("map")
+				elseif job.set[i] then
+					return job.set[i].map, #job.set[i].map, 1
+				else
+					return nil, 0, 0
+				end
+			end
+		)
+end
+
 local function write_at(job, x, y, str, set, i, pos, highlight, width)
 	if root:utf8_len(set[i]) < width then
 		root:write_to(x, y, str)
@@ -100,6 +128,7 @@ local function add_stash_job()
 		raw = "",
 		view_name = "stash",
 		short = "Stash",
+		slice = stash_slice,
 		old_ioh = cat9.resources.bin
 	}
 
@@ -325,9 +354,6 @@ local commands =
 
 local function get_attr(job, set, i, pos, highlight)
 	return builtin_cfg.stash.file
-end
-
-local function slice()
 end
 
 local function button(job, ind, x, y, mods, active)

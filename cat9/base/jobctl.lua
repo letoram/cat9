@@ -743,6 +743,9 @@ local function do_line(dst, v, lookup)
 end
 
 function cat9.resolve_lines(job, dst, lines, lookup)
+	dst.bytecount = dst.bytecount or 0
+	dst.linecount = dst.linecount or 0
+
 	if not lines or #lines == 0 then
 		return lookup()
 	end
@@ -751,9 +754,6 @@ function cat9.resolve_lines(job, dst, lines, lookup)
 		cat9.add_message("resolve_lines:invalid destination")
 		return lookup()
 	end
-
-	dst.bytecount = dst.bytecount or 0
-	dst.linecount = dst.linecount or 0
 
 -- special case, grab the current picking selection
 	if #lines == 1 and lines[1] == "sel" then
@@ -968,7 +968,13 @@ local function view_set(job, view, slice, state, name)
 		job.view_name = "unknown"
 	end
 	job.selections = {}
-	job.slice = slice or cat9.default_slice
+
+	if slice then
+		job.slice = slice
+	elseif not job.slice then
+		job.slice = cat9.default_slice
+	end
+
 	job.row_offset = 0
 	job.col_offset = 0
 	cat9.flag_dirty()
@@ -1019,7 +1025,11 @@ function cat9.import_job(v, noinsert)
 	v.suggest = cat9.suggest
 
 	v.show_line_number = config.show_line_number
-	v.slice = cat9.default_slice
+
+	if not v.slice then
+		v.slice = cat9.default_slice
+	end
+
 	v.region = {0, 0, 0, 0}
 
 	if v.unbuffered == nil then
