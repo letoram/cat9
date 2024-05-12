@@ -179,7 +179,7 @@ local function set_interactive(job)
 
 		if err or ofs or not set then
 			if err then
-				cat9.add_message(err, cat9.MESSAGE_HELP)
+				cat9.add_message(err)
 			end
 			last_set = nil
 			return ofs

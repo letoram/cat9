@@ -36,14 +36,15 @@ end
 
 local function monitor_inqueue(id, blob, lref)
 	local map = {
-		map = id,
+		map = lref or "fifo." .. tostring(id),
 		kind = "fifo",
-		nbio = blob
+		nbio = blob,
+		source = lref or "(fifo:" .. id .. ")"
 	}
 
 -- on OSes where we can resolve the origin of the descriptor backing
 -- a blob, it'll be provided in lref
-	table.insert(active_job.data, lref or "(fifo:" .. id .. ")")
+	table.insert(active_job.data, map.source)
 	table.insert(active_job.set, map)
 
 	active_job.data.linecount = active_job.data.linecount + 1
@@ -222,29 +223,14 @@ function commands.add(...)
 		add_stash_job()
 	end
 
--- handle job (args) to slice out and add to set, this requires that
--- the source (typically list) slices out into absolute and useful path
-	local parg
-	if type(set[1]) == "table" and
-		type(set[2]) == "table" and set[2].parg then
-		local job = table.remove(set, 1)
-		local parg = table.remove(set, 1)
-		local res = job:slice(parg)
-
-		if res then
-			for i, v in ipairs(res) do
-				if type(v) == "string" then
-					add_file(v)
-				end
-			end
-		end
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
 	end
 
-	for i,v in ipairs(set) do
-		if type(v) == "table" then
-		elseif type(v) == "string" then
-			add_file(v)
-		end
+	for _, v in ipairs(base) do
+		add_file(v)
 	end
 end
 
@@ -386,6 +372,69 @@ function(args, raw)
 				cat9.readline:suggest(set, "word", prefix)
 			end
 		)
+	end
+end
+
+cmdsug.map =
+function(args, raw)
+	if #raw == 3 or #args == 0 then
+		return
+	end
+
+	if not active_job then
+		cat9.add_message("stash: no active stash")
+		return false, 7
+	end
+
+-- pick from existing stash items
+	if #args == 1 then
+		local set = {title = "source item"}
+		for i=1,#active_job.set do
+			local src = active_job.set[i].source
+			if #args[1] == 0 or string.sub(src, 1, #args[1]) == args[1] then
+				table.insert(set, src)
+			end
+		end
+		cat9.readline:suggest(set, "word")
+		return
+	end
+
+-- completion should probably just be from known map paths
+	if #args == 2 then
+		local found = false
+		for i=1,#active_job.set do
+			if active_job.set[i].source == args[1] then
+				found = true
+				break
+			end
+		end
+
+		if not found then
+			cat9.add_message("stash map: no matching source item")
+			return false, #args[1] + 7
+		end
+
+		local set = {title = "mapped path/name"}
+		local paths = {}
+
+		for i=1,#active_job.set do
+			local map = active_job.set[i].map
+			local prefix = string.split(map, "/")
+			table.remove(prefix, #prefix)
+			paths[table.concat(prefix, "/")] = true
+		end
+
+		for k,v in pairs(paths) do
+			if #args[2] == 0 or string.sub(k, 1, #args[2]) == args[2] then
+				table.insert(set, k)
+			end
+		end
+
+		cat9.readline:suggest(set, "word", 1)
+
+	else
+		cat9.add_message("stash map: too many argments")
+		return false, #args[1] + #args[2] + 7
 	end
 end
 

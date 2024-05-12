@@ -146,9 +146,6 @@ function cat9.update_lastdir()
 	end
 end
 
-cat9.MESSAGE_WARNING = 0
-cat9.MESSAGE_HELP = 1
-
 -- helper for creating temp files, ideally this should come from the tui-lua
 -- bindings, but that feature is missing so have a fallback safe first
 function cat9.mktemp(prefix)
