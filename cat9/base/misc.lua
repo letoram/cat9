@@ -71,6 +71,24 @@ function table.equal(tbl1, tbl2)
 	return true
 end
 
+if not string.split_first then
+function string.split_first(instr, delim)
+	if (not instr) then
+		return;
+	end
+	local delim_pos, delim_stp = string.find(instr, delim, 1);
+	if (delim_pos) then
+		local first = string.sub(instr, 1, delim_pos - 1);
+		local rest = string.sub(instr, delim_stp + 1);
+		first = first and first or "";
+		rest = rest and rest or "";
+		return first, rest;
+	else
+		return "", instr;
+	end
+end
+end
+
 function cat9.compact_path(str, lastcap)
 	local set = string.split(str, "/")
 	local compact = {}

@@ -617,9 +617,12 @@ function cat9.parse_string(rl, line)
 
 	if string.sub(cmd, 1, 1) ~= "_" and cat9.builtins[cmd] then
 		cat9.stdin = inp
-		res = cat9.builtins[cmd](unpack(commands, 2))
+		local ok, msg = cat9.builtins[cmd](unpack(commands, 2))
+		if ok == false then
+			cat9.add_message(msg)
+		end
 		cat9.stdin = nil
-		return res
+		return ok
 	elseif cat9.builtins["_default"] then
 		res = cat9.builtins["_default"](commands, inp, line)
 	else

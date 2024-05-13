@@ -6,7 +6,6 @@
 --  expand directories (shallow / recursive)
 --  checksum / verify
 --  compress
---
 
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
@@ -117,7 +116,11 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 	root:write_to(x, y, str)
 end
 
-local function add_stash_job()
+local function ensure_stash_job()
+	if active_job then
+		return
+	end
+
 	local job =
 	{
 		set = {},
@@ -171,7 +174,9 @@ local function add_file(v)
 -- O(n) ignore duplicates
 	for i=1,#active_job.set do
 		if v == active_job.set[i].source then
-			return
+			return false, "stash add : rejecting duplicate entry"
+		elseif v == active_job.set[i].map then
+			return false, "stash add : rejecting map collision"
 		end
 	end
 
@@ -182,14 +187,9 @@ local function add_file(v)
 	active_job.data.bytecount = active_job.data.bytecount + #v
 end
 
-function commands.unlink(arg)
-	if type(arg) == "table" then
-		if not arg.parg then
-			return false
-		end
-	elseif type(arg) ~= "string" or arg ~= "yes" then
-		cat9.add_message("unlink: please add 'yes' to confirm deleting all files referenced by the stash")
-		return false
+function commands.unlink(args)
+	if #args ~= 1 or args[1] ~= "yes" then
+		return false, "stash unlink : expecting 'yes' argument to confirm unlinking"
 	end
 
 -- this does not recurse into directories, need an explicit 'expand' to glob- commit
@@ -199,16 +199,14 @@ function commands.unlink(arg)
 		if active_job.set[i].kind == "file" then
 			local ok, msg = root:funlink(active_job.set[i].source)
 			if not ok then
-				cat9.add_message(string.format("unlink (%s) failed: %s, stopping.", active_job.set[i], msg))
-				rv = false
-				break
+				active_job.set[i].error = msg
+			else
+				table.remove(active_job.set, i)
+				local count = table.remove(active_job.data, i)
+
+				active_job.data.linecount = active_job.data.linecount - 1
+				active_job.data.bytecount = active_job.data.bytecount - #count
 			end
-
-			table.remove(active_job.set, i)
-			local count = table.remove(active_job.data, i)
-
-			active_job.data.linecount = active_job.data.linecount - 1
-			active_job.data.bytecount = active_job.data.bytecount - #count
 		end
 	end
 
@@ -216,84 +214,101 @@ function commands.unlink(arg)
 	return rv
 end
 
-function commands.add(...)
-	local set = {...}
-
-	if not active_job then
-		add_stash_job()
+function commands.map(arg)
+	if #arg ~= 2 then
+		return false, "stash map: too many arguments"
 	end
 
-	local base = {}
-	local ok, msg = cat9.expand_arg(base, set)
-	if not ok then
-		return false, msg
-	end
-
-	for _, v in ipairs(base) do
-		add_file(v)
+	for i=1,#active_job.set do
+		if active_job.set[i].source == arg[1] then
+			active_job.set[i].map = arg[2]
+			cat9.flag_dirty(active_job)
+			break
+		end
 	end
 end
 
-function commands.verify(...)
-	local set = {...}
+function commands.add(arg)
+	ensure_stash_job()
+
+	for _, v in ipairs(arg) do
+		local ok, msg = add_file(v)
+		if ok == false then
+			return false, msg
+		end
+	end
+end
+
+function commands.verify(args)
 	if not active_job then
-		cat9.add_message("stash verify: no active stash")
-		return
+		return false, "stash verify: no active stash"
+	end
+
+	if #args > 0 then
+		return false, "stash verify: too many arguments"
 	end
 
 	if active_job.verify_set then
-		cat9.add_message("stash verify: verification still pending")
-		return
+		return false, "stash verify: verification still pending"
 	end
 
 	local set = all_by_type("file")
 	if #set == 0 then
-		cat9.add_message("stash verify: no files in current stash")
-		return
+		return false, "stash verify: no files in current stash"
 	end
 
-	local job = {}
+	local queue = {}
 
--- copy the command, swap in our current file path and attach the
--- queue data handler
+-- copy the command, swap in our current file path and add to queue
 	for i=1,#set do
 		local cmd = cat9.table_copy_shallow(builtin_cfg.stash.checksum)
+		set[i].error = nil
+
 		for i=1,#cmd do
 			if cmd[i] == "$path" then
 				cmd[i] = set[i]
 			end
-			local chain = cmd.handler
+		end
 
 -- let the parse- action be part of the config file, but provide
 -- a default matching --tag otherwise
-			cmd[i].handler =
-			function(job, arg, code)
-				local alg, sum
-				if code ~= 0 then
-					set[i].verify = false
-					return
-				end
-
-				if chain then
-					alg, sum = chain(job.data)
-
-				elseif job.data[1] then
-					local pref = string.split(job.data[1], "=")
-					set[i].verify = false
-					return
-				end
-			end
-		end
-
-		table.insert(job, cmd)
-	end
-
-	cat9.background_chain(job, {lf_strip = true}, active_job,
-		function(job)
-			if job ~= active_job then -- stash was removed / rebuilt while processing
+		cmd.handler = function(job, arg, code)
+			if code ~= 0 then
+				set[i].error = "checksum execution failed"
 				return
 			end
+
+			if not job.data[1] then
+				set[i].error = "no checksum output"
+				return
+			end
+
+			local out = string.split(job.data[1], " = ")
+			if #out ~= 2 then
+				set[i].error = "unknown checksum output"
+				return
+			end
+
+			if set[i].checksum and set[i].checksum ~= out[2] then
+				set[i].error = "changed"
+			end
+
+			set[i].checksum = out[2]
+			set[i].checksum_algorithm = string.split_first(out[1], " ")
 		end
+
+		table.insert(queue, cmd)
+	end
+
+	cat9.background_chain(queue, {lf_strip = true}, active_job,
+	function(job)
+		if job ~= active_job then -- stash was removed / rebuilt while processing
+			return
+		end
+
+		cat9.flag_dirty(active_job)
+		active_job.verify_set = nil
+	end
 	)
 
 	active_job.verify_set = set
@@ -305,16 +320,20 @@ end
 builtins["stash"] =
 function(cmd, ...)
 	if not cmd then
-		if not active_job then
-			add_stash_job()
-		end
+		ensure_stash_job()
 		return
 	elseif not commands[cmd] then
-		cat9.add_message("system:stash - unknown command : " .. tostring(cmd))
-		return
+		return false, "stash : unknown command " .. tostring(cmd)
 	end
 
-	commands[cmd](...)
+	local set = {...}
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
+	end
+
+	return commands[cmd](base)
 end
 
 local commands =
@@ -430,7 +449,7 @@ function(args, raw)
 			end
 		end
 
-		cat9.readline:suggest(set, "word", 1)
+		cat9.readline:suggest(set, "word")
 
 	else
 		cat9.add_message("stash map: too many argments")
