@@ -45,6 +45,9 @@ local function sort_az_nat(a, b)
 
 -- and if those match, compare the values
 		if (p_a == p_b) then
+			print(tonumber(string.sub(a, s_a, e_a)),
+			tonumber(string.sub(b, s_b, e_b)))
+
 			return
 				tonumber(string.sub(a, s_a, e_a)) <
 				tonumber(string.sub(b, s_b, e_b));
@@ -73,21 +76,18 @@ local function build_sort(job, method, inv, group)
 	if method == "alphabetic" then
 		if inv then
 			return function(a, b)
-				if not group or a.kind == b.kind then
-					if a.kind == b.kind then
-						return not sort_az_nat(a.name, b.name)
-					end
-				else
+				if group and a.kind ~= b.kind then
 					return sort_group(a, b)
 				end
+				return not sort_az_nat(a.name, b.name)
 			end
 		else
 			return function(a, b)
-				if not group or a.kind == b.kind then
-					return sort_az_nat(a.name, b.name)
-				else
+				if group and a.kind ~= b.kind then
 					return sort_group(a, b)
 				end
+
+				return sort_az_nat(a.name, b.name)
 			end
 		end
 	elseif method == "size" then
@@ -189,7 +189,7 @@ local function filter_job(job, set)
 
 -- insertion is a better bet here though
 	if job.sort then
-		table.sort(res, job.sort)
+		pcall(function() table.sort(res, job.sort) end)
 	end
 
 	if job.dir ~= "/" then
@@ -385,6 +385,11 @@ end
 local function item_click(job, btn, ofs, yofs, mods)
 	local line_no_click = job.mouse and job.mouse.on_col == 1
 
+-- no special behaviour for job-bar
+	if yofs == 0 then
+		return
+	end
+
 	if not job.cursor_item or (line_no_click and job.cursor_item.name ~= "..") then
 		return
 	end
@@ -524,6 +529,7 @@ function builtins.list(path, opt, ...)
 					job.sort_group = not job.sort_group
 				end
 			end
+
 			job.sort = build_sort(job, job.sort_kind, job.sort_inv, job.sort_group)
 			job.data.files_filtered = nil
 			return

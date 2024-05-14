@@ -1,11 +1,6 @@
---
--- missing:
---
---  colorize
---  edit / define mapping
---  expand directories (shallow / recursive)
---  checksum / verify
---  compress
+-- finish mouse actions and colorize
+-- prefix modify
+-- build to compress
 
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
@@ -85,35 +80,110 @@ local function stash_slice(job, lines, set)
 end
 
 local function write_at(job, x, y, str, set, i, pos, highlight, width)
+-- figure out if the cursor is on the row src part, map part or neither
+	local fattr = builtin_cfg.stash.file
+	local fmt_sep = {fc = tui.colors.label, bc = tui.colors.text}
+	local sattr = fattr
+
+	local mouse
+	if job.mouse and job.mouse.on_row == i then
+		mouse = true
+		job.cursor_item = active_job.set[i]
+	end
+
+-- src=slen ras=ral map=dul
+	local ras  = builtin_cfg.stash.right_arrow
+	local ral  = root:utf8_len(ras)
+	local src  = active_job.set[i].source
+	local map  = active_job.set[i].map
+	local srl  = root:utf8_len(src)
+	local mal  = root:utf8_len(map)
+
+	if mouse then
+		sattr = table.copy_recursive(fattr)
+		sattr.border_down = true
+	end
+
+-- if we fit there is an easier path
 	if root:utf8_len(set[i]) < width then
-		root:write_to(x, y, str)
+		if mouse and job.mouse[1] <= srl + 1 then
+			job.mouse.on_col = 2
+			root:write_to(x, y, src, sattr)
+		else
+			root:write_to(x, y, src, fattr)
+		end
+
+		root:write(ras, fmt_sep)
+
+		if mouse and job.mouse[1] >= srl + ral + 2 then
+			job.mouse.on_col = 3
+			root:write(map, sattr)
+		else
+			root:write(map, fattr)
+		end
 		return
 	end
 
 -- so we don't fit, priority:
-	local src = active_job.set[i].source
-	local map = active_job.set[i].map
-
-	local ras = builtin_cfg.stash.right_arrow
 	local ent = cat9.compact_path(src)
-	local ral = root:utf8_len(ras)
 	local ull = root:utf8_len(ent)
-	local dul = root:utf8_len(map)
+	local lco = ull
 
 --  1. short_path + right_arrow + map_name
-	if ull + ral + dul <= width then
-		str = ent .. ras .. map
+	if ull + ral + mal <= width then
+		if mouse and job.mouse[1] <= ull + 1 then
+			job.mouse.on_col = 2
+			root:write_to(x, y, ent, sattr)
+		else
+			root:write_to(x, y, ent, fattr)
+		end
+
+		root:write(ras, fmt_sep)
+
+		if mouse and job.mouse[1] >= ull + ral + 2 then
+			job.mouse.on_col = 3
+			root:write(map, sattr)
+		else
+			root:write(map, fattr)
+		end
+
 --  (missing) 2. shared_prefix (if any) + right_arrow + map_name
 --            3. shortened_source_shared + right_arrow + map_name
-	elseif ral + dul < width then
+	elseif ral + mal < width then
 --  4. right_arrow + map_name
-		str = ras .. map
+		root:write_to(x, y, ras, fmt_sep)
+		if mouse then
+			job.mouse.on_col = 3
+			root:write(map, sattr)
+		else
+			root:write(map, fattr)
+		end
 	else
 --  5. right_arrow + shorten_map_name
-		str = ras .. cat9.compact_path(map)
+		root:write(x, y, ras, fmt_sep)
+		if mouse then
+			job.mouse.on_col = 3
+			root:write(map, sattr)
+		else
+			root:write(map, fattr)
+		end
+	end
+end
+
+local function button(job, ind, x, y, mods, active)
+	if not active_job or not active_job.cursor_item then
+		return
 	end
 
-	root:write_to(x, y, str)
+-- since this is destructive, just set the readline to the right value
+	if job.mouse.on_col then
+		if job.mouse.on_col == 2 then
+			cat9.readline:set("stash remove " .. active_job.cursor_item.source)
+			return
+		end
+	end
+
+	cat9.readline:set("stash map " .. active_job.cursor_item.source .. " ")
 end
 
 local function ensure_stash_job()
@@ -139,7 +209,6 @@ local function ensure_stash_job()
 
 	cat9.import_job(job)
 
---	job.attr_lookup = get_attr
 	table.insert(job.hooks.on_destroy, unregister)
 	job.handlers.mouse_button = button
 	job.handlers.mouse_motion = motion
@@ -357,16 +426,6 @@ local commands =
 		"Add or remove a number of characters to the beginning of a range of items in the stash",
 	}
 }
-
-local function get_attr(job, set, i, pos, highlight)
-	return builtin_cfg.stash.file
-end
-
-local function button(job, ind, x, y, mods, active)
-end
-
-local function motion(job, x, y)
-end
 
 local cmdsug = {}
 cmdsug.add =
