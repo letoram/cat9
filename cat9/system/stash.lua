@@ -9,9 +9,72 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 -- if they come from bchunk and symlink if they come from files and
 -- then run through compressor / archival tool
 
+local stashcfg = builtin_cfg.stash
 local commands = {}
-local active_job
+local slice_key = "map"
+
+-- consolidated all printable strings for future localization
+local errors = {
+	verify_nostash = "stash verify: no active stash",
+	verify_toomany = "stash verify: too many arguments",
+	verify_pending = "stash verify: verification still pending",
+	verify_empty   = "stash verify: no files in current stash",
+	verify_resolve = "stash verify: unresolved items in stash, run stash resolve",
+	verify_chkexec = "checksum execution failed",
+	verify_chkout  = "no checksum output",
+	verify_chkdata = "bad checksum data",
+
+	add_duplicate  = "stash add : rejecting duplicate entry",
+	add_collision  = "stash add : rejecting map collision",
+
+	remove_nopath  = "stash remove : >path< missing",
+	remove_toomany = "stash remove : too many arguments",
+	remove_empty   = "stash remove : empty stash",
+	remove_nomatch = "stash remove > %s < no match",
+
+	unlink_yes     = "stash unlink : expecting 'yes' argument to confirm unlinking",
+
+	map_toomany    = "stash map: too many arguments",
+
+	archive_nostash= "stash archive: no active stash",
+	archive_empty  = "stash archive: no files in current stash",
+	archive_resolve= "stash archive: unresolved items in stash, run stash resolve",
+
+	resolve_open   = "stash resolve: couldn't open %s",
+	resolve_create = "stash resolve: couldn't create %s",
+
+	sugg_nostash    = "no active stash",
+	sugg_unknown    = "stash: unknown command >%s<",
+	sugg_map_source = "stash map: no matching source item",
+	sugg_map_toomany= "stash map: too many argments",
+}
+
+local commands =
+{
+	"add",
+	"archive",
+	"unlink",
+	"map",
+	"verify",
+-- "compress",
+-- "expand",
+	"remove",
+	"prefix",
+	hint = {
+		"Create a stash and add a file to it, will append if a stash already exists",
+		"Step through the stash and build an archive for it",
+		"Unlink/Delete all the files and directories referenced in the stash",
+		"Specify a name for an item in the stash",
+		"Sweep the stash and checksum each file entry",
+--		"Resolve directories to individual files",
+		"Remove one or a range of items from the stash",
+		"Add or remove a number of characters to the beginning of a range of items in the stash",
+	}
+}
+
 builtins.hint["stash"] = "Define a set of objects to manipulate"
+
+local active_job
 
 local function all_by_type(type)
 	local set = {}
@@ -29,16 +92,25 @@ local function all_by_type(type)
 end
 
 local function monitor_inqueue(id, blob, lref)
+	lref = nil
+
 	local map = {
-		map = lref or "fifo." .. tostring(id),
+		map = lref or stashcfg.fifo_prefix .. tostring(id),
 		kind = "fifo",
 		nbio = blob,
-		source = lref or "(fifo:" .. id .. ")"
+		source = lref or "(fifo:" .. id .. ")",
+		message = ""
 	}
+
+	if not lref then
+		map.unresolved = true
+		map.message = stashcfg.unresolved
+	end
 
 -- on OSes where we can resolve the origin of the descriptor backing
 -- a blob, it'll be provided in lref
-	table.insert(active_job.data, map.source)
+	table.insert(active_job.data,
+		map.message .. map.source .. stashcfg.right_arrow .. map.map)
 	table.insert(active_job.set, map)
 
 	active_job.data.linecount = active_job.data.linecount + 1
@@ -69,9 +141,9 @@ local function stash_slice(job, lines, set)
 		job, {}, lines,
 			function(i)
 				if not i then
-					return expand_set("map")
+					return expand_set(slice_key)
 				elseif job.set[i] then
-					return job.set[i].map, #job.set[i].map, 1
+					return job.set[i][slice_key], #job.set[i][slice_key], 1
 				else
 					return nil, 0, 0
 				end
@@ -81,7 +153,8 @@ end
 
 local function write_at(job, x, y, str, set, i, pos, highlight, width)
 -- figure out if the cursor is on the row src part, map part or neither
-	local fattr = builtin_cfg.stash.file
+	local fattr = stashcfg.file
+	local mattr = stashcfg.message
 	local fmt_sep = {fc = tui.colors.label, bc = tui.colors.text}
 	local sattr = fattr
 
@@ -91,13 +164,16 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 		job.cursor_item = active_job.set[i]
 	end
 
+	local item = active_job.set[i]
+
 -- src=slen ras=ral map=dul
-	local ras  = builtin_cfg.stash.right_arrow
+	local ras  = stashcfg.right_arrow
+	local src  = item.source
+	local map  = item.map
 	local ral  = root:utf8_len(ras)
-	local src  = active_job.set[i].source
-	local map  = active_job.set[i].map
 	local srl  = root:utf8_len(src)
 	local mal  = root:utf8_len(map)
+	local mgl  = root:utf8_len(item.message or "")
 
 	if mouse then
 		sattr = table.copy_recursive(fattr)
@@ -105,17 +181,19 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 	end
 
 -- if we fit there is an easier path
-	if root:utf8_len(set[i]) < width then
-		if mouse and job.mouse[1] <= srl + 1 then
+	if ral + mgl + srl + mal < width then
+		if mouse and job.mouse[1] <= mgl + srl + 1 then
 			job.mouse.on_col = 2
-			root:write_to(x, y, src, sattr)
+			root:write_to(x, y, item.message, mattr)
+			root:write(src, sattr)
 		else
-			root:write_to(x, y, src, fattr)
+			root:write_to(x, y, item.message, mattr)
+			root:write(src, fattr)
 		end
 
 		root:write(ras, fmt_sep)
 
-		if mouse and job.mouse[1] >= srl + ral + 2 then
+		if mouse and job.mouse[1] >= mgl + srl + ral + 2 then
 			job.mouse.on_col = 3
 			root:write(map, sattr)
 		else
@@ -130,17 +208,19 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 	local lco = ull
 
 --  1. short_path + right_arrow + map_name
-	if ull + ral + mal <= width then
-		if mouse and job.mouse[1] <= ull + 1 then
+	if mgl + ull + ral + mal <= width then
+		if mouse and job.mouse[1] <= mgl + ull + 1 then
 			job.mouse.on_col = 2
-			root:write_to(x, y, ent, sattr)
+			root:write_to(x, y, item.message, mattr)
+			root:write(ent, sattr)
 		else
-			root:write_to(x, y, ent, fattr)
+			root:write_to(x, y, item.message, mattr)
+			root:write(ent, fattr)
 		end
 
 		root:write(ras, fmt_sep)
 
-		if mouse and job.mouse[1] >= ull + ral + 2 then
+		if mouse and job.mouse[1] >= mgl + ull + ral + 2 then
 			job.mouse.on_col = 3
 			root:write(map, sattr)
 		else
@@ -149,9 +229,10 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 
 --  (missing) 2. shared_prefix (if any) + right_arrow + map_name
 --            3. shortened_source_shared + right_arrow + map_name
-	elseif ral + mal < width then
+	elseif mgl + ral + mal < width then
 --  4. right_arrow + map_name
-		root:write_to(x, y, ras, fmt_sep)
+		root:write_to(x, y, item.message, mattr)
+		root:write(ras, fmt_sep)
 		if mouse then
 			job.mouse.on_col = 3
 			root:write(map, sattr)
@@ -160,7 +241,8 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 		end
 	else
 --  5. right_arrow + shorten_map_name
-		root:write(x, y, ras, fmt_sep)
+		root:write_to(x, y, item.message, mattr)
+		root:write(ras, fmt_sep)
 		if mouse then
 			job.mouse.on_col = 3
 			root:write(map, sattr)
@@ -178,12 +260,12 @@ local function button(job, ind, x, y, mods, active)
 -- since this is destructive, just set the readline to the right value
 	if job.mouse.on_col then
 		if job.mouse.on_col == 2 then
-			cat9.readline:set("stash remove " .. active_job.cursor_item.source)
+			cat9.readline:set("stash remove #stash("..tostring(ind)..") ")
 			return
 		end
 	end
 
-	cat9.readline:set("stash map " .. active_job.cursor_item.source .. " ")
+	cat9.readline:set("stash map #stash(" .. tostring(ind) ..") " )
 end
 
 local function ensure_stash_job()
@@ -220,19 +302,18 @@ end
 
 local function add_file(v)
 	local ok, kind = root:fstatus(v)
+	if not ok then
+		return false, kind
+	end
 
 	local map =
 	{
 		source = v,
 		map = v,
+		message = ""
 	}
 
-	if not ok then
-		map.error = kind
-		map.kind = "bad"
-	else
-		map.kind = kind
-	end
+	map.kind = kind
 
 	if string.sub(v, 1, 2) == "./" then
 		v = root:chdir() .. string.sub(v, 2)
@@ -243,22 +324,44 @@ local function add_file(v)
 -- O(n) ignore duplicates
 	for i=1,#active_job.set do
 		if v == active_job.set[i].source then
-			return false, "stash add : rejecting duplicate entry"
+			return false, errors.add_duplicate
 		elseif v == active_job.set[i].map then
-			return false, "stash add : rejecting map collision"
+			return false, errors.add_collision
 		end
 	end
 
-	table.insert(active_job.data, v .. builtin_cfg.stash.right_arrow .. v)
+	table.insert(active_job.data, v .. stashcfg.right_arrow .. v)
 	table.insert(active_job.set, map)
 
 	active_job.data.linecount = active_job.data.linecount + 1
 	active_job.data.bytecount = active_job.data.bytecount + #v
 end
 
+function commands.remove(args)
+	if #args ~= 1 then
+		return false, args == 0 and errors.remove_nopath or errors.remove_toomany
+	end
+
+	if not active_job then
+		return false, errors.remove_empty
+	end
+
+	for i=1,#active_job.set do
+		if active_job.set[i].source == args[1] then
+			table.remove(active_job.set, i)
+			table.remove(active_job.data, i)
+			active_job.data.linecount = active_job.data.linecount - 1
+			cat9.flag_dirty(active_job)
+			return
+		end
+	end
+
+	return false, string.format(errors.remove_nomatch, args[1])
+end
+
 function commands.unlink(args)
 	if #args ~= 1 or args[1] ~= "yes" then
-		return false, "stash unlink : expecting 'yes' argument to confirm unlinking"
+		return false, errors.unlink_yes
 	end
 
 -- this does not recurse into directories, need an explicit 'expand' to glob- commit
@@ -268,7 +371,7 @@ function commands.unlink(args)
 		if active_job.set[i].kind == "file" then
 			local ok, msg = root:funlink(active_job.set[i].source)
 			if not ok then
-				active_job.set[i].error = msg
+				active_job.set[i].message = msg
 			else
 				table.remove(active_job.set, i)
 				local count = table.remove(active_job.data, i)
@@ -285,7 +388,7 @@ end
 
 function commands.map(arg)
 	if #arg ~= 2 then
-		return false, "stash map: too many arguments"
+		return false, errors.map_toomany
 	end
 
 	for i=1,#active_job.set do
@@ -310,32 +413,38 @@ end
 
 function commands.verify(args)
 	if not active_job then
-		return false, "stash verify: no active stash"
+		return false, errors.verify_nostash
 	end
 
 	if #args > 0 then
-		return false, "stash verify: too many arguments"
+		return false, errors.verify_toomany
 	end
 
 	if active_job.verify_set then
-		return false, "stash verify: verification still pending"
+		return false, errors.verify_pending
 	end
 
 	local set = all_by_type("file")
 	if #set == 0 then
-		return false, "stash verify: no files in current stash"
+		return false, errors.verify_empty
+	end
+
+	for i=1,#set do
+		if set[i].unresolved then
+			return false, errors.verify_resolve
+		end
 	end
 
 	local queue = {}
 
 -- copy the command, swap in our current file path and add to queue
 	for i=1,#set do
-		local cmd = cat9.table_copy_shallow(builtin_cfg.stash.checksum)
-		set[i].error = nil
+		local cmd = cat9.table_copy_shallow(stashcfg.checksum)
+		set[i].message = stashcfg.checksum_pending
 
-		for i=1,#cmd do
-			if cmd[i] == "$path" then
-				cmd[i] = set[i]
+		for j=1,#cmd do
+			if cmd[j] == "$path" then
+				cmd[j] = set[i].source
 			end
 		end
 
@@ -343,23 +452,29 @@ function commands.verify(args)
 -- a default matching --tag otherwise
 		cmd.handler = function(job, arg, code)
 			if code ~= 0 then
-				set[i].error = "checksum execution failed"
+				set[i].error = errors.verify_chkexec
 				return
 			end
 
 			if not job.data[1] then
-				set[i].error = "no checksum output"
+				set[i].error = errors.verify_chkout
 				return
 			end
 
 			local out = string.split(job.data[1], " = ")
 			if #out ~= 2 then
-				set[i].error = "unknown checksum output"
+				set[i].error = errors.verify_chkdata
 				return
 			end
 
-			if set[i].checksum and set[i].checksum ~= out[2] then
-				set[i].error = "changed"
+			if set[i].checksum then
+				if set[i].checksum == out[2] then
+					set[i].message = stashcfg.checksum_ok
+				else
+					set[i].message = stashcfg.checksum_fail
+				end
+			else
+				set[i].message = stashcfg.checksum_ok
 			end
 
 			set[i].checksum = out[2]
@@ -383,7 +498,75 @@ function commands.verify(args)
 	active_job.verify_set = set
 end
 
-function commands.compress(fn)
+function commands.archive(args)
+	if not active_job then
+		return false, errors.archive_nostash
+	end
+
+	if #active_job.set == 0 then
+		return false, errors.archive_empty
+	end
+
+	for i,v in ipairs(active_job.set) do
+		if v.unresolved then
+			return false, errors.archive_resolve
+		end
+	end
+end
+
+function commands.resolve(args)
+	for i,v in ipairs(active_job.set) do
+
+-- there might be queued / processing already, but setup jobs for the others
+		if v.unresolved and not v.pending then
+			local fin = v.nbio
+			if not fin then
+				fin = root:fopen(v.source, "r")
+				v.nbio = fin
+			end
+			if not fin then
+				return false, string.format(errors.resolve_open, v.source)
+			end
+
+-- create the data sink end
+			local fout = root:fopen(v.map, "w")
+			if not fout then
+				return false, string.format(errors.resolve_create, v.map)
+			end
+
+-- finally background copy job and process the progress as part of pending
+-- and update the set item on bgcopy
+			v.pending = root:bgcopy(fin, fout, "p")
+			if v.pending then
+
+				v.pending:data_handler(
+					function()
+						local line, alive = progio:read()
+-- flush out progress
+						while line and #line > 0 do
+							last = line
+							line, alive = progio:read()
+						end
+
+						local props = string.split(last, ":") -- status:current:total
+						local bs = tonumber(props[1])
+						local cur = tonumber(props[2])
+						local tot = tonumber(props[3])
+						if bs < 0 then
+						elseif bs == 0 then -- complete
+							v.source = v.map
+							v.nbio = nil
+						else
+						end
+					end
+				)
+			else
+				root:funlink(v.map)
+				fout:close()
+			end
+
+		end
+	end
 end
 
 builtins["stash"] =
@@ -405,29 +588,24 @@ function(cmd, ...)
 	return commands[cmd](base)
 end
 
-local commands =
-{
-	"add",
-	"archive",
-	"unlink",
-	"map",
-	"verify",
-	"expand",
-	"remove",
-	"prefix",
-	hint = {
-		"Create a stash and add a file to it, will append if a stash already exists",
-		"Step through the stash and build an archive for it",
-		"Unlink/Delete all the files and directories referenced in the stash",
-		"Specify a name for an item in the stash",
-		"Sweep the stash and checksum each file entry",
-		"Resolve directories to individual files",
-		"Remove one or a range of items from the stash",
-		"Add or remove a number of characters to the beginning of a range of items in the stash",
-	}
-}
-
 local cmdsug = {}
+
+cmdsug.verify =
+function(args, raw)
+end
+
+cmdsug.remove =
+function(args, raw)
+end
+
+cmdsug.unlink =
+function(args, raw)
+end
+
+cmdsug.archive =
+function(args, raw)
+end
+
 cmdsug.add =
 function(args, raw)
 -- ignore jobs as sources for now, with the headache of getting #0(1 .. 100) etc.
@@ -460,7 +638,7 @@ function(args, raw)
 	end
 
 	if not active_job then
-		cat9.add_message("stash: no active stash")
+		cat9.add_message(errors.map_nostash)
 		return false, 7
 	end
 
@@ -488,8 +666,8 @@ function(args, raw)
 		end
 
 		if not found then
-			cat9.add_message("stash map: no matching source item")
-			return false, #args[1] + 7
+			cat9.add_message(errors.sugg_map_source)
+			return false, #args[1] + 8
 		end
 
 		local set = {title = "mapped path/name"}
@@ -511,7 +689,7 @@ function(args, raw)
 		cat9.readline:suggest(set, "word")
 
 	else
-		cat9.add_message("stash map: too many argments")
+		cat9.add_message(errors.sugg_map_toomany)
 		return false, #args[1] + #args[2] + 7
 	end
 end
@@ -522,14 +700,33 @@ function(args, raw)
 		return
 	end
 
-	table.remove(args, 1) -- don't need 'stash'
+--
+-- make sure we don't have job references or pargs anymore, this can get
+-- expensive if you reference a large job as part of stash something #bla
+-- before getting to #bla(1,10), should have some option to expand_arg
+-- there to cap suggestion slicing.
+--
+	local outargs = {}
+
+-- all commands reference (so far, prefix might not, for instance) the source
+-- part but slicing the job returns map part by default so change the key for
+-- resolving here
+	slice_key = "source"
+	local ok, msg = cat9.expand_arg(outargs, args)
+	if not ok then
+		cat9.add_message("stash: " .. msg)
+		return false, msg
+	end
+	slice_key = "map"
+
+	table.remove(outargs, 1) -- don't need 'stash'
 	local rem = string.sub(raw, 7)
-	local cmd = table.remove(args, 1)
+	local cmd = table.remove(outargs, 1)
 
 	if cmd and cmdsug[cmd] then
-		return cmdsug[cmd](args, rem)
-	elseif #args > 1 then
-		cat9.add_message("stash: unknown command >" .. args[1] .. "<")
+		return cmdsug[cmd](outargs, rem)
+	elseif #outargs >= 1 then
+		cat9.add_message(string.format(errors.sugg_unknown, outargs[1]))
 	else
 		cat9.readline:suggest(cat9.prefix_filter(commands, rem, 0), "word")
 	end

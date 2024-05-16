@@ -1,15 +1,20 @@
-local group_sep = lash.root:has_glyph("") and " " or "> "
-
 return
 {
 	stash = {
 		file = {fc = tui.colors.ref_green, bc = tui.colors.text},
 		descriptor = {fc = tui.colors.ref_yellow, bc = tui.colors.text},
 		directory = {fc = tui.colors.ref_blue, bc = tui.colors.text},
+		message = {fc = tui.colors.ref_red, bc = tui.colors.text},
 		bchunk = true,
 		autocheck = false,
+		scratch_prefix = "/tmp/stashXXXXXX", -- for building temp folders
+		fifo_prefix = lash.root:getenv()["HOME"] .. "/Downloads/",
 		right_arrow = lash.root:has_glyph("►") and " ► " or "->",
-		checksum = {"/usr/bin/env", "/usr/bin/env", "sha256sum", "--tag", "$path"}
+		checksum = {"/usr/bin/env", "/usr/bin/env", "sha256sum", "--tag", "$path"},
+		checksum_pending = "P ",
+		checksum_ok = "+ ",
+		checksum_fail = "- ",
+		unresolved = "! ",
 	},
 	list =
 	{

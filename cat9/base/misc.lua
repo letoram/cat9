@@ -164,24 +164,6 @@ function cat9.update_lastdir()
 	end
 end
 
--- helper for creating temp files, ideally this should come from the tui-lua
--- bindings, but that feature is missing so have a fallback safe first
-function cat9.mktemp(prefix)
-	if not prefix then
-		prefix = "/tmp"
-	end
-
-	local tpath, tmp
-	if root.mktemp then
-		tpath, tmp = root:mktemp(prefix .. "/.tmp.cat9state.XXXXXX")
-	else
-		tpath = prefix .. "/.tmp." .. tostring(cat9.time) .. tostring(os.time())
-		tmp = root:fopen(tpath, "w")
-	end
-
-	return tpath, tmp
-end
-
 -- sweeps through args and replaces job references with temp files, return a
 -- closure for unlinking them as well as a trigger for when all writes have
 -- completed.
@@ -202,7 +184,7 @@ function cat9.build_tmpjob_files(args, dispatch, fail)
 
 	for _,v in ipairs(args) do
 		if type(v) == "table" and v.slice then
-			local tpath, file = cat9.mktemp()
+			local tpath, file = root:mktemp()
 			if file then
 				table.insert(files, file)
 				table.insert(names, tpath)

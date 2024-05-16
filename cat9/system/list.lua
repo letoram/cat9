@@ -483,7 +483,7 @@ local function list_input(job, sub, keysym, code, mods)
 		end
 
 	elseif keysym == builtin_cfg.list.bindings.activate then
-		item_click(job, 1, 0, 0, mods)
+		item_click(job, 1, 0, 1, mods)
 
 	elseif builtin_cfg.list.bindings[keysym] then
 		cat9.parse_string(nil, builtin_cfg.list.bindings[keysym])

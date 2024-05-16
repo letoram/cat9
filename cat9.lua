@@ -309,13 +309,12 @@ end
 if cat9.config.allow_state and cat9.handlers.state_out then
 	local spath = cat9.system_path("state")
 	root:chdir(spath)
-	local tpath, tmp = cat9.mktemp(spath)
+	local tmp, path = root:tempfile(spath .. "/stateXXXXXX")
 
 	if tmp then
 		cat9.handlers.state_out(root, tmp, true)
 		tmp:flush(-1)
+		root:frename(path, spath .. "/cat9_state.lua")
 		tmp:close()
-		root:frename(tpath, spath .. "/cat9_state.lua")
-		root:funlink(tpath)
 	end
 end
