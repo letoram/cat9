@@ -8,6 +8,7 @@ return
 		bchunk = true,
 		autocheck = false,
 		scratch_prefix = "/tmp/stashXXXXXX", -- for building temp folders
+		archive_prefix = "/tmp/stash_archive_XXXXXX",
 		fifo_prefix = lash.root:getenv()["HOME"] .. "/Downloads/",
 		right_arrow = lash.root:has_glyph("►") and " ► " or "->",
 		checksum = {"/usr/bin/env", "/usr/bin/env", "sha256sum", "--tag", "$path"},
@@ -15,6 +16,21 @@ return
 		checksum_ok = "+ ",
 		checksum_fail = "- ",
 		unresolved = "! ",
+		unresolved_fail = "!x ",
+		archive = {
+			tar = {
+				"/usr/bin/env",
+				"/usr/bin/env",
+				"tar",
+				"-C",
+				"$dir",
+				"--dereference",
+				"--append",
+				"-f",
+				"$file",
+				"."
+			}
+		}
 	},
 	list =
 	{

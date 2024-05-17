@@ -425,8 +425,17 @@ local function list_text_input(job, ch)
 		end
 	end
 
+-- wrap around
 	if not found then
-		return
+		for i=1,start do
+			if string.sub(job.data.files_filtered[i].name, 1, #ch) == ch then
+				found = i
+				break
+			end
+		end
+		if not found then
+				return
+		end
 	end
 
 -- now we need to jump such that job.data.files_filtered[i] is in view

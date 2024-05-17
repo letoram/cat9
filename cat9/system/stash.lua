@@ -1,7 +1,10 @@
--- finish mouse actions and colorize
--- prefix modify
--- build to compress
-
+--
+-- add:
+--    compressor picking, archive destination
+--    directory expansion
+--    string / todo items
+--    serialization
+--
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
@@ -39,6 +42,8 @@ local errors = {
 	archive_nostash= "stash archive: no active stash",
 	archive_empty  = "stash archive: no files in current stash",
 	archive_resolve= "stash archive: unresolved items in stash, run stash resolve",
+	archive_badtmp = "stash archive: couldn't create temp file: %s",
+	archive_ext    = "stash archive: %s failed",
 
 	resolve_open   = "stash resolve: couldn't open %s",
 	resolve_create = "stash resolve: couldn't create %s",
@@ -74,7 +79,19 @@ local commands =
 
 builtins.hint["stash"] = "Define a set of objects to manipulate"
 
-local active_job
+local active_job = cat9.stash_active_job
+
+cat9.state.export["stash"] =
+function()
+-- sweep active-job, linearize to source, map, source, map, ...
+	return {}
+end
+
+cat9.state.import["stash"] =
+function()
+-- pop two, add_file -> update map
+	return {}
+end
 
 local function all_by_type(type)
 	local set = {}
@@ -92,13 +109,11 @@ local function all_by_type(type)
 end
 
 local function monitor_inqueue(id, blob, lref)
-	lref = nil
-
 	local map = {
 		map = lref or stashcfg.fifo_prefix .. tostring(id),
 		kind = "fifo",
 		nbio = blob,
-		source = lref or "(fifo:" .. id .. ")",
+		source = lref or "fifo:" .. id .. "",
 		message = ""
 	}
 
@@ -121,6 +136,7 @@ end
 local function unregister()
 	cat9.resources.bin = active_job.old_ioh
 	active_job = nil
+	cat9.stash_active_job = nil
 end
 
 local function expand_set(key)
@@ -162,6 +178,7 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 	if job.mouse and job.mouse.on_row == i then
 		mouse = true
 		job.cursor_item = active_job.set[i]
+		job.cursor_item_index = i
 	end
 
 	local item = active_job.set[i]
@@ -260,12 +277,12 @@ local function button(job, ind, x, y, mods, active)
 -- since this is destructive, just set the readline to the right value
 	if job.mouse.on_col then
 		if job.mouse.on_col == 2 then
-			cat9.readline:set("stash remove #stash("..tostring(ind)..") ")
+			cat9.readline:set("stash remove #stash("..tostring(active_job.cursor_item_index)..") ")
 			return
 		end
 	end
 
-	cat9.readline:set("stash map #stash(" .. tostring(ind) ..") " )
+	cat9.readline:set("stash map #stash(" .. tostring(active_job.cursor_item_index) ..") " )
 end
 
 local function ensure_stash_job()
@@ -295,6 +312,7 @@ local function ensure_stash_job()
 	job.handlers.mouse_button = button
 	job.handlers.mouse_motion = motion
 	active_job = job
+	cat9.stash_active_job = job
 	cat9.resources.bin = monitor_inqueue
 
 -- we want to add a factory that exposes the stash to the saveset
@@ -392,12 +410,14 @@ function commands.map(arg)
 	end
 
 	for i=1,#active_job.set do
-		if active_job.set[i].source == arg[1] then
-			active_job.set[i].map = arg[2]
+		local li = active_job.set[i]
+		if li.source == arg[1] then
+			li.map = arg[2]
 			cat9.flag_dirty(active_job)
-			break
+			return
 		end
 	end
+
 end
 
 function commands.add(arg)
@@ -498,20 +518,148 @@ function commands.verify(args)
 	active_job.verify_set = set
 end
 
+local function get_dirtbl(path)
+	local res = {}
+	local dirs = string.split(path, "/")
+
+	if dirs[1] == "" then -- ignore leading /
+		table.remove(dirs, 1)
+	end
+
+	if #dirs > 1 then
+		for j=1,#dirs-1 do
+			local str = ""
+			for k=1,j do
+				local suff = k ~= j and "/" or ""
+				str = str .. dirs[k] .. suff
+			end
+			table.insert(res, str)
+		end
+	else
+		return dirs
+	end
+
+	return res
+end
+
+local function ensure_tree(visited, dst, path, base)
+	local tbl = get_dirtbl(path)
+-- this will give us /a/b/c/d into
+-- /a/b/c
+-- /a/b
+-- /a
+--
+-- add to unlink list in reverse order and mkdir in forward one
+	for _, v in ipairs(tbl) do
+		local path = base .. "/" .. v
+		if not visited[path] then
+			root:fmkdir(path)
+			visited[path] = true
+			table.insert(dst, 1, path)
+		end
+	end
+end
+
 function commands.archive(args)
 	if not active_job then
 		return false, errors.archive_nostash
 	end
 
-	if #active_job.set == 0 then
+	local ajs = active_job.set
+	if #ajs == 0 then
 		return false, errors.archive_empty
 	end
 
-	for i,v in ipairs(active_job.set) do
+	for i,v in ipairs(ajs) do
 		if v.unresolved then
 			return false, errors.archive_resolve
 		end
 	end
+
+-- until we get shmif- like support and can have another archiver that
+-- isn't stdio crippled, need to make do with building a link-folder
+-- and use the 'h' form.
+	local tmpdir, tmpfile, tmpfilename, msg
+
+	tmpdir, msg = root:tempdir(stashcfg.scratch_prefix)
+	if not tmpdir then
+		return false, msg
+	end
+
+-- don't create a tmpfile unless needed
+	tmpfile, tmpfilename = root:tempfile(stashcfg.archive_prefix)
+	if not tmpfile then
+		root:funlink(tmpdir)
+		return false, string.format(errors.archive_badtmp, tmpfilename)
+	end
+
+	local unlink_set = {}
+
+-- build the virtual tree, any subpaths not used need to be mkdir:ed
+	local dirmap = { tmpdir }
+	local paths = {}
+
+	for i=1,#ajs do
+-- we need to track the subdirectories so we can replicate mkdir -p
+-- but also keep an unlink order so that after we have wiped all the
+-- links the directories can go 'empty'
+		if string.find(ajs[i].map, "/") then
+			ensure_tree(paths, dirmap, ajs[i].map, tmpdir)
+		end
+
+		local cmd =
+		{
+			"/usr/bin/env",
+			"/usr/bin/env", "ln", "-s",
+			ajs[i].source,
+			tmpdir .. "/" .. ajs[i].map
+		}
+		root:popen(cmd, "")
+	end
+
+	local jobcmd = cat9.table_copy_shallow(stashcfg.archive.tar)
+	for i=1,#jobcmd do
+		if jobcmd[i] == "$file" then
+			jobcmd[i] = tmpfilename
+		elseif jobcmd[i] == "$dir" then
+			jobcmd[i] = tmpdir
+		end
+	end
+
+	local _, out, _, pid = root:popen(jobcmd, "r")
+	cat9.add_background_job(out, pid, {lf_strip = true},
+	function(job, code)
+		-- cleanup after the compression job finishes, tempfile will be unlinked on :close()
+		for i=1,#unlink_set do
+			root:funlink(unlink_set[i])
+		end
+
+		for i=#dirmap,1,-1 do
+			root:funlink(dirmap[i])
+		end
+
+		if code ~= 0 then
+			cat9.add_message(string.format(errors.archive_ext, table.concat(jobcmd, " ")))
+			return
+		end
+
+		tmpfile:set_position(0)
+		local newjob = {
+			inp = tmpfile,
+			data = {
+				tmpfilename,
+				linecount = 1,
+				bytecount = 10,
+				name = "archive",
+				short = "Archive",
+				full = string.format("Archive(%s)", tmpfilename)
+			}
+		}
+		cat9.import_job(newjob)
+
+		active_job.archiving = nil
+	end)
+	active_job.archiving = tmpfile
 end
 
 function commands.resolve(args)
@@ -538,25 +686,36 @@ function commands.resolve(args)
 -- and update the set item on bgcopy
 			v.pending = root:bgcopy(fin, fout, "p")
 			if v.pending then
-
 				v.pending:data_handler(
 					function()
-						local line, alive = progio:read()
+						local line, alive = v.pending:read()
+						local last
+
 -- flush out progress
 						while line and #line > 0 do
 							last = line
-							line, alive = progio:read()
+							line, alive = v.pending:read()
 						end
 
 						local props = string.split(last, ":") -- status:current:total
 						local bs = tonumber(props[1])
 						local cur = tonumber(props[2])
 						local tot = tonumber(props[3])
-						if bs < 0 then
+						if bs < 0 then -- failed
+							v.nbio = nil
+							v.source = "broken: " .. v.source
+							cat9.flag_dirty(active_job)
+
 						elseif bs == 0 then -- complete
 							v.source = v.map
 							v.nbio = nil
+							v.message = ""
+							cat9.flag_dirty(active_job)
+							v.unresolved = false
+
 						else
+							v.message = string.format("[%.2f]", 100.0 * (cur + 1) / (tot + 1))
+							cat9.flag_dirty(active_job)
 						end
 					end
 				)
@@ -580,7 +739,9 @@ function(cmd, ...)
 
 	local set = {...}
 	local base = {}
+	slice_key = "source"
 	local ok, msg = cat9.expand_arg(base, set)
+	slice_key = "map"
 	if not ok then
 		return false, msg
 	end

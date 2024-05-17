@@ -480,6 +480,23 @@ This is useful for hand-picking sets of files.
 This adds the specified files to an existing stash (or create a new if there
 isn't one) that is visible as a job.
 
+It is also possible to detect changes to the stash.
+
+    stash verify
+
+This runs a checksum tool (e.g. sha256sum) for each item. Repeating the
+verification would mark (-) those that have changes since last.
+
+It is also used to build a virtual filesystem:
+
+    stash map /some/stash/entry new/path/name
+
+Then build an archive:
+
+    stash archive tar myfile.tar
+
+Omit the destination file to get the contents into a job.
+
 Backstory
 =========
 

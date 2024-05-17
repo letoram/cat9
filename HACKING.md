@@ -2,15 +2,15 @@ Organisation
 ============
 
     cat9/base - support functions to help with builtins
-	  cat9/base/ioh.lua - input event handlers, anything key/mouse goes here
-		cat9/base/jobctl.lua - process lifecycle, reading / buffering / writing
-		cat9/base/layout.lua - drawing / window management / prompt
-		cat9/base/misc.lua - support functions
-		cat9/base/promptmeta.lua - data formatters for the prompt
-		cat9/base/jobmeta.lua - data formatters for titlebars
-		cat9/default.lua - loader for standard builtin- functions
-		cat9/default/... - builtin functions picked by cat9/default.lua
-		cat9/base/osdev/... - sensor and hardware interfaces
+    cat9/base/ioh.lua - input event handlers, anything key/mouse goes here
+    cat9/base/jobctl.lua - process lifecycle, reading / buffering / writing
+    cat9/base/layout.lua - drawing / window management / prompt
+    cat9/base/misc.lua - support functions
+    cat9/base/promptmeta.lua - data formatters for the prompt
+    cat9/base/jobmeta.lua - data formatters for titlebars
+    cat9/default.lua - loader for standard builtin- functions
+    cat9/default/... - builtin functions picked by cat9/default.lua
+    cat9/base/osdev/... - sensor and hardware interfaces
 
 Builtins
 ========
@@ -27,10 +27,14 @@ Create the file cat9/myset.lua with the lines:
 Create the fiile cat9/myset/mycmd.lua with the lines:
 
     return
-		function(cat9, root, builtins, suggest, views, config)
-		    function builtins.mycmd(arg1, arg2)
-				end
-		end
+        function(cat9, root, builtins, suggest, views, config)
+            function builtins.mycmd(arg1, arg2)
+                if something_wrong then
+                    return err, "reason"
+                end
+            end
+            function
+        end
 
 The arguments 'cat9' contains support functions (populated by the various .lua
 in base/, see how other builtins use it for common patterns).
@@ -47,6 +51,18 @@ as they are constructing the command line. It is more complicated to write as
 the arguments are by its nature incomplete. Settle on how you want the command
 to work first before trying to provide suggestions for it.
 
+suggest["stash"] =
+function(args, raw)
+    local outargs = cat9.expand_arg(outargs, args)
+    -- outargs now contains #0(1,2) like expanded etc. and will be a table of strings
+    if something_wrong then
+        cat9.add_message("hint to the user")
+        return false, offset
+    end
+
+    cat9.readline:suggest(cat9.prefix_filter({"one", "thing", "to", "show", offset, 0), "word"))
+end
+
 Views will be covered further down, but is only really useful if you want to
 provide other visualisers for the data that you add to any jobs created.
 
@@ -54,9 +70,9 @@ Config is normally an empty table, but you can provide a static source for it
 as a separate file. For our example, create cat9/config/myset.lua:
 
     return
-		{
-		   mybin = "/usr/bin/mybin"
-		}
+    {
+        mybin = "/usr/bin/mybin"
+    }
 
 From the builtins.mycmd example above, you could then access config.mybin.
 
@@ -70,10 +86,10 @@ though it is less ergonomic:
 In cat9/myset.lua:
 
     if not lash.root:fstatus(lash.builtin_cfg.mybin) then
-		    return "myset: cannot load, missing 'mytool'"
+        return "myset: cannot load, missing 'mytool'"
     end
 
-	  return {'mycmd.lua'}
+    return {'mycmd.lua'}
 
 Now when 'builtin myset' is activated, if the 'mybin' config entry for myset
 is not present, the prompt will refuse to switch and instead show the returned
@@ -81,6 +97,16 @@ error message.
 
 Jobs spawned will remember the set of builtins used, so switching a job context
 (> #0) will activate that set without dynamically reloading it.
+
+To add state serialization support, register a serializer:
+    cat9.state.export["name"] = function() return {"hi", "there"}; end
+    cat9.state.import["name"] = function(intbl) -- import job, unpack intbl end
+
+Also set the hint:
+    builtins.hint["mycmd"] = "Does something"
+
+Since there is no 'stdout' to help with print style trace debugging you
+can run 'view monitor' to get a job that captures print output.
 
 Builtin-Catch all
 =================
@@ -90,10 +116,10 @@ process commands that do not match a builtin in the current set. This has
 the reserved name of \_default and with special argument semantics:
 
     builtins["_default"] =
-		function(args)
-		    local set, err = cat9.expand_string_table(args)
-				-- forward arguments in set to external oracle
-		end
+        function(args)
+            local set, err = cat9.expand_string_table(args)
+            -- forward arguments in set to external oracle
+        end
 
 The reason for this other argument form rather than the expanded one is to
 defer the choice of expanions like #0 or #0(1-3). In the example above the
@@ -115,17 +141,17 @@ but added to another argument table, 'views' instead. It is suggested that a
 and transplant across sets.
 
        cat9/default/default.lua:
-		   ...
-			 "views/wrap.lua"
+        ...
+            "views/wrap.lua"
 
 and in cat9/default/views/wrap.lua:
 
     return
-		function(cat9, root, builtins, suggest, view)
-		    function view.wrap(job, x, y, cols, rows, probe, hidden)
-				    return rows
-				end
-		end
+        function(cat9, root, builtins, suggest, view)
+            function view.wrap(job, x, y, cols, rows, probe, hidden)
+                return rows
+            end
+        end
 
 and should return the number of rows consumed to present job.data at a
 possible job.row\_offset and job.col\_offset. If probe or hidden is set, just
@@ -148,14 +174,14 @@ A common pattern for running a background command:
 
     local _, output, _, pid = root:popen("/usr/bin/cmd", "r")
     cat9.add_background_job(output, pid, {lf_strip = true},
-		    function(job, code)
-				    if code == 0 then
-					     -- parse job.data
-						else
-						   -- some error handling
-						end
-			  end
-		)
+        function(job, code)
+            if code == 0 then
+                -- parse job.data
+            else
+                -- some error handling
+            end
+        end
+    )
 
 This would run /usr/bin/cmd asynchronously and trigger the anonymous
 function when the process has completed along with its exit code (0 == success).
@@ -164,8 +190,8 @@ For a visible/interactive job, it is a bit more involved. There is a factory
 function, 'cat9.import\_job' that takes an input job table, validates it and
 ensures a set of defaults / expected values are present.
 
-		local job = cat9.import_job({})
-    -- patch job to add in desired behaviour, data sources, ...
+    local job = cat9.import_job({})
+        -- patch job to add in desired behaviour, data sources, ...
 
 The reason for this structure is that should there be some unhandled error that
 is recoverable, cat9 can throw away any other state and re-run all tracked and
@@ -188,20 +214,20 @@ is one of the harder things in cat9. To ease the burden of that to just provide
 formatting, the attr\_lookup function can be replaced:
 
     job.attr_lookup =
-		function(job, set, i, pos, highlight)
-		    -- return the cell formatting attribute table (see tui-bindings doc)
-				-- for set[i] (set is a slice of job.data) at view index (i) with
-				-- horisontal offset (pos) and if highlighting is requested.
-		end
+        function(job, set, i, pos, highlight)
+            -- return the cell formatting attribute table (see tui-bindings doc)
+            -- for set[i] (set is a slice of job.data) at view index (i) with
+            -- horisontal offset (pos) and if highlighting is requested.
+        end
 
 To add more interactive behaviour, there are event handlers that can be attached:
 
     job.handlers.mouse_button =
-		function(job, btn, xofs, yofs, modifiers)
-		    -- capture mouse button [btn] press at job-origo relative x/y with
-				-- keyboard modifiers (mods) held, cat9.modifier_string(mods) to get
-				-- a readable lshift_lctrl like representation.
-		end
+        function(job, btn, xofs, yofs, modifiers)
+            -- capture mouse button [btn] press at job-origo relative x/y with
+            -- keyboard modifiers (mods) held, cat9.modifier_string(mods) to get
+            -- a readable lshift_lctrl like representation.
+        end
 
 Input
 =====
@@ -218,11 +244,12 @@ To balance between throughput and interactivity, there is the option of adding
 a timer:
 
     table.insert(cat9.timers,
-			function()
--- read and process data or dequeue / run command, return true to be reinvoked
--- or false to have the timer removed
-			end
-		)
+        function()
+            -- read and process data or dequeue / run command,
+            -- return true to be reinvoked
+            -- or false to have the timer removed
+        end
+    )
 
 The actual frequency the timer will invoke is up to an internal setting and
 just represents 'about how often background data polling should be processed'
@@ -266,7 +293,7 @@ layout.lua:cat9.redraw() is called every time the window is dirty and should be 
 3. reserve vertical space for the prompt and a possible message area.
 4. for each non-hidden, non-visited job with an active view, add to working set.
 5. estimate the number of rows consumed by the jobs in the set to determine if
-	 the simple path should be used.
+   the simple path should be used.
 
 the number of rows consumed by each job is limited by if the job is viewed as
 collapsed or expanded.
@@ -277,12 +304,12 @@ For jobs with external / embedded contents, send hint about the current state
 simple mode:
    work from top to bottom
    for each job, draw the job and its header
-	 mark the consumed bounding volume as part of the job (for mouse picking)
-	 draw message
-	 draw readline area
+   mark the consumed bounding volume as part of the job (for mouse picking)
+   draw message
+   draw readline area
 
 advanced mode:
    work from bottom to top
    for the number of estimated columns:
-	 layout the column based on the number of cells reserved
-	 repeat until set is empty
+   layout the column based on the number of cells reserved
+   repeat until set is empty
