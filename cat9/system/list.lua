@@ -45,9 +45,6 @@ local function sort_az_nat(a, b)
 
 -- and if those match, compare the values
 		if (p_a == p_b) then
-			print(tonumber(string.sub(a, s_a, e_a)),
-			tonumber(string.sub(b, s_b, e_b)))
-
 			return
 				tonumber(string.sub(a, s_a, e_a)) <
 				tonumber(string.sub(b, s_b, e_b));
@@ -257,9 +254,8 @@ local function slice_files(job, lines)
 		)
 end
 
-local function get_attr(job, set, i, pos, highlight, str)
+local function get_attr(job, set, i, pos, highlight, str, width)
 	local lcfg = builtin_cfg.list
-
 	local fattr = lcfg.file
 
 -- fallback, shouldn't happen
@@ -311,18 +307,47 @@ local function get_attr(job, set, i, pos, highlight, str)
 --
 	if not job.compact and m.meta then
 		local meta = m.meta
-		return
-		{
-			{lcfg.permission, meta.mode_string .. " "},
-			{lcfg.user, string_justify(meta.user, job.max_user_length) .. " "},
-			{lcfg.group, string_justify(meta.group, job.max_group_length) .. " "},
-			{lcfg.time,
-				os.date(lcfg.time_str,
-					meta[lcfg.time_key]) .. " "},
-			{lcfg.size, string_justify(meta.size_string, job.max_size) .. " "},
-			{fattr, m.name},
-			suffix
-		}
+		local len = root:utf8_len(m.name)
+		local set = {{fattr, m.name}, suffix}
+
+		local size_str = string_justify(meta.size_string, job.max_size) .. " "
+		local size_len = root:utf8_len(size_str)
+
+		if (len + size_len <= width) then
+			table.insert(set, 1, {lcfg.size, size_str})
+			len = len + size_len
+		end
+
+		local date_str = os.date(lcfg.time_str, meta[lcfg.time_key]) .. " "
+		local date_len = root:utf8_len(date_str)
+
+		if (len + date_len <= width) then
+			table.insert(set, 1, {lcfg.time, date_str})
+			len = len + date_len
+		end
+
+		local group_str = string_justify(meta.group, job.max_group_length) .. " "
+		local group_len = root:utf8_len(group_str)
+
+		if len + group_len <= width then
+			table.insert(set, 1, {lcfg.group, group_str})
+			len = len + group_len
+		end
+
+		local user_str = string_justify(meta.user, job.max_user_length) .. " "
+		local user_len = root:utf8_len(user_str)
+
+		if len + user_len <= width then
+			table.insert(set, 1, {lcfg.user, user_str})
+			len = len + user_len
+		end
+
+		local mode_len = root:utf8_len(meta.mode_string) + 1
+		if len + mode_len <= width then
+			table.insert(set, 1, {lcfg.permission, meta.mode_string .. " "})
+		end
+
+		return set
 	end
 
 	return {{fattr, str}}
@@ -343,8 +368,8 @@ local function on_redraw(job, over, selected)
 	end
 end
 
-local function write_at(job, x, y, str, set, i, pos, highlight)
-	local attr = get_attr(job, set, i, pos, highlight, str)
+local function write_at(job, x, y, str, set, i, pos, highlight, width)
+	local attr = get_attr(job, set, i, pos, highlight, str, width)
 	local ok
 	for _, v in ipairs(attr) do
 		ok, x, y = root:write_to(x, y, v[2], v[1])
@@ -428,7 +453,8 @@ local function list_text_input(job, ch)
 -- wrap around
 	if not found then
 		for i=1,start do
-			if string.sub(job.data.files_filtered[i].name, 1, #ch) == ch then
+			local ent = job.data.files_filtered[i]
+			if ent and string.sub(ent.name, 1, #ch) == ch then
 				found = i
 				break
 			end
