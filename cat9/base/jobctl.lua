@@ -990,6 +990,12 @@ end
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
 local counter = 0
+local on_import
+
+function cat9.hook_import_job(closure)
+	on_import = closure
+end
+
 function cat9.import_job(v, noinsert)
 	if not v.collapsed_rows then
 		v.collapsed_rows = config.collapsed_rows
@@ -1146,6 +1152,10 @@ function cat9.import_job(v, noinsert)
 -- but override view with any default
 	if config.default_job_view and cat9.views[config.default_job_view] then
 		cat9.views[config.default_job_view](v, false)
+	end
+
+	if on_import then
+		on_import(v)
 	end
 
 	return v

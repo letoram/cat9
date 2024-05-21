@@ -116,13 +116,13 @@ local function build_ptable(t)
 		end
 	end}
 	ptable[t.OP_NOT    ] = {
-	function(s, v)
-		if #v > 0 and type(v[#v]) == "string" then
-			v[#v] = v[#v] .. "!"
-		else
-			table.insert(v, "!");
+		function(s, v)
+			if #v > 0 and type(v[#v]) == "string" then
+				v[#v] = v[#v] .. "!"
+			else
+				table.insert(v, "!");
+			end
 		end
-	end
 	}
 	ptable[t.OP_MUL    ] = {function(s, v) table.insert(v, "*"); end}
 
@@ -169,8 +169,8 @@ end
 -- convenience helper to get 'args' similar to a full parse
 function cat9.tokenize_resolve(str)
 	local tokens, err, ofs, types =
-		lash.tokenize_command(str, true,
-			{["+"] = true, ["-"] = true, ["/"] = true, ["="] = true})
+		lash.tokenize_command(str, true, lex_opts.operator_mask)
+
 	if err then
 		return nil, err, ofs
 	end
@@ -552,6 +552,7 @@ function cat9.parse_string(rl, line)
 		return
 	end
 
+	cat9.parsestr = line
 	cat9.laststr = ""
 	cat9.flag_dirty()
 

@@ -2,6 +2,7 @@ return
 {
 	'config.lua',
 	'copy.lua',
+	'each.lua',
 	'forget.lua',
 	'open.lua',
 	'view.lua',

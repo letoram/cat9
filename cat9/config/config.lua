@@ -51,6 +51,7 @@ return
 	show_line_number = true,
 	autokill_quiet_bad = 100,
 
+	term_plumber = "/usr/bin/nvim",
 	plumber = "/usr/bin/afsrv_decode",
 
 	default_job_view = "crop",
@@ -165,9 +166,5 @@ return
 -- each set of builtins (including the default) gets a subtable in here that
 -- is populated when loading the set itself, and overlayed by config/setname.lua
 	builtins = {
-		open =
-		{
-			external = "/usr/bin/nvim"
-		}
 	}
 }

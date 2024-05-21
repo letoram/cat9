@@ -167,90 +167,115 @@ local function open_string(file, spawn, context)
 	)
 end
 
+local function open_internal(mode, context, viewm)
+	trigger =
+	function(par, wnd)
+		local arg = {read_only = true}
+		if viewm and viewm == "hex" then
+			arg[cat9.config.hex_mode] = true
+		end
+
+-- still need to do this as bufferview can't take the
+-- datatable as is, internally it would still need to resolve
+-- the table so the copy is unavoidable in this form.
+		buf = table.concat(context:slice(), "")
+
+		if mode then
+			wnd:bufferview(buf, function() wnd:close(); end, arg)
+			return
+		end
+
+-- slightly more annoying as we need to take control over our
+-- window and processing while viewing like this. It is also
+-- possibly dangerous as there might be other triggers that
+-- would cause open commands etc.
+		cat9:block_readline(true)
+		local old_reset = cat9.reset
+		local old_redraw = cat9.redraw
+		cat9.reset = function() end
+		cat9.redraw = function() end
+		wnd:revert()
+
+		wnd:bufferview(
+			buf,
+			function()
+				cat9:block_readline(false)
+				cat9.reset = old_reset
+				cat9.redraw = old_redraw
+				cat9:reset()
+			end,
+			arg
+		)
+		return
+	end
+
+	spawn_trigger(cat9, root, "tui", mode, trigger)
+end
+
 function suggest.open(args, raw)
 	cat9.readline:suggest({}, "substitute", raw)
 end
 
 builtins.hint["open"] = "Open a file or object"
-function builtins.open(file, ...)
-	local trigger
+function builtins.open(...)
 	local opts = {...}
 	local spawn = false
 	local context = nil
-	local parg
+	local terminal = false
 
-	if type(opts[1]) == "table" and opts[1].parg then
-		parg = table.remove(opts, 1)
-	end
-
-	for _,v in ipairs(opts) do
-		if dir_lut[v] then
-			spawn = dir_lut[v]
+-- first see of there is a preference for how it should be opened
+	while type(opts[1]) == "string" and #opts > 1 do
+		if opts[1] == "terminal" then
+			terminal = true
+			table.remove(opts, 1)
+		else
+			spawn = dir_lut[opts[1]]
+			if not spawn then
+				return false, "open >mode< file : unknown mode (" .. opts[1] .. ")"
+			end
+			table.remove(opts, 1)
 		end
 	end
 
--- if we have parg then slice out and treat as individual files. right now this
--- ignores ranges and so on, though should likely set this up as either a
--- playlist or let the spawn permit multiple, just not have open #0(1-1000) a
--- thousand windows.
-	if type(file) == "table" and parg then
-		context = file
-		local set = context:slice(parg)
-		file = set and set[1]
-		if file then
-			file = string.gsub(file, "\n", "")
-		end
-		if cat9.config.open_external then
-			cat9.term_handover(cat9.config.open_spawn_default,
-				cat9.config.open_external .. " " .. context.dir .. "/" .. file, "")
+-- if we open a table without an argument, it will be opened 'as is' as an internal window
+	if type(opts[1]) == "table" then
+		context = opts[1]
+		if type(opts[2]) ~= "table" then
+			open_internal(spawn, context, opts[2])
 			return
 		end
 	end
 
-	if type(file) == "table" and file.view then
-		trigger =
-		function(par, wnd)
-			local arg = {read_only = true}
-			for _,v in ipairs(opts) do
-				if v == "hex" then
-					arg[cat9.config.hex_mode] = true
-				end
-			end
+-- otherwise expand
+	local set = {}
+	cat9.expand_arg(set, opts)
 
-			buf = table.concat(file:slice(parg), "")
-
-			if not spawn then
-				cat9:block_readline(true)
-				local old_reset = cat9.reset
-				local old_redraw = cat9.redraw
-				cat9.reset = function() end
-				cat9.redraw = function() end
-				wnd:revert()
-
-				wnd:bufferview(
-				buf,
-					function()
-						cat9:block_readline(false)
-						cat9.reset = old_reset
-						cat9.redraw = old_redraw
-						cat9:reset()
-					end,
-					arg
-				)
-			else
-				wnd:bufferview(buf,
-					function()
-						wnd:close()
-					end, arg
-				)
-			end
-		end
-
-		spawn_trigger(cat9, root, "tui", spawn, trigger)
-
-	elseif type(file) == "string" then
-		open_string(file, spawn, context)
+-- we don't handle any form of queue or playlist here, the intent for that is to handle through each #1 !!open $arg
+	if #set > 1 then
+		return false, "open : too many arguments after " .. set[1]
 	end
-end
 
+-- if we set term then we use a different plumber to handle the file
+	if terminal then
+
+-- sanitize / escape / add path
+		set[1] = string.gsub(set[1], "\n", "")
+
+		if string.sub(set[1], 1, 1) ~= "/" then
+			if not context then
+				set[1] = root:chdir() .. "/" .. set[1]
+			else
+				set[1] = context.dir .. "/" .. set[1]
+			end
+
+			cat9.term_handover(
+				spawn or cat9.config.open_spawn_default,
+				string.format("%s %s", cat9.config.term_plumber, set[1]), "")
+			return
+		end
+	end
+
+-- full open - classify type and hand over to plumber
+	open_string(set[1], spawn, context)
+end
 end
