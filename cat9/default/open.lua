@@ -249,6 +249,7 @@ function builtins.open(...)
 -- otherwise expand
 	local set = {}
 	cat9.expand_arg(set, opts)
+	print("expanded into", terminal)
 
 -- we don't handle any form of queue or playlist here, the intent for that is to handle through each #1 !!open $arg
 	if #set > 1 then
@@ -267,12 +268,14 @@ function builtins.open(...)
 			else
 				set[1] = context.dir .. "/" .. set[1]
 			end
-
-			cat9.term_handover(
-				spawn or cat9.config.open_spawn_default,
-				string.format("%s %s", cat9.config.term_plumber, set[1]), "")
-			return
 		end
+
+		cat9.term_handover(
+			spawn or cat9.config.open_spawn_default,
+			cat9.config.term_plumber,
+			set[1]
+		)
+		return
 	end
 
 -- full open - classify type and hand over to plumber
