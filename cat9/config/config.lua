@@ -148,7 +148,7 @@ return
 		forward_meta  = false,  -- don't need meta-keys, use default rl behaviour
 		forward_paste = true,   -- ignore builtin paste behaviour
 		forward_mouse = true,   -- needed for clicking outside the readline area
-		whitespace_expand = false,
+		whitespace_expand = true,
 		linefeed_expand = false,
 	},
 

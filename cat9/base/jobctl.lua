@@ -186,14 +186,10 @@ local function flush_job(job, finish, limit)
 	return upd
 end
 
-local function run_hook(job, a)
-	if job.hooks.masked then
-		return
-	end
-
+local function run_hook(job, a, ...)
 	local set = cat9.table_copy_shallow(job.hooks[a])
 	for _,v in ipairs(set) do
-		v()
+		v(...)
 	end
 end
 
@@ -236,9 +232,12 @@ local function finish_job(job, code)
 -- allow whatever 'on completion' handler one might attach to trigger
 	local set = job.closure
 	job.closure = {}
-	for _,v in ipairs(set) do
-		v(job, code)
-	end
+
+	run_hook(job, "on_closure", true)
+		for _,v in ipairs(set) do
+			v(job, code)
+		end
+	run_hook(job, "on_closure", false)
 
 -- avoid polluting output history with simple commands that succeeded or failed
 -- without producing any output / explanation or ones that have already been hidden
@@ -499,7 +498,7 @@ end
 
 function cat9.shmif_handover(cmode, omode, bin, env, argv)
 	local dir = root:chdir()
-	root:new_window("handover",
+	cat9.new_window(root, "handover",
 		function(wnd, new)
 			if not new then
 				return
@@ -933,6 +932,24 @@ function cat9.add_fglob_job(out, path, cbh)
 	return ioh
 end
 
+function cat9.new_window(root, kind, closure, mode)
+-- similar to add_background_job, we want the job creation hook
+-- to fire when it is a job -> closure -> new_window -> closure so
+-- the original hook captures it
+	local wndjob = { hidden = true }
+	cat9.import_job(wndjob)
+
+	root:new_window(kind,
+		function(...)
+			run_hook(wndjob, "on_closure", true)
+			local ret = closure(...)
+			run_hook(wndjob, "on_closure", false)
+			cat9.remove_job(wndjob)
+			return ret
+		end, mode
+	)
+end
+
 function cat9.add_background_job(out, pid, opts, closure)
 	local job =
 	{
@@ -946,11 +963,6 @@ function cat9.add_background_job(out, pid, opts, closure)
 -- import will reset this
 	if opts.lf_strip then
 		out:lf_strip(opts.lf_strip)
-	end
-
--- some background jobs don't need event handlers
-	if opts.mask then
-		job.hooks.masked = true
 	end
 
 	table.insert(job.closure, closure)
@@ -1000,10 +1012,9 @@ end
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
 local counter = 0
-local on_import
 
 function cat9.hook_import_job(closure)
-	on_import = closure
+	cat9.import_hook = closure
 end
 
 function cat9.import_job(v, noinsert)
@@ -1061,7 +1072,8 @@ function cat9.import_job(v, noinsert)
 		on_destroy = {},
 		on_finish = {},
 		on_fail = {},
-		on_data = {}
+		on_data = {},
+		on_closure = {}
 	}
 
 	if not v.handlers then
@@ -1164,8 +1176,8 @@ function cat9.import_job(v, noinsert)
 		cat9.views[config.default_job_view](v, false)
 	end
 
-	if on_import and not v.hooks.masked then
-		on_import(v)
+	if cat9.import_hook then
+		cat9.import_hook(v)
 	end
 
 	return v

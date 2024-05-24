@@ -91,7 +91,6 @@ function(...)
 			end
 			ic.armed = false
 			pending = pending - 1
-
 -- any collection / processing goes here
 		end
 
@@ -112,19 +111,38 @@ function(...)
 
 		if mode == "sequential" then
 
--- capture the creation of any new job from the command
-			local job = true
-
-			cat9.hook_import_job(
-				function(job)
-					local opt = {armed = true, job = job}
-					pending = pending + 1
-					local ic = function() run_item(opt) end
-					table.insert(job.hooks.on_destroy, ic)
-					table.insert(job.hooks.on_fail, ic)
-					table.insert(job.hooks.on_finish, ic)
+-- capture the creation of any new job from the command, this is more
+-- annoying than one might think since a command can spawn jobs asynch
+-- that trigger other jobs etc. and we need to hook / batch all of them.
+			local job_hook
+			job_hook =
+			function(job)
+				if not job then
+					cat9.hook_import_job(job_hook)
+					return
 				end
-			)
+
+				local opt = {armed = true, job = job, pid = job.pid}
+				local chook
+
+				pending = pending + 1
+				local ic = function() run_item(opt) end
+				table.insert(job.hooks.on_destroy, ic)
+				table.insert(job.hooks.on_fail, ic)
+				table.insert(job.hooks.on_finish, ic)
+				table.insert(job.hooks.on_closure,
+					function(enter)
+						if enter then
+							chook = cat9.import_hook
+							cat9.hook_import_job(job_hook)
+						else
+							cat9.import_hook = chook
+						end
+					end
+				)
+			end
+
+			cat9.hook_import_job(job_hook)
 
 -- we ignore the parsing / tokenization after !! so that we can copy
 -- it and swap out $arg with the current item and just throw this into
@@ -132,7 +150,6 @@ function(...)
 				local torun = string.gsub(
 					action, "$arg", "\"" .. string.gsub(ni, "\"", "\\\"") .. "\"")
 				cat9.parse_string(nil, torun)
-				cat9.hook_import_job(nil)
 			end
 	end
 

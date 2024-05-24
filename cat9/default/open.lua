@@ -35,7 +35,8 @@ local function fname_to_decode(cat9, root, dstenv, wdir, fn, closure)
 	local dir = root:chdir()
 	root:chdir(wdir)
 
-	cat9.set_scanner(
+	local job =
+		cat9.set_scanner(
 		{"/usr/bin/env", "/usr/bin/env", "file", "-b", "--mime-type", fn},
 		function(res)
 			local proto
@@ -69,7 +70,7 @@ local function spawn_trigger(cat9, root, wndtype, spawn, trigger)
 -- the 'embed' spawn method is special as we need to create a control job in
 -- order to position and size the embedding
 	if spawn then
-		root:new_window(wndtype,
+		cat9.new_window(root, wndtype,
 			function(par, wnd)
 				if not wnd then
 					cat9.add_message("window request rejected")
