@@ -132,6 +132,7 @@ local function open_string(file, spawn, context)
 		local dir = root:chdir()
 		root:chdir(wdir)
 		local _, _, _, pid = par:phandover(cat9.config.plumber, "", {"afsrv_decode"}, dstenv)
+
 		root:chdir(dir)
 
 		if not pid then
@@ -249,7 +250,6 @@ function builtins.open(...)
 -- otherwise expand
 	local set = {}
 	cat9.expand_arg(set, opts)
-	print("expanded into", terminal)
 
 -- we don't handle any form of queue or playlist here, the intent for that is to handle through each #1 !!open $arg
 	if #set > 1 then

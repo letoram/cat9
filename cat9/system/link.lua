@@ -60,10 +60,6 @@ local function pick_file(inset, arg, filter)
 end
 
 function suggest.link(args, raw)
-	if #raw == 4 then
-		return
-	end
-
 	local set = {}
 
 	if #args > 1 then

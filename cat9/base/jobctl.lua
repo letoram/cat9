@@ -187,6 +187,10 @@ local function flush_job(job, finish, limit)
 end
 
 local function run_hook(job, a)
+	if job.hooks.masked then
+		return
+	end
+
 	local set = cat9.table_copy_shallow(job.hooks[a])
 	for _,v in ipairs(set) do
 		v()
@@ -315,6 +319,7 @@ function cat9.process_jobs()
 -- finish might remove the job, but that is if we autoclear, if not the entry
 -- should be removed manually or jobs will 'ghost' away
 				finish_job(job, code)
+
 				if activejobs[i] == job then
 					if not job.hidden then
 						cat9.activevisible = cat9.activevisible - 1
@@ -943,6 +948,11 @@ function cat9.add_background_job(out, pid, opts, closure)
 		out:lf_strip(opts.lf_strip)
 	end
 
+-- some background jobs don't need event handlers
+	if opts.mask then
+		job.hooks.masked = true
+	end
+
 	table.insert(job.closure, closure)
 	return job
 end
@@ -1154,7 +1164,7 @@ function cat9.import_job(v, noinsert)
 		cat9.views[config.default_job_view](v, false)
 	end
 
-	if on_import then
+	if on_import and not v.hooks.masked then
 		on_import(v)
 	end
 

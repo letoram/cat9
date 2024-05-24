@@ -794,7 +794,7 @@ end
 
 cmdsug.map =
 function(args, raw)
-	if #raw == 3 or #args == 0 then
+	if #args == 0 then
 		return
 	end
 

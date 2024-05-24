@@ -168,8 +168,16 @@ function handlers.key(self, sub, keysym, code, mods)
 			return
 		end
 
+-- meta + RETURN as 'add to history but don't commit'
+		if keysym == tui.keys.RETURN then
+			local str = cat9.readline:get()
+			table.insert(lash.history, 1, str)
+			cat9.add_message("committed to history")
+			cat9.readline:set("")
+			return
+
 -- hard-coded defaults, these should also move into bindings
-		if keysym == tui.keys.ESCAPE then
+		elseif keysym == tui.keys.ESCAPE then
 
 -- to disable readline there should be >= 1 valid jobs, and then
 -- we move selection with CTRL+ARROW|CTRL+HJLK

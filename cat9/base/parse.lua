@@ -358,6 +358,10 @@ local function suggest_for_context(prefix, tok, types)
 -- an empty argument if we have added a space but not yet started on the
 -- first character.
 	if res[1] and cat9.suggest[res[1]] then
+		if #res[1] == #prefix then
+			return
+		end
+
 		if string.sub(prefix, -1) == " " then
 			res[#res+1] = ""
 		end

@@ -219,6 +219,10 @@ function builtins.view(job, ...)
 end
 
 function suggest.view(args, raw)
+	if #raw == 4 then
+		return
+	end
+
 	if #args <= 2 then
 		local set = {"monitor", "color"}
 

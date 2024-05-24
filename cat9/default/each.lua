@@ -91,6 +91,7 @@ function(...)
 			end
 			ic.armed = false
 			pending = pending - 1
+
 -- any collection / processing goes here
 		end
 
@@ -99,7 +100,6 @@ function(...)
 -- that are left so we know when to start the next item in
 -- the sequence.
 		if pending > 0 then
-			print("too many pending")
 			return
 		end
 
@@ -125,7 +125,6 @@ function(...)
 					table.insert(job.hooks.on_finish, ic)
 				end
 			)
-				print("finished: ", debug.traceback())
 
 -- we ignore the parsing / tokenization after !! so that we can copy
 -- it and swap out $arg with the current item and just throw this into

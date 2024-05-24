@@ -48,7 +48,7 @@ function cat9.set_scanner(path, closure)
 	end
 	cat9.scanner.closure = closure
 	cat9.add_background_job(
-		out, pid, {lf_strip = true},
+		out, pid, {lf_strip = true, mask = true},
 		function(job, code)
 			cat9.scanner.pid = nil
 			if cat9.scanner.closure then
