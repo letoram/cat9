@@ -129,7 +129,8 @@ function(...)
 -- we ignore the parsing / tokenization after !! so that we can copy
 -- it and swap out $arg with the current item and just throw this into
 -- parse_string
-				local torun = string.gsub(action, "$arg", "\"" .. string.gsub(ni, "\"", "\\\"") .. "\"")
+				local torun = string.gsub(
+					action, "$arg", "\"" .. string.gsub(ni, "\"", "\\\"") .. "\"")
 				cat9.parse_string(nil, torun)
 				cat9.hook_import_job(nil)
 			end
@@ -140,8 +141,42 @@ end
 
 suggest["each"] =
 function(args, raw)
-	if #raw == 4 then
+-- if raw has reached !! then we need to go back into suggest with the
+-- first part chopped out
+	local si = 0
+	local pos = 1
+
+	for i=1,#args do
+		if args[i] == "!!" then
+			if i == 1 then
+				return false, #raw
+			end
+			si = i
+			break
+		end
+	end
+
+	if si == 0 then
+		local set = {}
+		if #raw > 6 then
+			table.insert(set, "!!")
+		end
+		cat9.add_job_suggestions(set, false)
+		cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
 		return
+	end
+
+	local a, b = string.split_first(raw, "!!")
+	local cmd = args[si + 1]
+	if not cmd then
+	else
+		local reduce = {}
+		for i=si+1,#args do
+			table.insert(reduce, args[i])
+		end
+		if suggest[cmd] then
+			return suggest[cmd](reduce, b)
+		end
 	end
 end
 
