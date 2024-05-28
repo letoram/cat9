@@ -296,9 +296,23 @@ while root:process() do
 		cat9.flag_dirty()
 	end
 
+-- this should also catch detached jobs that are flagged as dirty so
+-- now need to do this separately
 	if cat9.dirty then
 		cat9.redraw()
 		cat9.dirty = false
+
+		for _, v in ipairs(cat9.jobs) do
+			if v.hidden and v.detach_handlers then
+				if v.redraw then
+					v:redraw(v, false, true)
+				end
+				v.detach_handlers.redraw(v.root)
+				if v.redraw then
+					v:redraw(v, true, true)
+				end
+			end
+		end
 	end
 
 	root:refresh()

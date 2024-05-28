@@ -65,6 +65,8 @@ function cat9.id_to_job(id)
 	local lid = string.lower(id)
 
 	if lid == "csel" then
+		if not cat9.selectedjob then
+		end
 		return cat9.selectedjob
 	end
 

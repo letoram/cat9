@@ -28,6 +28,7 @@ local hintbl = {
 	clipboard_job = "Create a new job that absorbs all pasted input",
 	sh_runner = "Program to invoke for subshell commands",
 	default_job_view = "Default view action for new jobs",
+	detach_keep = "Set to reattach detached job on window destruction",
 	open_embed_collapsed_rows = "Number of rows for downscaled contract open embed",
 	["=reload"] = "Re-parse and apply config.lua",
 	mouse_mode = string.format(
@@ -50,6 +51,7 @@ return
 	autoclear_empty = true,
 	show_line_number = true,
 	autokill_quiet_bad = 100,
+	detach_keep = false,
 
 	term_plumber = "/usr/bin/nvim",
 	plumber = "/usr/bin/afsrv_decode",

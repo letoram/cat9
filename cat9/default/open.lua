@@ -18,13 +18,15 @@ local dir_lut =
 local mime_direct =
 {
 	["application/pdf"] = "proto=pdf",
+	["application/octet-stream"] = "proto=text",
 }
 
 local mime_prefix =
 {
 	video = "proto=media",
 	image = "proto=image",
-	text  = "proto=text"
+	text  = "proto=text",
+	audio = "proto=media"
 }
 
 local function fname_to_decode(cat9, root, dstenv, wdir, fn, closure)
@@ -119,6 +121,7 @@ end
 -- xdg-open, arcan-wayland, default browser ...)
 local function open_string(file, spawn, context)
 	local dstenv = {}
+	local root = cat9.get_active_root()
 
 	if not spawn then
 		spawn = cat9.config.open_spawn_default

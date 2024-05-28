@@ -829,4 +829,13 @@ function cat9.misc_resolve_mode(arg, cmode)
 
 	return open_mode, cmode
 end
+
+function cat9.get_active_root()
+	if cat9.selectedjob then
+		return cat9.selectedjob.root
+	else
+		return lash.root
+	end
+end
+
 end

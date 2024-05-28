@@ -364,7 +364,6 @@ function handlers.paste(self, str)
 			end
 		end
 
-		cat9.redraw()
 		cat9.flag_dirty()
 	else
 		cat9.readline:suggest({str}, "insert")

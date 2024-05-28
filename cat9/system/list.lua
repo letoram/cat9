@@ -355,7 +355,7 @@ end
 
 local function on_redraw(job, over, selected)
 	if not job.data.files_filtered then
-		return
+		job.data.files_filtered = filter_job(job, job.data.files)
 	end
 
 	if not job.mouse then
@@ -363,8 +363,8 @@ local function on_redraw(job, over, selected)
 	end
 
 -- we are in control over the cursor, move it to the view_base+cursor
-	if over and selected and not cat9.readline then
-		root:cursor_to(0, job.region[2] + job.cursor[2] + 1)
+	if over and selected and (job.hidden or not cat9.readline) then
+		job.root:cursor_to(0, job.region[2] + job.cursor[2] + 1)
 	end
 end
 
@@ -372,7 +372,7 @@ local function write_at(job, x, y, str, set, i, pos, highlight, width)
 	local attr = get_attr(job, set, i, pos, highlight, str, width)
 	local ok
 	for _, v in ipairs(attr) do
-		ok, x, y = root:write_to(x, y, v[2], v[1])
+		ok, x, y = job.root:write_to(x, y, v[2], v[1])
 	end
 end
 

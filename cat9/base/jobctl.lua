@@ -574,6 +574,7 @@ end
 local function raw_view(job, set, x, y, cols, rows, probe)
 	set.linecount = set.linecount or 0
 	local lc = set.linecount
+	local root = job.root
 
 	lc = lc > rows and rows or lc
 
@@ -1028,7 +1029,11 @@ function cat9.import_job(v, noinsert)
 	v.col_offset = 0
 	v.job = true
 	v.hide = hide_job
-	v.cursor = {0, 0, false} -- realtive input cursor, last field is priority over mouse
+	v.cursor = {0, 0, false} -- relative input cursor, last field is priority over mouse
+
+	if not v.root then
+		v.root = root
+	end
 
 	if not v.view_name then
 		v.view_name = "unknown"

@@ -1,6 +1,9 @@
 return
 function(cat9, root, builtins, suggest)
 
+local build_detach_handler =
+	loadfile(string.format("%s/cat9/base/detach.lua", lash.scriptdir))()
+
 builtins.hint["view"] = "Change job data view mode"
 local viewlut = {}
 function viewlut.out(set, i, job)
@@ -8,6 +11,52 @@ function viewlut.out(set, i, job)
 	job.row_offset = 0
 	job.col_offset = 0
 	return i + 1
+end
+
+local function destroy_wnd()
+	if job.root ~= lash.root then
+		job.root:destroy()
+	end
+
+	job.redraw = job.detach_redraw
+end
+
+function viewlut.detach(set, i, job)
+	if job.root ~= root then
+		job.hidden = false
+		job.root:close()
+		job.root = root
+		return
+	end
+
+	cat9.new_window(root, "tui",
+		function(par, wnd)
+			if not wnd then
+				cat9.add_message("window request rejected")
+				return
+			end
+
+			job.hidden = true
+			if latestjob == job then
+				latestjob = nil
+			end
+
+			if selectedjob == job then
+				selectedjob = nil
+			end
+
+			job.detach_handlers = build_detach_handler(cat9, job)
+			wnd:set_handlers(job.detach_handlers)
+			job.root = wnd
+
+-- handle job terminating versus window being destroyed
+			job.detach_destroy = destroy_wnd
+			job.detach_keep = cat9.config.detach_keep
+
+-- since the job is hidden layout will call it separately,
+			table.insert(job.hooks.on_destroy, destroy_wnd)
+
+		end, "split")
 end
 
 function viewlut.select(set, i, job)
