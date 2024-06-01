@@ -274,6 +274,10 @@ function suggest.view(args, raw)
 
 	if #args <= 2 then
 		local set = {"monitor", "color"}
+		set.hint = {
+			"Capture command messages and print() calls into a job",
+			"Show a colour swatch of the current scheme"
+		}
 
 -- the views are factory functions that provide suggestions or modify
 -- job to attach a custom viewer

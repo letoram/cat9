@@ -12,7 +12,13 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 		return
 	end
 
-	local job = cat9.xy_to_job(x, y)
+	local job = cat9.xy_to_job(self, x, y)
+
+-- if we don't do this we can get phantom-clicks into detached views
+	if job.root ~= self then
+		return
+	end
+
 	local cols, rows = root:dimensions()
 
 -- deselect current unless the same
@@ -401,7 +407,11 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 
 -- first check if we are on the job bar, and the bar handler for the job
 -- has a mouse action assigned to the group index at the cursor position
-	local id, job = cat9.xy_to_hdr(x, y)
+	local id, job = cat9.xy_to_hdr(self, x, y)
+	if job and job.root ~= self then
+		return
+	end
+
 	if job and job.mouse then
 		if job.mouse[1] ~= x or job.mouse[2] ~= y then
 			return
@@ -425,7 +435,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 	end
 
 -- Then check if we should act special on the data region of a job
-	local in_data = cat9.xy_to_data(x, y)
+	local in_data = cat9.xy_to_data(self, x, y)
 	if not in_data then
 		return
 	end

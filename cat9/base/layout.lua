@@ -44,7 +44,16 @@ local function inside(job, x, y)
 	 	x < job.region[3] and y < job.region[4]
 end
 
-function cat9.xy_to_job(x, y)
+function cat9.xy_to_job(wnd, x, y)
+-- detached windows are special, should possibly be a key-table
+	if wnd ~= lash.root then
+		for _, job in ipairs(cat9.jobs) do
+			if job.root == wnd then
+				return job
+			end
+		end
+	end
+
 -- remember last job and check extents for that
 -- if not, sweep all jobs and find the one with hit
 	for i=#cat9.activejobs,1,-1 do
@@ -116,8 +125,8 @@ end
 
 -- resolve a grid coordinate to the header of a job,
 -- return the item header index (or -1 if these are not tracked)
-function cat9.xy_to_hdr(x, y)
-	local job, col = cat9.xy_to_job(x, y)
+function cat9.xy_to_hdr(wnd, x, y)
+	local job, col = cat9.xy_to_job(wnd, x, y)
 	local id = -1
 
 	if not job then
@@ -133,8 +142,8 @@ function cat9.xy_to_hdr(x, y)
 	return job.hdr_to_id[x], job
 end
 
-function cat9.xy_to_data(x, y)
-	local job = cat9.xy_to_job(x, y)
+function cat9.xy_to_data(wnd, x, y)
+	local job = cat9.xy_to_job(wnd, x, y)
 	if job and y >= job.last_row then
 		return job
 	end
@@ -144,8 +153,7 @@ end
 -- Draw the [metadata][command(short | raw)] interactable one-line 'titlebar'
 -- at the specified location and constraints and the column-id
 --
-local
-function draw_job_header(job, x, y, cols, rows, cc)
+function cat9.draw_job_header(job, x, y, cols, rows)
 	local startx = x
 	local hdrattr =
 	{
@@ -177,7 +185,7 @@ function draw_job_header(job, x, y, cols, rows, cc)
 	end
 
 	local gs = itemstack.group_sep or " "
-	local gs_len = root:utf8_len(gs)
+	local gs_len = job.root:utf8_len(gs)
 
 -- each view (mainly custom ones) can have a different set of tbar options
 	local cfg = lash.builtin_cfg
@@ -210,7 +218,7 @@ function draw_job_header(job, x, y, cols, rows, cc)
 -- have say, a 'pid' or if #err > 0
 --
 	local function draw_item(i, cur)
-		local x2 = x + root:utf8_len(cur)
+		local x2 = x + job.root:utf8_len(cur)
 		local attr = hdrattr
 
 	-- on active row?
@@ -228,7 +236,7 @@ function draw_job_header(job, x, y, cols, rows, cc)
 			end
 		end
 
-		root:write_to(x, y, cur, attr)
+		job.root:write_to(x, y, cur, attr)
 		x = x2
 	end
 
@@ -250,7 +258,7 @@ function draw_job_header(job, x, y, cols, rows, cc)
 			end
 		end
 		if i ~= #itemstack then
-			root:write_to(x, y, gs, hdrattr)
+			job.root:write_to(x, y, gs, hdrattr)
 			x = x + gs_len
 		end
 	end
@@ -311,7 +319,7 @@ local function draw_job(job, x, y, cols, rows, cc)
 	local len = 0
 
 	job.region = {x, y, x + cols, y}
-	draw_job_header(job, x, y, cols, rows, cc)
+	cat9.draw_job_header(job, x, y, cols, rows)
 
 	job.last_row = y
 	job.last_col = x
