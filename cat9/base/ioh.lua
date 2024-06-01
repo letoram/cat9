@@ -15,7 +15,7 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 	local job = cat9.xy_to_job(self, x, y)
 
 -- if we don't do this we can get phantom-clicks into detached views
-	if job.root ~= self then
+	if not job or job.root ~= self then
 		return
 	end
 
