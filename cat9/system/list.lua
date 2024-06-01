@@ -511,9 +511,14 @@ local function list_input(job, sub, keysym, code, mods)
 				cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll +1")
 				job.cursor[2] = job.cursor[2] - 1
 
--- otherwise clamp
 			else
 				job.cursor[2] = rh-3
+			end
+
+-- otherwise clamp if list is larger than region, only happens on detached
+		else
+			if job.view_base + job.cursor[2] > job.data.files_filtered.linecount then
+				job.cursor[2] = job.data.files_filtered.linecount - job.view_base
 			end
 		end
 

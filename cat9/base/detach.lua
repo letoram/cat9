@@ -89,6 +89,7 @@ function detach_handlers.redraw(self)
 	run_as_selected(job, function()
 		job.expanded = true
 		job.selected = true
+		job.region = {0, 0, cols, rows}
 		job:view(0, 1, cols, rows - 1, false)
 		cat9.draw_job_header(job, 0, 0, cols, 1)
 	end)
