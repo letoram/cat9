@@ -20,7 +20,10 @@ local function drag_for_mouse(job, x, y, mods)
 
 -- on_drag items here, just deal with jobbar delta detach now
 	if cat9.in_pending_dnd[2] and y - job.mouse[2] ~= 0 or x - job.mouse[1] ~= 0 then
-		print("detach me")
+		local job = cat9.in_pending_dnd[1]
+		cat9.in_pending_dnd = nil
+		mstate[1] = false
+		cat9.parse_string(nil, "view #" .. tostring(job.id) .. " detach soft")
 	end
 end
 

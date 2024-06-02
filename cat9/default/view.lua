@@ -21,12 +21,18 @@ local function destroy_wnd()
 	job.redraw = job.detach_redraw
 end
 
-function viewlut.detach(set, i, job)
+local function detach(job, mode)
 	if job.root ~= root then
 		job.hidden = false
 		job.root:close()
 		job.root = root
 		return
+	end
+
+	local keep = cat9.config.detach_keep
+
+	if type(mode) == "string" and mode == "soft" then
+		keep = true
 	end
 
 	cat9.new_window(root, "tui",
@@ -51,7 +57,7 @@ function viewlut.detach(set, i, job)
 
 -- handle job terminating versus window being destroyed
 			job.detach_destroy = destroy_wnd
-			job.detach_keep = cat9.config.detach_keep
+			job.detach_keep = keep
 
 -- since the job is hidden layout will call it separately,
 			table.insert(job.hooks.on_destroy, destroy_wnd)
@@ -263,6 +269,13 @@ function builtins.view(job, ...)
 		viewer(job, false, arg)
 	end
 
+-- special case the detach as run_lut etc. is designed for and or, .. like filters
+	if type(arg[1]) == "string" and arg[1] == "detach" then
+		detach(job, arg[2])
+		cat9.flag_dirty(job)
+		return
+	end
+
 	cat9.run_lut("view #job", job, viewlut, arg)
 	cat9.flag_dirty()
 end
@@ -301,7 +314,7 @@ function suggest.view(args, raw)
 	end
 
 -- view #0 command [...]
-	local set = {}
+	local set = {"detach"}
 	for k,v in pairs(cat9.views) do
 		table.insert(set, k)
 	end
