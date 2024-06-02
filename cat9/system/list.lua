@@ -664,7 +664,7 @@ function(src, path, ref)
 	end
 
 -- reset interactive filter
-	job.list_filter_fn = nop_filter
+	src.list_filter_fn = nop_filter
 	if string.sub(path, 1, 1) ~= "/" then
 		path = resolve_path(src.dir .. "/" .. path)
 	end
