@@ -14,21 +14,38 @@ local function run_as_selected(job, closure)
 	cat9.selectedjob = csel
 end
 
+local function try_click(...)
+	local str = string.format(...)
+	if cat9.bindings[str] then
+		cat9.parse_string(nil, cat9.bindings[str])
+		return true
+	end
+end
+
 function detach_handlers.mouse_button(self, index, x, y, mods, active)
 	if job.handlers.mouse_button and not active then
 		run_as_selected(job,
 				function()
 					local id, job = cat9.xy_to_hdr(self, x, y)
 					if job and id > 0 then
+						local mind = "m" .. tostring(index)
 						local cfgrp = cat9.config[job.last_key][mind]
-
 						if cfgrp and cfgrp[id] then
 							cat9.parse_string(nil, cfgrp[id])
 							return
 						end
 					end
 
-					job.handlers.mouse_button(job, index, x, y, mods, active)
+					if (job.handlers.mouse_button(job, index, x, y, mods, active)) then
+						return
+					end
+
+					if job.mouse and job.mouse.on_col then
+						if try_click("m%d_data_col%d_click", index, job.mouse.on_col) then
+							return
+						end
+						local _ = try_click("m%d_data_click", index) or try_click("m%d_click", index)
+					end
 				end
 		)
 	end
