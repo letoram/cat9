@@ -176,7 +176,11 @@ local function filter_job(job, set)
 	local res = {bytecount = 2}
 
 	for _,v in ipairs(set) do
-		if v.name == ".." or (#v.name == 1 and v.name == ".") then
+-- not entirely right, this doesn't allow a provided filter function to mutate the name
+-- on the other hand that doesn't make sense either in this context as it blocks open
+-- and navigation
+		local ok, _ = job.list_filter_fn(v.name)
+		if not ok or v.name == ".." or (#v.name == 1 and v.name == ".") then
 		else
 			table.insert(res, v)
 			res.bytecount = res.bytecount + #v.name
@@ -483,6 +487,16 @@ local function list_text_input(job, ch)
 	return true
 end
 
+local function list_filter(job, fn)
+	job.list_filter_fn = fn
+	job.data.files_filtered = filter_job(job, job.data.files)
+	cat9.flag_dirty(job)
+end
+
+local function nop_filter(job, line)
+	return true, line
+end
+
 local function list_input(job, sub, keysym, code, mods)
 	job.mouse = nil
 
@@ -613,6 +627,8 @@ function builtins.list(path, opt, ...)
 
 	job.key_input = list_input
 	job.write = list_text_input
+	job.set_filter = list_filter
+	job.list_filter_fn = nop_filter
 
 -- since this can be called when new files appear the actual names of selected
 -- lines need to be saved and re-marked on discovery
@@ -647,6 +663,8 @@ function(src, path, ref)
 		src.ioh = nil
 	end
 
+-- reset interactive filter
+	job.list_filter_fn = nop_filter
 	if string.sub(path, 1, 1) ~= "/" then
 		path = resolve_path(src.dir .. "/" .. path)
 	end

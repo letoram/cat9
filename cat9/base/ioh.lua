@@ -7,6 +7,23 @@ function(cat9, root, config)
 local handlers = cat9.handlers
 
 local mstate = {}
+
+local function drag_for_mouse(job, x, y, mods)
+-- is it also a drag action with a modifier held or drag on job-bar
+-- announce what corresponds to copy(#csel, :pick)
+	if not cat9.in_pending_dnd then
+		if (0 == y - job.mouse[2] or mods > 0) then
+			cat9.in_pending_dnd = {job, y - job.mouse[2] == 0, job.mouse[1]}
+		end
+		return
+	end
+
+-- on_drag items here, just deal with jobbar delta detach now
+	if cat9.in_pending_dnd[2] and y - job.mouse[2] ~= 0 or x - job.mouse[1] ~= 0 then
+		print("detach me")
+	end
+end
+
 function handlers.mouse_motion(self, rel, x, y, mods)
 	if rel then
 		return
@@ -14,8 +31,13 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 
 	local job = cat9.xy_to_job(self, x, y)
 
+	if not job then
+		cat9.selectedjob = nil
+		return
+	end
+
 -- if we don't do this we can get phantom-clicks into detached views
-	if not job or job.root ~= self then
+	if self ~= job.root then
 		return
 	end
 
@@ -29,11 +51,8 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 -- we have motion within the active job
 			if job.mouse then
 				if job.mouse[1] ~= x or job.mouse[2] ~= y then
-
--- is it also a drag action with a modifier held?
--- announce what corresponds to copy(#csel, :pick)
-					if mstate[1] and mods > 0 and not cat9.in_pending_dnd then
-						cat9.in_pending_dnd = job
+					if mstate[1] then
+						drag_for_mouse(job, x, y, mods)
 					end
 
 					cat9.flag_dirty()
@@ -53,12 +72,6 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 		cat9.selectedjob = nil
 		cat9.flag_dirty()
 
-		return
-	end
-
--- early out common case
-	if not job then
-		cat9.selectedjob = nil
 		return
 	end
 
@@ -387,6 +400,11 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		return
 	end
 
+	if index == 1 and cat9.in_pending_dnd then
+		cat9.in_pending_dnd = nil
+		return
+	end
+
 -- ghost release
 	if not mstate[index] then
 		return
@@ -416,12 +434,6 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		if job.mouse[1] ~= x or job.mouse[2] ~= y then
 			return
 		end
-	end
-
--- we used to have a drag action and this cancels it
-	if index == 1 and cat9.in_pending_dnd then
-		cat9.in_pending_dnd = nil
-		return
 	end
 
 	if job and id > 0 then

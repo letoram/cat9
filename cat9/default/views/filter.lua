@@ -195,7 +195,11 @@ local function set_interactive(job)
 				filter = build_chain(job, last_set[1])
 			}
 		local name = "filter(" .. msg .. ")"
-		job:set_view(show_ptn, slice_ptn, state, name)
+		if job.set_filter then
+			job:set_filter(state.filter)
+		else
+			job:set_view(show_ptn, slice_ptn, state, name)
+		end
 	end
 
 -- just re-use the verification result
@@ -246,7 +250,13 @@ function views.filter(job, suggest, args)
 				filter = build_chain(job, args)
 			}
 		local name = "filter(" .. table.concat(args, "") .. ")"
-		job:set_view(show_ptn, slice_ptn, state, name)
+
+-- custom drawn jobs needs to reduce themselves
+		if job.set_filter then
+			job:set_filter(state.filter)
+		else
+			job:set_view(show_ptn, slice_ptn, state, name)
+		end
 
 		return
 	end
