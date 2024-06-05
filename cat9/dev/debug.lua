@@ -336,7 +336,20 @@ function cmds.disassemble()
 	-- activejob:sendDapRequest("disassemble", )
 end
 
-function cmds.attach(pid)
+function cmds.attach(process)
+	local pid
+
+	if type(process) == "string" then
+		pid = tonumber(process)
+	elseif type(process) == "table" then
+		pid = process.pid
+	end
+
+	if not pid then
+		cat9:add_message("debug attach >process< - invalid pid, job reference or job without associated process")
+		return
+	end
+
 	local job = startDapJob()
 	activejob = job
 
