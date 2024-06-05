@@ -131,7 +131,7 @@ local function encode_number(val)
   if val ~= val or val <= -math.huge or val >= math.huge then
     error("unexpected number value '" .. tostring(val) .. "'")
   end
-  local intVal = math.tointeger(val)
+  local intVal = math.modf(val)
   if intVal == val then
     return string.format("%d", intVal)
   else
