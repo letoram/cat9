@@ -2,7 +2,10 @@ return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 local parse_dap =
-	loadfile(string.format("%s/cat9/dev/parse_dap.lua", lash.scriptdir))()
+	loadfile(string.format("%s/cat9/dev/support/parse_dap.lua", lash.scriptdir))()
+
+local debugger =
+	loadfile(string.format("%s/cat9/dev/support/debug_dap.lua", lash.scriptdir))()
 
 local activejob
 local errors = {
