@@ -61,6 +61,7 @@ local function detach(job, mode)
 
 -- since the job is hidden layout will call it separately,
 			table.insert(job.hooks.on_destroy, destroy_wnd)
+			wnd:update_identity(job.name)
 
 		end, "split")
 end
