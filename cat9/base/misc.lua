@@ -148,6 +148,7 @@ function cat9.chdir(step)
 			for k, v in pairs(cat9.dir_monitor) do
 				v(new, cat9.prevdir)
 			end
+			root:update_identity(new)
 		end
 	end
 
