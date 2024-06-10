@@ -83,10 +83,10 @@ end
 
 local function on_active(dbg, msg)
 	if msg.success then
-		stdout:add_line("Adapter Active")
+		dbg.stdout:add_line("Adapter Active")
 		debug.active = true
 	else
-		stdout:add_line("Couldn't set debugger to target")
+		dbg.stdout:add_line("Couldn't set debugger to target")
 	end
 end
 
@@ -154,7 +154,6 @@ function Debugger:input_line(line)
 
 		if msghandlers[protomsg.type] then
 			msghandlers[protomsg.type](self, protomsg)
-			return
 		else
 			self.errors:add_line("Unknown message type: " .. protomsg.type)
 		end
