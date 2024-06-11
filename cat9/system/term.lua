@@ -18,7 +18,7 @@ local function shc_helper(mode, ...)
 	argv[4] = table.concat(args, " ")
 	local job = cat9.setup_shell_job(argv, mode, env, nil, opts)
 	if job then
-		job.short = "subshell"
+		job.short = string.sub(argv[4], 1, 10)
 		job.raw = argv[4]
 		if job.write and cat9.stdin then
 			job:write(cat9.stdin)

@@ -409,6 +409,7 @@ function
 			end
 			inf:write(job.inp_buffer, close and close or nil)
 		end
+		inf:flush()
 	end
 
 	job["repeat"] =
@@ -540,6 +541,21 @@ function cat9.remove_job(job)
 
 	if cat9.clipboard_job == job then
 		cat9.clipboard_job = nil
+	end
+
+	if job.inp then
+		job.inp:close()
+		job.inp = nil
+	end
+
+	if job.out then
+		job.out:close()
+		job.out = nil
+	end
+
+	if job.err then
+		job.err:close()
+		job.err = nil
 	end
 
 	drop_selection(job)
@@ -1124,7 +1140,7 @@ function cat9.import_job(v, noinsert)
 		v.short = "(unknown)"
 	end
 	if not v.raw then
-		v.raw = "(unknown)"
+		v.raw = ""
 	end
 	if not v.dir then
 		v.dir = root:chdir()

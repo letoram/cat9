@@ -49,6 +49,11 @@ function(cat9, root, config)
 		return job.raw
 	end
 
+	cat9.jobmeta["full_or_short"] =
+	function(job)
+		return #job.raw > 0 and job.raw or job.short
+	end
+
 	cat9.jobmeta["short"] =
 	function(job)
 		return job.short

@@ -107,7 +107,7 @@ return
 		group_sep = group_sep,
 		{ collapse_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{"$view"},
-		{"$full"},
+		{"$full_or_short"},
 		prefix = {fmt_sep, "[", fmt_data},
 		suffix = {fmt_sep, "]", fmt_data}
 	},
