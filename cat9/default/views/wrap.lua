@@ -255,16 +255,16 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 	local cl = 0
 	local cx = x + cat9.config.content_offset
 	local cy = y
-	root:cursor_to(cx, cy)
+	job.root:cursor_to(cx, cy)
 
 	for _,v in ipairs(reduced) do
 		if type(v) == "table" then
 			attr = v
 		elseif v == "\n" then
 			cy = cy + 1
-			root:cursor_to(cx, cy)
+			job.root:cursor_to(cx, cy)
 		else
-			root:write(v, attr)
+			job.root:write(v, attr)
 		end
 
 -- protect against wrapping overflow
