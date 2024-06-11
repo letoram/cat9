@@ -55,6 +55,11 @@ function cmds.attach(...)
 	job.data = job.debugger.output
 	cat9.import_job(job)
 	activejob = job
+	table.insert(job.hooks.on_destroy,
+		function()
+			job.debugger:terminate()
+		end
+	)
 
 	cat9.import_job({
 		short = "Debug:stderr",

@@ -66,6 +66,24 @@ local function handle_module_event(dbg, msg)
 	table.insert(dbg.data.modules, {name = b.module.name, reason = b.reason})
 end
 
+local function handle_initialized_event(dbg, msg)
+	dbg.data.capabilities = msg.body or {}
+	if type(target) == "number" then
+		local on_active =
+		function(dbg, msg)
+			if msg.success then
+				dbg.output:add_line("Target active: " .. tostring(target))
+				debug.active = true
+			else
+				dbg.output:add_line("Couldn't set debugger to target")
+			end
+		end
+		send_request(dbg, "attach", {pid = target}, on_active)
+	else
+		gdb.output:add_line("Missing: handle argument transfer for program launch")
+	end
+end
+
 local function handle_stop_event(dbg, msg)
 	local b = msg.body
 
@@ -77,26 +95,8 @@ local function handle_stop_event(dbg, msg)
 	thread.state = "stopped"
 	local state = string.format("%s(%s)", thread.state, b.reason)
 
-	dbg.job.stdout:add_line("stopped")
+	dbg.output:add_line("stopped")
 --	subjob:update_thread_state(thread, state)
-end
-
-local function on_active(dbg, msg)
-	if msg.success then
-		dbg.stdout:add_line("Adapter Active")
-		debug.active = true
-	else
-		dbg.stdout:add_line("Couldn't set debugger to target")
-	end
-end
-
-local function on_initialized(dbg, msg)
-	dbg.data.capabilities = msg.body or {}
-	if type(target) == "number" then
-		send_request(dbg, "attach", {pid = target}, on_active)
-	else
-		stdout:add_line("Missing: handle argument transfer for program launch")
-	end
 end
 
 local msghandlers =
@@ -225,10 +225,43 @@ function Debugger:reset()
 end
 
 function Debugger:terminate()
+	local function close_job()
+		if not self.job then
+			return
+		end
+
+-- this is a bit dangerous as normally we just know from failure on outf
+-- that the process is dead, here we don't have those guarantees so SIGCHLD
+-- should really be caught and handled somewhere so we don't blindly kill
+		lash.root:psignal(self.job.pid, "hup")
+		cat9.remove_job(self.job)
+		self.job = nil
+	end
+
+-- 3s timer
+	local lim = 25 * 3
+	table.insert(cat9.timers,
+	function()
+		lim = lim - 1
+		if lim == 0 then
+			close_job()
+		end
+	end)
+
+	send_request(self, "terminate", {},
+		function(job, msg)
+			close_job()
+		end
+	)
 -- kill job so we don't leave dangling DAPs around
 end
 
 function Debugger:backtrace(id)
+	send_request(self, "backtrace", {},
+		function(job, msg)
+			self.output:add_line("got msg" .. msg.body.output)
+		end
+	)
 end
 
 function Debugger:locals(id)
@@ -276,6 +309,7 @@ local debug = setmetatable(
 		["thread"] = handle_thread_event,
 		["module"] = handle_module_event,
 		["stopped"] = handle_stopped_event,
+		["initialized"] = handle_initialized_event
 	},
 	request = {},
 	response = {},
@@ -303,7 +337,8 @@ table.insert(
 	end
 )
 
-send_request(debug, "initialize", {adapterID = "gdb"}, on_initialized)
+-- the actual trigger event is "initialized" not the reply to "initialize"
+send_request(debug, "initialize", {adapterID = "gdb"}, function() end)
 
 return debug
 end
