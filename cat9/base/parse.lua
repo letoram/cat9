@@ -515,7 +515,11 @@ function cat9.expand_arg(dst, args, escape)
 
 -- and inject-escape the results, could reduce this from 2n to n by
 -- overriding resolver to return pre-escaped
-				for _,v in ipairs(v:slice(arg)) do
+				local ok, msg = v:slice(arg)
+				if not ok then
+					return false, msg
+				end
+				for _,v in ipairs(ok) do
 					table.insert(dst, escape_str(v))
 				end
 

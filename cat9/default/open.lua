@@ -253,7 +253,10 @@ function builtins.open(...)
 
 -- otherwise expand
 	local set = {}
-	cat9.expand_arg(set, opts)
+	local ok, msg = cat9.expand_arg(set, opts)
+	if not ok then
+		return false, msg
+	end
 
 -- we don't handle any form of queue or playlist here, the intent for that is to handle through each #1 !!open $arg
 	if #set > 1 then
