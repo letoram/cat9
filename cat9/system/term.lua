@@ -15,7 +15,18 @@ local function shc_helper(mode, ...)
 		opts.close = false
 	end
 
-	argv[4] = table.concat(args, " ")
+-- expand arguments into set
+	local set = {}
+	local ok, msg =	cat9.expand_arg(set, args, {
+		{[[\]], [[\\]]},
+		{'"', '\\"'},
+		{' ', '\\ '}
+	})
+	if not ok then
+		return false, msg
+	end
+
+	argv[4] = table.concat(set, " ")
 	local job = cat9.setup_shell_job(argv, mode, env, nil, opts)
 	if job then
 		job.short = string.sub(argv[4], 1, 10)

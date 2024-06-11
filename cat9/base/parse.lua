@@ -495,7 +495,7 @@ function cat9.expand_arg(dst, args, escape)
 		local vn = args[i+1]
 
 		if type(v) == "string" then
-			table.insert(dst, escape_str(args[i]))
+			table.insert(dst, escape_str(v))
 
 -- #job reference,
 		elseif type(v) == "table" then
