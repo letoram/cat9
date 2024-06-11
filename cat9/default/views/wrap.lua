@@ -157,10 +157,13 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 		end
 
 -- if we enable state decoding, the wrapping need to process the annotated
--- output while tracking the atttribute correctly as well
+-- output while tracking the atttribute correctly as well (transitions to
+-- / from altscreen should switch between wrap and crop) and have different
+-- semantics
 		if state.vt100 then
 			local cached = state.row_cache[ind]
-			if cached then
+
+			if cached and not (ind == #state.row_cache and #row ~= #cached) then
 				row = cached
 				attr = state.fmt_cache[ind]
 			else
@@ -226,7 +229,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 	local reduced, count
 	if job.wrap_cache and
 		job.wrap_cache.col_count == cols and
-		job.wrap_cache.linecount == set.linecount and
+		job.wrap_cache.bytecount == set.bytecount and
 		job.wrap_cache.col_offset == job.col_offset and
 		job.wrap_cache.show_line_number == job.show_line_number and
 		job.wrap_cache.row_offset == job.row_offset then
@@ -237,6 +240,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 			reduce_fmt(job, set, lc, ofs, cols, false)
 		job.wrap_cache = {
 			linecount = set.linecount,
+			bytecount = set.bytecount,
 			col_offset = job.col_offset,
 			row_offset = job.row_offset,
 			show_line_number = job.show_line_number,

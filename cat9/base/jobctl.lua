@@ -105,6 +105,7 @@ local function data_unbuffered(job, line, eof)
 	end
 
 	if job.block_buffer then
+		print("flag")
 		return
 	end
 
@@ -125,6 +126,8 @@ local function data_unbuffered(job, line, eof)
 			job.data.bytecount = job.data.bytecount + #line
 		end
 	end
+
+	cat9.flag_dirty(job)
 end
 
 local function flush_job(job, finish, limit)
