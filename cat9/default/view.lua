@@ -13,7 +13,7 @@ function viewlut.out(set, i, job)
 	return i + 1
 end
 
-local function destroy_wnd()
+local function destroy_wnd(job)
 	if job.root ~= lash.root then
 		job.root:destroy()
 	end
