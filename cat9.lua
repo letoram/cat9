@@ -249,6 +249,7 @@ safe_builtins = cat9.builtins
 safe_suggest = cat9.suggest
 safe_views = cat9.views
 load_builtins("system")
+load_feature("accessibility.lua")
 end
 cat9.reload()
 

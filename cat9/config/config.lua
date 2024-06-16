@@ -31,6 +31,7 @@ local hintbl = {
 	detach_keep = "Set to reattach detached job on window destruction",
 	open_embed_collapsed_rows = "Number of rows for downscaled contract open embed",
 	["=reload"] = "Re-parse and apply config.lua",
+	accessibility = "Probe display server for accessibility needs at startup",
 	mouse_mode = string.format(
 		"(Advanced) override mouse mode flag (%d, %d)", tui.flags.mouse, tui.flags.mouse_full),
 }
@@ -57,6 +58,10 @@ return
 	plumber = "/usr/bin/afsrv_decode",
 
 	default_job_view = "crop",
+
+-- probe for accessibility segment at startup, adds 10-50ms time so disable if
+-- you don't need or want to test for it
+	accessibility = true,
 
 	main_column_width = 80,
 	min_column_width = 40,
