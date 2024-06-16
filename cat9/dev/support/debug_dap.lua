@@ -2,6 +2,32 @@ return
 function(cat9, parser, args, target)
 local Debugger = {}
 
+local function render_threads(dbg)
+	local set = {}
+	local bc = 0
+	local max = 0
+	print("render")
+	for k,v in pairs(dbg.data.threads) do
+		table.insert(set, k)
+		local kl = #tostring(k)
+		max = kl > max and kl or max
+		bc = bc + kl
+	end
+
+	table.sort(set)
+	for i,v in ipairs(set) do
+		set[i] = string.lpad(v, max) .. ": " .. dbg.data.threads[set[i]].state
+	end
+
+	set.linecount = #set
+	set.bytecount = bc
+	dbg.threads = set
+
+	if dbg.state_hook then
+		dbg.state_hook()
+	end
+end
+
 local function send_request(dbg, req, args, handler)
 	local seq = dbg.dap_seq
 	dbg.dap_seq = dbg.dap_seq + 1
@@ -16,6 +42,20 @@ local function send_request(dbg, req, args, handler)
 	local jsonMsg = cat9.json.encode(request)
 	local msg = string.format("Content-Length: %d\r\n\r\n%s", #jsonMsg, jsonMsg)
 	dbg.job.inf:write(msg)
+end
+
+local function handle_continued_event(dbg, msg)
+	local b = msg.body
+	if b.allThreadsContinued then
+		for k,v in pairs(dbg.data.threads) do
+			v.state = "continued"
+		end
+	elseif dbg.data.threads[b.threadId] then
+		dbg.data.threads[b.threadId].state = "continued"
+	else
+		dbg.output:add_line("'continued' on unknown thread: " .. tostring(b.threadId))
+	end
+	render_threads(dbg)
 end
 
 local function handle_output_event(dbg, msg)
@@ -33,10 +73,11 @@ local function handle_output_event(dbg, msg)
 		line = msg.body.output
 	end
 
-	destination:add_line(line)
+	destination:add_line(dbg, line)
 end
 
 local function handle_stopped_event(dbg, msg)
+	render_threads(dbg)
 end
 
 local function handle_thread_event(dbg, msg)
@@ -53,12 +94,14 @@ local function handle_thread_event(dbg, msg)
 	elseif b.reason == "exited" then
 		thread.state = "exited"
 	else
-		dbg.errors:add_line("Unknown thread event reason: ", b.reason)
+		dbg.errors:add_line(dbg, "Unknown thread event reason: ", b.reason)
 	end
 
+	render_threads(dbg)
+
 -- think we need some stronger hooks for when threads stop from
--- reaching a breakpoint or is triggered by a signal
--- update_thread_state(thread, thread.state)
+-- reaching a breakpoint or is triggered by a signal as that takes
+-- rebuilding all thread-local views
 end
 
 local function handle_module_event(dbg, msg)
@@ -72,15 +115,15 @@ local function handle_initialized_event(dbg, msg)
 		local on_active =
 		function(dbg, msg)
 			if msg.success then
-				dbg.output:add_line("Target active: " .. tostring(target))
+				dbg.output:add_line(dbg, "Target active: " .. tostring(target))
 				debug.active = true
 			else
-				dbg.output:add_line("Couldn't set debugger to target")
+				dbg.output:add_line(dbg, "Couldn't set debugger to target")
 			end
 		end
 		send_request(dbg, "attach", {pid = target}, on_active)
 	else
-		gdb.output:add_line("Missing: handle argument transfer for program launch")
+		dbg.output:add_line(dbg, "Missing: handle argument transfer for program launch")
 	end
 end
 
@@ -95,8 +138,7 @@ local function handle_stop_event(dbg, msg)
 	thread.state = "stopped"
 	local state = string.format("%s(%s)", thread.state, b.reason)
 
-	dbg.output:add_line("stopped")
---	subjob:update_thread_state(thread, state)
+	render_threads(dbg)
 end
 
 local msghandlers =
@@ -106,7 +148,7 @@ function(dbg, msg)
 	if dbg.event[msg.event] then
 		dbg.event[msg.event](dbg, msg)
 	else
-		dbg.errors:add_line("Unhandled event:" .. msg.event)
+		dbg.errors:add_line(dbg, "Unhandled event:" .. msg.event)
 	end
 end,
 request =
@@ -121,7 +163,7 @@ function(dbg, msg)
 		dbg.response[seq](dbg, msg)
 		dbg.response[seq] = nil
 	else
-		dbg.errors:add_line("No response handler for " .. (seq and seq or "bad_seqence"))
+		dbg.errors:add_line(dbg, "No response handler for " .. (seq and seq or "bad_seqence"))
 	end
 end
 }
@@ -129,6 +171,10 @@ end
 function Debugger:get_suggestions(prefix, closure)
 -- since we can get many when / if the prefix changes maybe the cancellation
 -- request should be returned as a function() that the UI can call
+end
+
+function Debugger:set_state_hook(hook)
+	self.state_hook = hook
 end
 
 -- public interface
@@ -148,14 +194,14 @@ function Debugger:input_line(line)
 			if self.log then
 				self.log:write(errstr)
 			end
-			self.errors:add_line(errstr)
+			self.errors:add_line(self, errstr)
 			break
 		end
 
 		if msghandlers[protomsg.type] then
 			msghandlers[protomsg.type](self, protomsg)
 		else
-			self.errors:add_line("Unknown message type: " .. protomsg.type)
+			self.errors:add_line(self, "Unknown message type: " .. protomsg.type)
 		end
 	end
 end
@@ -259,7 +305,7 @@ end
 function Debugger:backtrace(id)
 	send_request(self, "backtrace", {},
 		function(job, msg)
-			self.output:add_line("got msg" .. msg.body.output)
+			self.output:add_line(self, "got msg" .. msg.body.output)
 		end
 	)
 end
@@ -279,8 +325,9 @@ function Debugger:threads()
 	return set
 end
 
-local function add_tbl_line(tbl, line)
-	table.insert(tbl, line)
+local function add_tbl_line(tbl, dbg, line)
+	table.insert(tbl, tostring(dbg.counter) .. ": " .. line)
+	dbg.counter = dbg.counter + 1
 	tbl.linecount = tbl.linecount + 1
 	tbl.bytecount = tbl.bytecount + #line
 end
@@ -309,7 +356,8 @@ local debug = setmetatable(
 		["thread"] = handle_thread_event,
 		["module"] = handle_module_event,
 		["stopped"] = handle_stopped_event,
-		["initialized"] = handle_initialized_event
+		["initialized"] = handle_initialized_event,
+		["continued"] = handle_continued_event
 	},
 	request = {},
 	response = {},
@@ -317,6 +365,9 @@ local debug = setmetatable(
 	stderr = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	stdout = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	errors = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
+	threads = {bytecount = 0, linecount = 0},
+
+	counter = 1,
 	data = {
 		threads = {},
 		files = {},
@@ -325,7 +376,8 @@ local debug = setmetatable(
 		capabilities = {}
 	},
 	job = job,
---	log = lash.root:fopen("/tmp/log", "w"), (uncomment to see data before parse)
+-- (uncomment to see data before parse)
+	log = lash.root:fopen("/tmp/log", "w"),
 	parser = parser(cat9),
 	dap_seq = 1
 }, {__index = Debugger})

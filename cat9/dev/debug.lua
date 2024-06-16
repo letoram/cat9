@@ -14,6 +14,32 @@ local errors = {
 
 local cmds = {}
 
+local function spawn_views(job)
+	cat9.import_job({
+		short = "Debug:stderr",
+		parent = job,
+		data = job.debugger.stderr
+	})
+
+	cat9.import_job({
+		short = "Debug:stdout",
+		parent = job,
+		data = job.debugger.stdout
+	})
+
+	cat9.import_job({
+		short = "Debug:threads",
+		parent = job,
+		data = job.debugger.threads
+	})
+
+	cat9.import_job({
+		short = "Debug:errors",
+		parent = job,
+		data = job.debugger.errors
+	})
+end
+
 function cmds.attach(...)
 	local set = {...}
 	local process = set[1]
@@ -61,23 +87,13 @@ function cmds.attach(...)
 		end
 	)
 
-	cat9.import_job({
-		short = "Debug:stderr",
-		parent = job,
-		data = job.debugger.stderr
-	})
+	job.debugger:set_state_hook(
+		function()
+			print("state changed")
+		end
+	)
 
-	cat9.import_job({
-		short = "Debug:stdout",
-		parent = job,
-		data = job.debugger.stdout
-	})
-
-	cat9.import_job({
-		short = "Debug:errors",
-		parent = job,
-		data = job.debugger.errors
-	})
+	spawn_views(job)
 end
 
 function builtins.debug(cmd, ...)
