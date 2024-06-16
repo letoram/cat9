@@ -105,7 +105,6 @@ local function data_unbuffered(job, line, eof)
 	end
 
 	if job.block_buffer then
-		print("flag")
 		return
 	end
 
@@ -663,10 +662,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- printing line numbers?
 		if job.show_line_number then
 -- left-justify
-			local num = tostring(ind)
-			if #num < digits then
-				num = string.rep(" ", digits - #num) .. num
-			end
+			local num = string.lpad(tostring(ind), digits)
 
 -- set inverse attribute if mouse cursor is on top of it
 			lineattr.inverse = job.mouse and

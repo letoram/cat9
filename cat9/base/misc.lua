@@ -89,6 +89,15 @@ function string.split_first(instr, delim)
 end
 end
 
+if not string.lpad then
+	function string.lpad(instr, digits)
+		if #instr < digits then
+			return string.rep(" ", digits - #instr) .. instr
+		end
+		return instr
+	end
+end
+
 function cat9.compact_path(str, lastcap)
 	local set = string.split(str, "/")
 	local compact = {}

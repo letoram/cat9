@@ -403,7 +403,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		return
 	end
 
-	if index == 1 and cat9.in_pending_dnd then
+	if cat9.in_pending_dnd then
 		cat9.in_pending_dnd = nil
 		return
 	end
