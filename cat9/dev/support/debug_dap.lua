@@ -2,6 +2,13 @@ return
 function(cat9, parser, args, target)
 local Debugger = {}
 
+local function ensure_thread(dbg, id)
+	if dbg.data.threads[id] then
+		return
+	end
+	dbg.data.threads[id] = {id = id, state = "unknown"}
+end
+
 local function render_threads(dbg)
 	local set = {}
 	local bc = 0
@@ -30,7 +37,7 @@ local function render_threads(dbg)
 	dbg.threads.bytecount = bc
 
 	if dbg.state_hook then
-		dbg.state_hook()
+		dbg:state_hook("render")
 	end
 end
 
@@ -64,7 +71,8 @@ local function handle_continued_event(dbg, msg)
 		for k,v in pairs(dbg.data.threads) do
 			v.state = "continued"
 		end
-	elseif dbg.data.threads[b.threadId] then
+	elseif b.threadId then
+		ensure_thread(dbg, b.threadId)
 		dbg.data.threads[b.threadId].state = "continued"
 	else
 		dbg.output:add_line(dbg, "'continued' on unknown thread: " .. tostring(b.threadId))
@@ -91,6 +99,30 @@ local function handle_output_event(dbg, msg)
 end
 
 local function handle_stopped_event(dbg, msg)
+-- reason:
+--  step, breakpoint, exception, pause, entry, goto,
+--  function breakpoint, data breakpoint, instruction breakpoint
+-- description?
+-- threadId?
+-- preserveFocusHint?
+-- text?
+-- allThreadsStopped?
+-- hitBreakpointIds?
+	local b = msg.body
+
+	if b.allThreadsStopped then
+		for k,v in pairs(dbg.data.threads) do
+			v.state = "stopped"
+		end
+	elseif b.threadId then
+		ensure_thread(dbg, b.threadId)
+		dbg.data.threads[b.threadId].state = "stopped"
+	end
+
+	if dbg.state_hook then
+		dbg:state_hook("stopped")
+	end
+
 	render_threads(dbg)
 end
 
@@ -147,16 +179,9 @@ end
 
 local function handle_stop_event(dbg, msg)
 	local b = msg.body
-
-	local thread = dbg.threads[b.threadId]
-	if not thread then
-		self:threads()
-		return
-	end
-
+	local thread = ensure_thread(dbg, b.threadId)
 	thread.state = "stopped"
-	local state = string.format("%s(%s)", thread.state, b.reason)
-
+	thread.reason = b.reason
 	render_threads(dbg)
 end
 
@@ -246,6 +271,12 @@ function Debugger:watch_memory(base, length, closure)
 end
 
 function Debugger:eval(expression, closure)
+-- evaluate
+-- arguments:
+--  expression
+--  frameId?
+--  context? : watch, repl, hover, clipboard, variables
+--  format?
 end
 
 function Debugger:update_signal(signo, state, closure)
@@ -366,7 +397,8 @@ local function add_tbl_line(tbl, dbg, line)
 	tbl.bytecount = tbl.bytecount + #line
 end
 
-local inf, outf, errf, pid = lash.root:popen(args, "rw")
+local inf, outf, errf, pid =
+	lash.root:popen(args.dap_default, "rw")
 	-- TODO Handle popen failure
 
 local job =

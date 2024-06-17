@@ -116,7 +116,7 @@ function cmds.attach(...)
 
 	local job = {
 		short = "Debug:attach",
-		debugger = debugger(cat9, parse_dap, {"gdb", "gdb", "-i", "dap"}, pid)
+		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, pid)
 	}
 
 -- this lets us swap out job.data between the different buffers, i.e.
