@@ -15,6 +15,8 @@ local activejob
 local errors = {
 	bad_pid = "debug attach >pid< : couldn't find or bind to pid",
 	attach_block = "debug: kernel blocks ptrace(pid), attach will fail",
+	no_active = "debug: no active job",
+	readmem = "debug: couldn't read memory at %s+%d"
 }
 
 -- Probe for means that would block ptrace(pid), for linux that is ptrace_scope
@@ -84,6 +86,29 @@ function cmds.backtrace(...)
 	activejob.debugger:backtrace()
 end
 
+function cmds.memory(...)
+	local set = {...}
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
+	end
+	local job = activejob
+	local len = 65536
+
+	job.debugger:read_memory(base[1], len,
+		function(data)
+			if not data then
+				job.debugger.output:add_line(job.debugger,
+					string.format(errors.readmem, base[1], len))
+				return
+			end
+-- this is where we hook the memory into a new hex view job
+			print("got", data.unreadable, #data.data)
+		end
+	)
+end
+
 function cmds.attach(...)
 	local set = {...}
 	local process = set[1]
@@ -147,15 +172,23 @@ function builtins.debug(cmd, ...)
 end
 
 builtins["_default"] =
-function(argtbl)
--- this weill be called when there is no matching builtin.something applied,
--- then we can append our own current prefix and have that match into injeecting a prompt
--- for the last command. What needs some thought is that when we have more builtins in the
--- set, particularly for scm, build, test, deploy that we capture the intention of the
--- user and that there is no amvbiguity between which part of the set owns which keyword.
---
--- if there is an activejob set and we are here, forward as eval into the debug adapter,
--- asynch get suggestions and work from there
+function(args)
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, args)
+	if not ok then
+		return false, msg
+	end
+
+	if not activejob then
+		return false, errors.no_active
+	end
+
+-- other options here is to assume debug #jobid command and when there is no
+-- overlay command, fall back to eval
+
+	activejob.debugger:eval(table.concat(base, " "), function()
+		cat9.flag_dirty(activejob)
+	end)
 end
 
 function suggest.debug(args, raw)
@@ -169,8 +202,8 @@ function suggest.debug(args, raw)
 -- ID is any job with a debugger or parent.debugger OR go from the activejob and then
 -- set active based on last one we inserted things into.
 	local function append_dbg_commands()
-		table.insert(set, "backtrace")
-		table.insert(set.hint, "Toggle a backtrace view on/off")
+		table.insert(set, "memory")
+		table.insert(set.hint, "View memory at a specific address or reference")
 	end
 
 	if #args == 2 then

@@ -265,12 +265,36 @@ function Debugger:set_breakpoint(source, line, offset)
 end
 
 function Debugger:read_memory(base, length, closure)
+	send_request(self, "readMemory", {memoryReference = base, count= length},
+		function(job, msg)
+			local b = msg.body
+			if b then
+				if b.data then
+					closure(
+						{data = cat9.from_b64(b.data),
+						unreadable = b.unreadableBytes or 0}
+					)
+			-- address, unreadableBytes? data?
+				else
+					closure({data = {}, unredable = length})
+				end
+			else
+				closure()
+			end
+		end
+	)
 end
 
 function Debugger:watch_memory(base, length, closure)
 end
 
 function Debugger:eval(expression, closure)
+	send_request(self, "evaluate", {expression = expression},
+		function(job, msg)
+			self.output:add_line(self, msg.message)
+		end
+	)
+
 -- evaluate
 -- arguments:
 --  expression
@@ -297,21 +321,16 @@ end
 -- like trace(write, data %some_pattern)
 
 function Debugger:continue(id)
-	activejob:sendDapRequest("continue", {threadId = 1}, function(job, msg)
-		local subjob = job.subjobs.threads
-		local thread = subjob.threads[1]
-		if thread then
-			subjob:update_thread_state(thread, "running")
-			thread.state = "running"
+	send_request(self, {threadId = id or 1},
+		function(job, msg)
 		end
-	end)
+	)
 end
 
 function Debugger:pause(id)
 -- there is a pause all as well to use if [id] is not specified
 	send_request(self, "pause", {threadId = 1},
 		function(job, msg)
-
 		end
 	)
 end
@@ -350,14 +369,6 @@ function Debugger:terminate(hard)
 		end
 	)
 -- kill job so we don't leave dangling DAPs around
-end
-
-function Debugger:backtrace(id)
-	send_request(self, "stackTrace", {threadId = id},
-		function(job, msg)
-			self.output:add_line(self, "got msg" .. msg.body.output)
-		end
-	)
 end
 
 function Debugger:locals(id)
