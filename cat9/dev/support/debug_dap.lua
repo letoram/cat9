@@ -6,7 +6,7 @@ local function render_threads(dbg)
 	local set = {}
 	local bc = 0
 	local max = 0
-	print("render")
+
 	for k,v in pairs(dbg.data.threads) do
 		table.insert(set, k)
 		local kl = #tostring(k)
@@ -14,14 +14,20 @@ local function render_threads(dbg)
 		bc = bc + kl
 	end
 
+-- remove / rewrite as replacing the set would break other references
 	table.sort(set)
-	for i,v in ipairs(set) do
-		set[i] = string.lpad(v, max) .. ": " .. dbg.data.threads[set[i]].state
+	for i=#dbg.threads,1,-1 do
+		table.remove(dbg.threads, i)
 	end
 
-	set.linecount = #set
-	set.bytecount = bc
-	dbg.threads = set
+	for i,v in ipairs(set) do
+		table.insert(dbg.threads,
+			string.lpad(
+				tostring(v), max) .. ": " .. dbg.data.threads[set[i]].state
+		)
+	end
+	dbg.threads.linecount = #set
+	dbg.threads.bytecount = bc
 
 	if dbg.state_hook then
 		dbg.state_hook()
@@ -33,14 +39,22 @@ local function send_request(dbg, req, args, handler)
 	dbg.dap_seq = dbg.dap_seq + 1
 	dbg.response[seq] = handler
 
+	local kvc = 0
+	for k,v in pairs(args) do
+		kvc = kvc + 1
+	end
+
 	local request = {
 		type = "request",
 		command = req,
-		arguments = args,
+		arguments = kvc > 0 and args or nil,
 		seq = seq,
 	}
 	local jsonMsg = cat9.json.encode(request)
 	local msg = string.format("Content-Length: %d\r\n\r\n%s", #jsonMsg, jsonMsg)
+	if dbg.log_out then
+		dbg.log_out:write(msg)
+	end
 	dbg.job.inf:write(msg)
 end
 
@@ -53,7 +67,7 @@ local function handle_continued_event(dbg, msg)
 	elseif dbg.data.threads[b.threadId] then
 		dbg.data.threads[b.threadId].state = "continued"
 	else
-		dbg.output:add_line("'continued' on unknown thread: " .. tostring(b.threadId))
+		dbg.output:add_line(dbg, "'continued' on unknown thread: " .. tostring(b.threadId))
 	end
 	render_threads(dbg)
 end
@@ -117,11 +131,15 @@ local function handle_initialized_event(dbg, msg)
 			if msg.success then
 				dbg.output:add_line(dbg, "Target active: " .. tostring(target))
 				debug.active = true
+				dbg:get_threads()
 			else
 				dbg.output:add_line(dbg, "Couldn't set debugger to target")
 			end
 		end
-		send_request(dbg, "attach", {pid = target}, on_active)
+		send_request(dbg, "attach", {pid = target}, function()
+			send_request(dbg, "startDebugging", {}, function(dbg, msg)
+			end)
+		end)
 	else
 		dbg.output:add_line(dbg, "Missing: handle argument transfer for program launch")
 	end
@@ -132,6 +150,7 @@ local function handle_stop_event(dbg, msg)
 
 	local thread = dbg.threads[b.threadId]
 	if not thread then
+		self:threads()
 		return
 	end
 
@@ -270,7 +289,7 @@ function Debugger:reset()
 -- should restart / run the target again, perhaps not useful for attach
 end
 
-function Debugger:terminate()
+function Debugger:terminate(hard)
 	local function close_job()
 		if not self.job then
 			return
@@ -279,7 +298,7 @@ function Debugger:terminate()
 -- this is a bit dangerous as normally we just know from failure on outf
 -- that the process is dead, here we don't have those guarantees so SIGCHLD
 -- should really be caught and handled somewhere so we don't blindly kill
-		lash.root:psignal(self.job.pid, "hup")
+-- lash.root:psignal(self.job.pid, "hup")
 		cat9.remove_job(self.job)
 		self.job = nil
 	end
@@ -294,7 +313,7 @@ function Debugger:terminate()
 		end
 	end)
 
-	send_request(self, "terminate", {},
+	send_request(self, hard and "terminate" or "disconnect", {},
 		function(job, msg)
 			close_job()
 		end
@@ -303,7 +322,7 @@ function Debugger:terminate()
 end
 
 function Debugger:backtrace(id)
-	send_request(self, "backtrace", {},
+	send_request(self, "stackTrace", {threadId = id},
 		function(job, msg)
 			self.output:add_line(self, "got msg" .. msg.body.output)
 		end
@@ -320,13 +339,28 @@ function Debugger:thread_state(id, state)
 -- change state for one or many threads
 end
 
-function Debugger:threads()
-	local set = {}
+function Debugger:get_threads()
+	send_request(self, "threads", {},
+		function(job, msg)
+			if not msg.success then
+				self.output:add_line(self, "thread request failed: " .. msg.message)
+			else
+			end
+		end
+	)
 	return set
 end
 
 local function add_tbl_line(tbl, dbg, line)
-	table.insert(tbl, tostring(dbg.counter) .. ": " .. line)
+-- presenting the number as a timeline gives weird interactions with the default
+-- crop view, track the counter as linear between the buffers but don't add it to
+-- the explicit data for now
+	table.insert(tbl, line)
+	if not tbl.clock then
+		tbl.clock = {}
+		table.insert(tbl.clock, dbg.counter)
+	end
+
 	dbg.counter = dbg.counter + 1
 	tbl.linecount = tbl.linecount + 1
 	tbl.bytecount = tbl.bytecount + #line
@@ -361,13 +395,13 @@ local debug = setmetatable(
 	},
 	request = {},
 	response = {},
+	counter = 1,
 	output = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	stderr = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	stdout = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	errors = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	threads = {bytecount = 0, linecount = 0},
 
-	counter = 1,
 	data = {
 		threads = {},
 		files = {},
@@ -377,7 +411,8 @@ local debug = setmetatable(
 	},
 	job = job,
 -- (uncomment to see data before parse)
-	log = lash.root:fopen("/tmp/log", "w"),
+	log = lash.root:fopen("/tmp/dbglog.in", "w"),
+	log_out = lash.root:fopen("/tmp/dbglog.out", "w"),
 	parser = parser(cat9),
 	dap_seq = 1
 }, {__index = Debugger})

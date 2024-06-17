@@ -185,6 +185,10 @@ local function view_monitor()
 	end
 	cat9.add_message =
 	function(msg)
+		if msg == job.data[#job.data] then
+			return
+		end
+
 		if type(msg) == "string" then
 			if #msg == 0 then
 			else

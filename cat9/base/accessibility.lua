@@ -5,7 +5,6 @@ if config.accessibility then
 	root:new_window("accessibility",
 		function(wnd, new)
 			if not new then
-				cat9.add_message("no access")
 				return
 			end
 

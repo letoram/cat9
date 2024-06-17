@@ -3,6 +3,20 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 -- other useful extensions: 'github' tool
 -- fossil should show timeline, chat, issues to inject into commit message, ...
+--
+-- for the 'chat' we need to figure out the database and have sqlite3
+--     .find fslckout -> grab 'repository' from vvar;
+--     SELECT fmime FROM chat WHERE msgid=%d
+--     SELECT file FROM chat WHERE msgid=%d
+--     SELECT xfrom FROM chat WHERE msgid=%d
+--     SELECT julianday('now')/mtime FROM chat ORDER BY msgid LIMIT 1
+--     SELECT msgid FROM chat ORDER BY msgid DESC LIMIT 1 OFFSET %d
+--     PRAGMA secure_delete=ON
+--     SELECT msgid, datetime(mtime), xfrom, xmsg, octet_length(file), fname, fmime, %s, lmtime FROM chat
+--     SELECT msgid FROM chat WHERE mdel IS NOT true ORDER BY msgid DESC LIMIT 1 OFFSET %d (-msgid)
+--
+-- a viewer for .pikchr is also useful, can do that via export to SVG then media embed
+--
 
 local in_monitor
 local config = cat9.config
