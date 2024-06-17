@@ -18,6 +18,13 @@ local function linearize(hist)
 	return res
 end
 
+local errors =
+{
+	job_nowd = "cd job #%d has no working directory",
+	cdf_badarg = "cd f[-+] >arg< is not a string",
+	missing = "cd >dir< missing"
+}
+
 -- hijack process launching and check the working directory whenever
 -- this happens, this will catch other calls as well - so filter out
 -- the common (/usr/bin etc.) that does not match the last manual
@@ -54,28 +61,43 @@ function builtins.cd(...)
 		if args[1].dir then
 			cat9.switch_env(args[1])
 		else
-			cat9.add_message("job #" .. tostring(args[1].id) .. " doesn't have a working directory")
+			return false, string.format(errors.job_nwd, args[1].id)
 		end
 		return
 	end
 
 	local base = {}
+
+-- special case cd f, cd f+, cd- which uses history
 	if type(args[1]) == "string" then
 		local step = args[1]
-		if step == "f" then
-			step = opt
-		elseif step == "f-" then
-			hist[opt] = nil
-			return
-		elseif step == "f+" then
-			if opt == "." then
-				opt = root:chdir()
+		local opt = args[2]
+
+		if step == "f" or step == "f-" or step == "f+" then
+			if type(opt) ~= "string" then
+				return false, errors.cdf_badarg
 			end
-			hist[opt] = hist_cutoff + 1
+
+			if step == "f" then
+				step = opt
+				cat9.chdir(step)
+				last_dir = root:chdir()
+
+			elseif step == "f-" then
+				hist[opt] = nil
+
+			elseif step == "f+" then
+				if opt == "." then
+					opt = root:chdir()
+				end
+				hist[opt] = hist_cutoff + 1
+			end
+
 			return
 		end
 	end
 
+-- now we can allow cd #0(1,2,3) or cd /path or cd ~ or cd $..
 	local ok, msg = cat9.expand_arg(base, args)
 	if not ok then
 		cat9.add_message("cd: " .. msg)
@@ -85,8 +107,7 @@ function builtins.cd(...)
 	local step = table.concat(base, " ")
 
 	if #args == 0 or #args[1] == "" then
-		cat9.add_message("cd >dir<: directory argument missing")
-		return
+		return false, errors.missing
 	end
 
 	if step == "~" then
