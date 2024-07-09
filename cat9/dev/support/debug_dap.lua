@@ -1,6 +1,10 @@
 return
 function(cat9, parser, args, target)
 local Debugger = {}
+local errors = {
+	breakpoint_id = "change or remove on breakpoint without valid id",
+	breakpoint_missing = "unknown breakpoint %d"
+}
 
 local function ensure_thread(dbg, id)
 	if dbg.data.threads[id] then
@@ -9,35 +13,17 @@ local function ensure_thread(dbg, id)
 	dbg.data.threads[id] = {id = id, state = "unknown"}
 end
 
-local function render_threads(dbg)
-	local set = {}
-	local bc = 0
-	local max = 0
-
-	for k,v in pairs(dbg.data.threads) do
-		table.insert(set, k)
-		local kl = #tostring(k)
-		max = kl > max and kl or max
-		bc = bc + kl
+local function get_breakpoint_by_id(dbg, id)
+	for k,v in ipairs(dbg.data.breakpoints) do
+		if v.id and v.id == id then
+			return v
+		end
 	end
+end
 
--- remove / rewrite as replacing the set would break other references
-	table.sort(set)
-	for i=#dbg.threads,1,-1 do
-		table.remove(dbg.threads, i)
-	end
-
-	for i,v in ipairs(set) do
-		table.insert(dbg.threads,
-			string.lpad(
-				tostring(v), max) .. ": " .. dbg.data.threads[set[i]].state
-		)
-	end
-	dbg.threads.linecount = #set
-	dbg.threads.bytecount = bc
-
-	if dbg.state_hook then
-		dbg:state_hook("render")
+local function run_update(dbg, event)
+	if dbg.on_update[event] then
+		dbg.on_update[event](dbg)
 	end
 end
 
@@ -77,7 +63,9 @@ local function handle_continued_event(dbg, msg)
 	else
 		dbg.output:add_line(dbg, "'continued' on unknown thread: " .. tostring(b.threadId))
 	end
-	render_threads(dbg)
+	if dbg.on_update.threads then
+		dbg.on_update.threads(dbg)
+	end
 end
 
 local function handle_output_event(dbg, msg)
@@ -96,6 +84,73 @@ local function handle_output_event(dbg, msg)
 	end
 
 	destination:add_line(dbg, line)
+end
+
+local function handle_breakpoint_event(dbg, msg)
+	local b = msg.body
+	local bpts = dbg.data.breakpoints
+	local bpt
+
+	dbg.output:add_line(dbg, "breakpoint reached")
+
+	b.id = b.id and tonumber(b.id) or nil
+	if b.reason == "changed" then
+		if not b.id then
+			dbg.errors:add_line(dbg, errors.breakpoint_id)
+			return
+		end
+
+		bpt = get_breakpoint_by_id(dbg, bpts.id)
+		if not bpt then
+			dbg.errors:add_line(dbg, string.format(errors.breakpoint_missing, b.id))
+			return
+		end
+
+	elseif b.reason == "new" then
+		bpt = {}
+		table.insert(bpts, bpt)
+
+	elseif b.reason == "removed" then
+		for i=1,#bpts do
+			if bpts[i].id and bpts[i].id == b.id then
+				table.remove(bpts, i)
+				return
+			end
+		end
+
+		run_update(dbg, "breakpoints")
+		return
+	end
+
+	b = b.breakpoint
+	bpt.id = b.id
+	bpt.verified = b.verified or b.reason
+	if b.source then
+		bpt.source = b.source.name
+		bpt.path = b.source.path
+	else
+		bpt.source = "unknown"
+		bpt.path = ""
+	end
+
+	if b.line then
+		bpt.line = {b.line, b.endLine or b.line}
+	else
+		bpt.line = {-1, -1}
+	end
+
+	if b.column then
+		bpt.column = {b.column, b.endColumn or b.column}
+	else
+		bpt.column = {0, 0}
+	end
+
+	if b.instructionReference then
+		bpt.instruction = {b.instructionReference, b.offset or 0}
+	else
+		bpt.instruction = {"0x??", "+?"}
+	end
+	run_update(dbg, "breakpoints")
 end
 
 local function handle_stopped_event(dbg, msg)
@@ -123,7 +178,7 @@ local function handle_stopped_event(dbg, msg)
 		dbg:state_hook("stopped")
 	end
 
-	render_threads(dbg)
+	run_update(dbg, "threads")
 end
 
 local function handle_thread_event(dbg, msg)
@@ -143,11 +198,7 @@ local function handle_thread_event(dbg, msg)
 		dbg.errors:add_line(dbg, "Unknown thread event reason: ", b.reason)
 	end
 
-	render_threads(dbg)
-
--- think we need some stronger hooks for when threads stop from
--- reaching a breakpoint or is triggered by a signal as that takes
--- rebuilding all thread-local views
+	run_update(dbg, "threads")
 end
 
 local function handle_module_event(dbg, msg)
@@ -158,22 +209,26 @@ end
 local function handle_initialized_event(dbg, msg)
 	dbg.data.capabilities = msg.body or {}
 	if type(target) == "number" then
-		local on_active =
-		function(dbg, msg)
-			if msg.success then
-				dbg.output:add_line(dbg, "Target active: " .. tostring(target))
-				debug.active = true
-				dbg:get_threads()
-			else
-				dbg.output:add_line(dbg, "Couldn't set debugger to target")
-			end
-		end
 		send_request(dbg, "attach", {pid = target}, function()
-			send_request(dbg, "startDebugging", {}, function(dbg, msg)
+			send_request(dbg, "startDebugging", {request = "attach"}, function(dbg, msg)
 			end)
 		end)
+	elseif type(target) == "table" then
+		local launchopt = {
+			stopAtBeginningOfMainSubprogram = true,
+			program = table.remove(target, 1)
+		}
+		launchopt.args = target
+		launchopt.env = cat9.env
+		launchopt.cwd = lash.root:chdir()
+
+		send_request(dbg, "launch", launchopt,
+			function()
+				send_request(dbg, "startDebugging", {request = "launch"}, function(dbg, msg) end)
+			end
+		)
 	else
-		dbg.output:add_line(dbg, "Missing: handle argument transfer for program launch")
+		dbg.output:add_line(dbg, "Unknown launch target type: " .. tostring(target))
 	end
 end
 
@@ -182,7 +237,7 @@ local function handle_stop_event(dbg, msg)
 	local thread = ensure_thread(dbg, b.threadId)
 	thread.state = "stopped"
 	thread.reason = b.reason
-	render_threads(dbg)
+	run_update(dbg, "threads")
 end
 
 local msghandlers =
@@ -434,7 +489,8 @@ local debug = setmetatable(
 		["module"] = handle_module_event,
 		["stopped"] = handle_stopped_event,
 		["initialized"] = handle_initialized_event,
-		["continued"] = handle_continued_event
+		["continued"] = handle_continued_event,
+		["breakpoint"] = handle_breakpoint_event
 	},
 	request = {},
 	response = {},
@@ -450,8 +506,11 @@ local debug = setmetatable(
 		files = {},
 		functions = {},
 		modules = {},
-		capabilities = {}
+		capabilities = {},
+		breakpoints = {},
 	},
+
+	on_update = {},
 	job = job,
 -- (uncomment to see data before parse)
 	log = lash.root:fopen("/tmp/dbglog.in", "w"),

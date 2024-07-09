@@ -16,7 +16,8 @@ local errors = {
 	bad_pid = "debug attach >pid< : couldn't find or bind to pid",
 	attach_block = "debug: kernel blocks ptrace(pid), attach will fail",
 	no_active = "debug: no active job",
-	readmem = "debug: couldn't read memory at %s+%d"
+	readmem = "debug: couldn't read memory at %s+%d",
+	no_target = "debug launch >target< missing"
 }
 
 -- Probe for means that would block ptrace(pid), for linux that is ptrace_scope
@@ -45,6 +46,70 @@ end
 
 local cmds = {}
 
+local function render_breakpoints(job, dbg)
+	local data = {
+		bytecount = 0,
+		linecount = 0
+	}
+
+	for i,v in pairs(dbg.data.breakpoints) do
+		local linefmt = ""
+		if v.line[1] then
+			linefmt = tostring(v.line[1])
+			if v.line[2] ~= v.line[1] then
+				linefmt = linefmt .. "-" .. tostring(v.line[2])
+			end
+		end
+
+-- this view ignores column
+		local str =
+		string.format(
+			"%s: %s%s%s @ %s+%s",
+			tostring(v.id) or "[]",
+			v.source,
+			#linefmt > 0 and ":" or "",
+			linefmt,
+			v.instruction[1],
+			tostring(v.instruction[2])
+		)
+		table.insert(data, str)
+		data.bytecount = data.bytecount + #str
+	end
+
+	data.linecount = #data
+	job.windows.breakpoints.data = data
+	cat9.flag_dirty(job)
+end
+
+local function render_threads(job, dbg)
+	local set = {}
+	local bc = 0
+	local max = 0
+
+-- convert debugger data model to window view one
+	for k,v in pairs(dbg.data.threads) do
+		table.insert(set, k)
+		local kl = #tostring(k)
+		max = kl > max and kl or max
+		bc = bc + kl
+	end
+
+	table.sort(set)
+	local data = {}
+
+	for i,v in ipairs(set) do
+		table.insert(data,
+			string.lpad(
+				tostring(v), max) .. ": " .. dbg.data.threads[set[i]].state
+		)
+	end
+
+	data.linecount = #data
+	data.bytecount = bc
+	job.windows.threads.data = data
+	cat9.flag_dirty(job)
+end
+
 local function spawn_views(job)
 	job.windows = {}
 
@@ -66,9 +131,25 @@ local function spawn_views(job)
 	cat9.import_job({
 		short = "Debug:threads",
 		parent = job,
-		data = job.debugger.threads,
+		data = {bytecount = 0, linecount = 0}
 	})
 	job.windows.threads.show_line_number = false
+	job.debugger.on_update.threads =
+		function(dbg)
+			render_threads(job, dbg)
+		end
+
+	job.windows.breakpoints =
+	cat9.import_job({
+		short = "Debug:breakpoints",
+		parent = job,
+		data = {bytecount = 0, linecount = 0}
+	})
+	job.windows.breakpoints.show_line_number = false
+	job.debugger.on_update.breakpoints =
+	function(dbg)
+		render_breakpoints(job, dbg)
+	end
 
 	job.windows.errors =
 	cat9.import_job({
@@ -109,6 +190,29 @@ function cmds.memory(...)
 	)
 end
 
+function cmds.launch(...)
+	local set = {...}
+	local outargs = {}
+	local ok, msg = cat9.expand_arg(outargs, set)
+
+	if not ok then
+		return false, msg
+	end
+
+	if not outargs[1] then
+		return false, errors.no_target
+	end
+
+	local job = {
+		short = string.format("Debug:launch(%s)", outargs[1]),
+		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, outargs)
+	}
+
+	job.data = job.debugger.output
+	cat9.import_job(job)
+	spawn_views(job)
+end
+
 function cmds.attach(...)
 	local set = {...}
 	local process = set[1]
@@ -131,7 +235,7 @@ function cmds.attach(...)
 				return false, msg
 			end
 
-			pid = tonumber(set[1])
+			pid = tonumber(outargs[1])
 		end
 	end
 
@@ -144,9 +248,10 @@ function cmds.attach(...)
 		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, pid)
 	}
 
--- this lets us swap out job.data between the different buffers, i.e.
--- stderr, telemetry, ... or have one in between that just gives us meta-
--- information of the debugger state itself
+-- this lets us swap out job.data between the different buffers, i.e. stderr,
+-- telemetry, ... or have one in between that just gives us meta- information
+-- of the debugger state itself, as well as spawning separate views for the
+-- many data domains.
 	job.data = job.debugger.output
 	cat9.import_job(job)
 	activejob = job
@@ -156,9 +261,11 @@ function cmds.attach(...)
 		end
 	)
 
+-- this is if we want to perform a lot of tasks when large state transitions
+-- happen, like hitting a breakpoint. Invalidation of the views happen through
+-- update hooks added in spawn_views
 	job.debugger:set_state_hook(
 		function()
-			cat9.flag_dirty(job)
 		end
 	)
 
@@ -222,6 +329,11 @@ function suggest.debug(args, raw)
 	else
 		if args[2] == "attach" and attach_block then
 			cat9.add_message(errors.attach_block)
+		end
+
+-- get list of known targets, otherwise create a new based on treating first
+-- as normal executable completion and the rest as --args style forwarding
+		if args[2] == "launch" then
 		end
 
 -- check if we reference an existing debugger session, then append_dbg_commands

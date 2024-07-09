@@ -1,5 +1,5 @@
 return
-function(cat9, root, builtins, suggest)
+function(cat9, root, builtins, suggest, builtin_cfg)
 
 -- this history should possibly also be job- contextual, i.e. when
 -- we actively switch env, attach hist to that as well. this makes
