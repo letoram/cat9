@@ -578,7 +578,7 @@ end
 
 -- used for prompt expansion, should be improved a bit to better support
 -- decorating groups (rather than forcing the prompt template to do it)
-function cat9.template_to_str(template, helpers, ...)
+function cat9.template_to_str(template, helpers, job)
 	local res = {}
 	local queue
 
@@ -599,13 +599,13 @@ function cat9.template_to_str(template, helpers, ...)
 					queue = nil
 				end
 			else
-				table.insert(queue or res, expand_helpers(helpers, v, ...))
+				table.insert(queue or res, expand_helpers(helpers, v, job))
 			end
 
 -- functions are just executed and expected to return string or nil
 -- and only a string with non-whitespace characters are considered
 		elseif type(v) == "function" then
-			local fret = v(cat9)
+			local fret = v(cat9, job)
 			if fret and string.find(fret, "%S") then
 				table.insert(queue or res, fret)
 			end

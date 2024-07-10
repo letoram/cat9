@@ -99,7 +99,8 @@ return
 		group_sep = group_sep,
 		{selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{"$short"},
-		{"repeat"},
+		{function(cat9, job)
+			return job["repeat"] and "repeat" or ""; end},
 		{"X"},
 		m1 = {
 			[3] = "repeat #csel flush",

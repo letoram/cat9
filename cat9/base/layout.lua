@@ -183,6 +183,7 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 		cat9.add_message("bad config: missing job_bar field: " .. job_key)
 		return
 	end
+	itemstack = cat9.table_copy_shallow(itemstack)
 
 	local gs = itemstack.group_sep or " "
 	local gs_len = job.root:utf8_len(gs)
@@ -197,19 +198,26 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 		itemstack.m2 = {}
 	end
 
-	if bar then
-		itemstack = cat9.table_copy_shallow(itemstack)
+	local function apply_stack(src)
 		local ofs = #itemstack
 
-		for i=1,#bar do
-			table.insert(itemstack, bar[i])
-			if bar.m1 then
-				itemstack.m1[ofs + i] = bar.m1[i]
+		for i=1,#src do
+			table.insert(itemstack, src[i])
+			if src.m1 then
+				itemstack.m1[ofs + i] = src.m1[i]
 			end
-			if bar.m2 then
-				itemstack.m2[ofs + i] = bar.m2[i]
+			if src.m2 then
+				itemstack.m2[ofs + i] = src.m2[i]
 			end
 		end
+	end
+
+	if bar then
+		apply_stack(bar)
+	end
+
+	if job.selected and job.selected_bar then
+		apply_stack(job.selected_bar)
 	end
 
 --
@@ -218,7 +226,8 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 -- have say, a 'pid' or if #err > 0
 --
 	local function draw_item(i, cur)
-		local x2 = x + job.root:utf8_len(cur)
+		local len = job.root:utf8_len(cur)
+		local x2 = x + len
 		local attr = hdrattr
 
 	-- on active row?
@@ -238,6 +247,7 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 
 		job.root:write_to(x, y, cur, attr)
 		x = x2
+		return len
 	end
 
 	for i,v in ipairs(itemstack) do
@@ -247,17 +257,20 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 		end
 		local res = cat9.template_to_str(v, cat9.jobmeta, job)
 -- each entry here is either plain-text string, a special string or hdrattr
+		local nw = 0
+
 		for _,w in ipairs(res) do
 			if type(w) == "table" then
 				hdrattr = w
 			elseif type(w) == "string" then
-				draw_item(i, w)
+				nw = nw + draw_item(i, w)
 			else
-				cat9.add_message("bad config: expected string ot table, not " .. type(w))
+				cat9.add_message("bad config: expected string or table, not " .. type(w))
 				return
 			end
 		end
-		if i ~= #itemstack then
+
+		if i ~= #itemstack and nw > 0 then
 			job.root:write_to(x, y, gs, hdrattr)
 			x = x + gs_len
 		end
