@@ -22,6 +22,7 @@ local function get_breakpoint_by_id(dbg, id)
 end
 
 local function run_update(dbg, event)
+	print("run_update", event)
 	if dbg.on_update[event] then
 		dbg.on_update[event](dbg)
 	end
@@ -343,19 +344,28 @@ end
 function Debugger:watch_memory(base, length, closure)
 end
 
-function Debugger:eval(expression, closure)
-	send_request(self, "evaluate", {expression = expression},
+-- possible contexts:
+--  watch
+--  repl
+--  hover
+--  clipboard
+--  variables
+--
+-- other options:
+--  evaluate in frame (frameId)
+--  format (?)
+--
+function Debugger:eval(expression, context, closure)
+	send_request(self, "evaluate", {expression = expression, context = context},
 		function(job, msg)
-			self.output:add_line(self, msg.message)
+			local b = msg.body
+			if b and b.result then
+				for _, line in ipairs(string.split(b.result, "\n")) do
+					self.output:add_line(self, line)
+				end
+			end
 		end
 	)
-
--- evaluate
--- arguments:
---  expression
---  frameId?
---  context? : watch, repl, hover, clipboard, variables
---  format?
 end
 
 function Debugger:update_signal(signo, state, closure)

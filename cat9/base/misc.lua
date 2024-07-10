@@ -338,11 +338,12 @@ end
 
 -- taken from Ilya Kolbins unlicensed b64 enc/dec
 local function extract(v, from, width)
-	return bit.band(bit.rshift, bit.lshift(1, width) - 1)
+	return bit.band(bit.rshift(v, from), bit.lshift(1, width) - 1)
 end
 
 -- build LUTs
 local b64enc = {}
+local b64dec = {}
 for b64, ch in pairs({[0]='A','B','C','D','E','F','G','H','I','J',
 		'K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y',
 		'Z','a','b','c','d','e','f','g','h','i','j','k','l','m','n',
@@ -352,9 +353,8 @@ do
 	b64enc[b64] = ch:byte()
 end
 
-local b64dec = {}
-for b64, ch in pairs(b64enc) do
-	b64dec[ch] = b64
+for b64, char in pairs(b64enc) do
+	b64dec[char] = b64
 end
 
 function cat9.to_b64(str)

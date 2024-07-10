@@ -17,7 +17,8 @@ local errors = {
 	attach_block = "debug: kernel blocks ptrace(pid), attach will fail",
 	no_active = "debug: no active job",
 	readmem = "debug: couldn't read memory at %s+%d",
-	no_target = "debug launch >target< missing"
+	no_target = "debug launch >target< missing",
+	no_job = "no active debug job"
 }
 
 -- Probe for means that would block ptrace(pid), for linux that is ptrace_scope
@@ -110,8 +111,11 @@ local function render_threads(job, dbg)
 	cat9.flag_dirty(job)
 end
 
-local function spawn_views(job)
-	job.windows = {}
+local views = {}
+function views.stderr(job)
+	if job.windows.stderr then
+		return
+	end
 
 	job.windows.stderr =
 	cat9.import_job({
@@ -120,12 +124,35 @@ local function spawn_views(job)
 		data = job.debugger.stderr
 	})
 
+	table.insert(job.windows.stderr.hooks.on_destroy,
+		function()
+			job.windows.stderr = nil
+		end
+	)
+end
+
+function views.stdout(job)
+	if job.windows.stdout then
+		return
+	end
+
 	job.windows.stdout =
 	cat9.import_job({
 		short = "Debug:stdout",
 		parent = job,
 		data = job.debugger.stdout
 	})
+	table.insert(job.windows.stdout.hooks.on_destroy,
+		function()
+			job.windows.stdout = nil
+		end
+	)
+end
+
+function views.threads(job)
+	if job.windows.threads then
+		return
+	end
 
 	job.windows.threads =
 	cat9.import_job({
@@ -133,22 +160,23 @@ local function spawn_views(job)
 		parent = job,
 		data = {bytecount = 0, linecount = 0}
 	})
+
 	job.windows.threads.show_line_number = false
 	job.debugger.on_update.threads =
 		function(dbg)
 			render_threads(job, dbg)
 		end
 
-	job.windows.breakpoints =
-	cat9.import_job({
-		short = "Debug:breakpoints",
-		parent = job,
-		data = {bytecount = 0, linecount = 0}
-	})
-	job.windows.breakpoints.show_line_number = false
-	job.debugger.on_update.breakpoints =
-	function(dbg)
-		render_breakpoints(job, dbg)
+	table.insert(job.windows.threads.hooks.on_destroy,
+		function()
+			job.windows.threads = nil
+		end
+	)
+end
+
+function views.errors(job)
+	if job.windows.errors then
+		return
 	end
 
 	job.windows.errors =
@@ -157,6 +185,61 @@ local function spawn_views(job)
 		parent = job,
 		data = job.debugger.errors
 	})
+
+	table.insert(job.windows.errors.hooks.on_destroy,
+		function()
+			job.windows.errors = nil
+		end
+	)
+end
+
+function views.breakpoints(job)
+	if job.windows.breakpoints then
+		return
+	end
+
+	job.windows.breakpoints =
+	cat9.import_job({
+		short = "Debug:breakpoints",
+		parent = job,
+		data = {bytecount = 0, linecount = 0}
+	})
+
+	job.windows.breakpoints.show_line_number = false
+	job.debugger.on_update.breakpoints =
+	function(dbg)
+		render_breakpoints(job, dbg)
+	end
+
+	-- set_view(job.windows.breakpoints: view_files, slice_files, {}, "breakpoints")
+	-- add handlers.mouse_button to breakpoint_click:
+	--  job, btn, ofs, yofs, mods
+	--  track in job.mouse{0, 0}
+	--   on click we want to toggle breakpoint on or off, or show action words
+	--   where we have toggle, remove
+	--
+	-- for slice_files, return cat9.resolve_lines(job, dsttbl, lines, function(i)
+	-- if not i then resolve full
+	-- else populate data
+  --
+	-- for view_files(job, x, y, cols, rows, probe)
+	--    build set
+	--    then view_fmt_job(job, set, x, y, cols, rows)
+	--
+end
+
+local function spawn_views(job, set)
+	activejob = job
+
+	if not set then
+		set = {"stderr", "stdout", "threads", "breakpoints"}
+	end
+
+	for i,v in ipairs(set) do
+		if views[v] then
+			views[v](job)
+		end
+	end
 end
 
 function cmds.backtrace(...)
@@ -175,7 +258,11 @@ function cmds.memory(...)
 		return false, msg
 	end
 	local job = activejob
-	local len = 65536
+	local len = 10
+
+	if not job then
+		return false, errors.no_job
+	end
 
 	job.debugger:read_memory(base[1], len,
 		function(data)
@@ -184,8 +271,37 @@ function cmds.memory(...)
 					string.format(errors.readmem, base[1], len))
 				return
 			end
--- this is where we hook the memory into a new hex view job
-			print("got", data.unreadable, #data.data)
+
+			local new = {
+				short = string.format("memory @ %s + %d", base[1], #data.data),
+				data = {
+					data.data,
+					bytecount = #data.data,
+					linecount = 1
+				},
+			}
+
+			new["repeat"] =
+			function(self)
+				job.debugger:read_memory(
+					base[1], len,
+					function(data)
+						if not data then
+							return
+						end
+
+						new.data = {
+							data.data,
+							bytecount = #data.data,
+							linecount = 1
+						}
+						cat9.flag_dirty(new)
+					end
+				)
+			end
+
+-- set repeat as a new request
+			cat9.import_job(new)
 		end
 	)
 end
@@ -205,7 +321,8 @@ function cmds.launch(...)
 
 	local job = {
 		short = string.format("Debug:launch(%s)", outargs[1]),
-		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, outargs)
+		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, outargs),
+		windows = {}
 	}
 
 	job.data = job.debugger.output
@@ -245,7 +362,8 @@ function cmds.attach(...)
 
 	local job = {
 		short = "Debug:attach",
-		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, pid)
+		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, pid),
+		windows = {}
 	}
 
 -- this lets us swap out job.data between the different buffers, i.e. stderr,
@@ -254,7 +372,6 @@ function cmds.attach(...)
 -- many data domains.
 	job.data = job.debugger.output
 	cat9.import_job(job)
-	activejob = job
 	table.insert(job.hooks.on_destroy,
 		function()
 			job.debugger:terminate(false)
@@ -292,10 +409,12 @@ function(args)
 
 -- other options here is to assume debug #jobid command and when there is no
 -- overlay command, fall back to eval
-
-	activejob.debugger:eval(table.concat(base, " "), function()
-		cat9.flag_dirty(activejob)
-	end)
+	activejob.debugger:eval(
+		table.concat(base, " "), "repl",
+		function()
+			cat9.flag_dirty(activejob)
+		end
+	)
 end
 
 function suggest.debug(args, raw)
