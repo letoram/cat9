@@ -6,11 +6,72 @@ local errors = {
 	breakpoint_missing = "unknown breakpoint %d"
 }
 
-local function ensure_thread(dbg, id)
-	if dbg.data.threads[id] then
+local send_request
+
+local function get_frame_locals(frame)
+
+end
+
+local function synch_frame(thread)
+	if thread.state ~= "stopped" then
 		return
 	end
-	dbg.data.threads[id] = {id = id, state = "unknown"}
+
+	thread.stack = {}
+
+-- first get the trace so we have IDs, then update the scopes for the topmost
+	send_request(thread.dbg, "stackTrace", {threadId = thread.id},
+		function(job, msg)
+			local b = msg.body
+			if not b or not b.stackFrames then
+				return
+			end
+
+			for i,v in ipairs(b.stackFrames) do
+				local frame = {
+					id = v.id,
+					line = v.line,
+					column = v.column,
+					pc = b.instructionPointerReference,
+					thread = thread,
+					name = v.name,
+					locals = get_frame_locals
+				}
+
+				if v.source then
+					frame.source = v.source.name
+					frame.path = v.source.path
+				else
+					frame.source = "unknown"
+					frame.path = ""
+				end
+
+-- resolve the module as a reference
+				for i,v in ipairs(thread.dbg.data.modules) do
+					if v.name == b.moduleId then
+						frame.module = v
+						break
+					end
+				end
+
+				table.insert(thread.stack, frame)
+			end
+		end
+	)
+end
+
+local function ensure_thread(dbg, id)
+	if dbg.data.threads[id] then
+		return dbg.data.threads[id]
+	end
+	dbg.data.threads[id] =
+		{
+			id = id,
+			state = "unknown",
+			dbg = dbg,
+			synch_frames = synch_frame
+		}
+	return dbg.data.threads[id]
 end
 
 local function get_breakpoint_by_id(dbg, id)
@@ -22,13 +83,13 @@ local function get_breakpoint_by_id(dbg, id)
 end
 
 local function run_update(dbg, event)
-	print("run_update", event)
 	if dbg.on_update[event] then
 		dbg.on_update[event](dbg)
 	end
 end
 
-local function send_request(dbg, req, args, handler)
+send_request =
+function(dbg, req, args, handler)
 	local seq = dbg.dap_seq
 	dbg.dap_seq = dbg.dap_seq + 1
 	dbg.response[seq] = handler
@@ -92,8 +153,6 @@ local function handle_breakpoint_event(dbg, msg)
 	local bpts = dbg.data.breakpoints
 	local bpt
 
-	dbg.output:add_line(dbg, "breakpoint reached")
-
 	b.id = b.id and tonumber(b.id) or nil
 	if b.reason == "changed" then
 		if not b.id then
@@ -115,7 +174,7 @@ local function handle_breakpoint_event(dbg, msg)
 		for i=1,#bpts do
 			if bpts[i].id and bpts[i].id == b.id then
 				table.remove(bpts, i)
-				return
+				break
 			end
 		end
 
@@ -169,10 +228,12 @@ local function handle_stopped_event(dbg, msg)
 	if b.allThreadsStopped then
 		for k,v in pairs(dbg.data.threads) do
 			v.state = "stopped"
+			v:synch_frames()
 		end
 	elseif b.threadId then
-		ensure_thread(dbg, b.threadId)
-		dbg.data.threads[b.threadId].state = "stopped"
+		local th = ensure_thread(dbg, b.threadId)
+		th.state = "stopped"
+		th:synch_frames()
 	end
 
 	if dbg.state_hook then
@@ -184,12 +245,7 @@ end
 
 local function handle_thread_event(dbg, msg)
 	local b = msg.body
-
-	if not dbg.data.threads[b.threadId] then
-		dbg.data.threads[b.threadId] = { id = b.threadId }
-	end
-
-	local thread = dbg.data.threads[b.threadId]
+	local thread = ensure_thread(dbg, b.threadId)
 
 	if b.reason == "started" then
 		thread.state = "running"

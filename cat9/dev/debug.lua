@@ -8,6 +8,17 @@ local parse_dap =
 local debugger =
 	loadfile(string.format("%s/cat9/dev/support/debug_dap.lua", lash.scriptdir))()
 
+--
+-- split out the rendering and interaction code for each window
+--
+local view_factories = {"thread", "breakpoint", "source"}
+for i=1,#view_factories do
+	view_factories[view_factories[i]] = loadfile(
+		string.format("%s/cat9/dev/support/%s_view.lua",
+		lash.scriptdir, view_factories[i]
+	))()
+end
+
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
@@ -46,193 +57,47 @@ else
 end
 
 local cmds = {}
-
-local function render_breakpoints(job, dbg)
-	local data = {
-		bytecount = 0,
-		linecount = 0
-	}
-
-	for i,v in pairs(dbg.data.breakpoints) do
-		local linefmt = ""
-		if v.line[1] then
-			linefmt = tostring(v.line[1])
-			if v.line[2] ~= v.line[1] then
-				linefmt = linefmt .. "-" .. tostring(v.line[2])
-			end
-		end
-
--- this view ignores column
-		local str =
-		string.format(
-			"%s: %s%s%s @ %s+%s",
-			tostring(v.id) or "[]",
-			v.source,
-			#linefmt > 0 and ":" or "",
-			linefmt,
-			v.instruction[1],
-			tostring(v.instruction[2])
-		)
-		table.insert(data, str)
-		data.bytecount = data.bytecount + #str
-	end
-
-	data.linecount = #data
-	job.windows.breakpoints.data = data
-	cat9.flag_dirty(job)
-end
-
-local function render_threads(job, dbg)
-	local set = {}
-	local bc = 0
-	local max = 0
-
--- convert debugger data model to window view one
-	for k,v in pairs(dbg.data.threads) do
-		table.insert(set, k)
-		local kl = #tostring(k)
-		max = kl > max and kl or max
-		bc = bc + kl
-	end
-
-	table.sort(set)
-	local data = {}
-
-	for i,v in ipairs(set) do
-		table.insert(data,
-			string.lpad(
-				tostring(v), max) .. ": " .. dbg.data.threads[set[i]].state
-		)
-	end
-
-	data.linecount = #data
-	data.bytecount = bc
-	job.windows.threads.data = data
-	cat9.flag_dirty(job)
-end
-
 local views = {}
-function views.stderr(job)
-	if job.windows.stderr then
-		return
-	end
 
-	job.windows.stderr =
-	cat9.import_job({
-		short = "Debug:stderr",
-		parent = job,
-		data = job.debugger.stderr
-	})
+local function attach_window(key, fact)
+	return
+	function(job)
+		if job.windows[key] then
+			return
+		end
 
-	table.insert(job.windows.stderr.hooks.on_destroy,
+		if type(fact) == "string" then
+			job.windows[key] =
+				cat9.import_job({
+					short = fact,
+					parent = job,
+					data = job.debugger[key]
+				})
+		else
+			job.windows[key] = fact(cat9, builtin_cfg, job)
+		end
+
+		table.insert(job.windows[key].hooks.on_destroy,
 		function()
-			job.windows.stderr = nil
-		end
-	)
+			job.windows[key] = nil
+		end)
+	end
 end
 
-function views.stdout(job)
-	if job.windows.stdout then
-		return
-	end
-
-	job.windows.stdout =
-	cat9.import_job({
-		short = "Debug:stdout",
-		parent = job,
-		data = job.debugger.stdout
-	})
-	table.insert(job.windows.stdout.hooks.on_destroy,
-		function()
-			job.windows.stdout = nil
-		end
-	)
-end
-
-function views.threads(job)
-	if job.windows.threads then
-		return
-	end
-
-	job.windows.threads =
-	cat9.import_job({
-		short = "Debug:threads",
-		parent = job,
-		data = {bytecount = 0, linecount = 0}
-	})
-
-	job.windows.threads.show_line_number = false
-	job.debugger.on_update.threads =
-		function(dbg)
-			render_threads(job, dbg)
-		end
-
-	table.insert(job.windows.threads.hooks.on_destroy,
-		function()
-			job.windows.threads = nil
-		end
-	)
-end
-
-function views.errors(job)
-	if job.windows.errors then
-		return
-	end
-
-	job.windows.errors =
-	cat9.import_job({
-		short = "Debug:errors",
-		parent = job,
-		data = job.debugger.errors
-	})
-
-	table.insert(job.windows.errors.hooks.on_destroy,
-		function()
-			job.windows.errors = nil
-		end
-	)
-end
-
-function views.breakpoints(job)
-	if job.windows.breakpoints then
-		return
-	end
-
-	job.windows.breakpoints =
-	cat9.import_job({
-		short = "Debug:breakpoints",
-		parent = job,
-		data = {bytecount = 0, linecount = 0}
-	})
-
-	job.windows.breakpoints.show_line_number = false
-	job.debugger.on_update.breakpoints =
-	function(dbg)
-		render_breakpoints(job, dbg)
-	end
-
-	-- set_view(job.windows.breakpoints: view_files, slice_files, {}, "breakpoints")
-	-- add handlers.mouse_button to breakpoint_click:
-	--  job, btn, ofs, yofs, mods
-	--  track in job.mouse{0, 0}
-	--   on click we want to toggle breakpoint on or off, or show action words
-	--   where we have toggle, remove
-	--
-	-- for slice_files, return cat9.resolve_lines(job, dsttbl, lines, function(i)
-	-- if not i then resolve full
-	-- else populate data
-  --
-	-- for view_files(job, x, y, cols, rows, probe)
-	--    build set
-	--    then view_fmt_job(job, set, x, y, cols, rows)
-	--
-end
+views.stderr = attach_window("stderr", "Debug:stderr")
+views.stdout = attach_window("stdout", "Debug:stdout")
+views.errors = attach_window("errors", "Debug:errors")
+views.threads = attach_window("threads", view_factories.thread)
+views.breakpoints = attach_window("breakpoints", view_factories.breakpoint)
+views.source = attach_window("source", view_factories.source)
+-- views.disassembly = attach_window("disassembly", view_factories.disassembly)
+-- views.registers = attach_window("registers", view_factories.registers)
 
 local function spawn_views(job, set)
 	activejob = job
 
 	if not set then
-		set = {"stderr", "stdout", "threads", "breakpoints"}
+		set = {"stderr", "stdout", "threads", "errors", "breakpoints"}
 	end
 
 	for i,v in ipairs(set) do
@@ -264,6 +129,9 @@ function cmds.memory(...)
 		return false, errors.no_job
 	end
 
+-- gdb will fail for the entire request if we try to read beyond a mapping,
+-- the option is to figure out page alignment from base address and request
+-- one page at a time until we've covered length.
 	job.debugger:read_memory(base[1], len,
 		function(data)
 			if not data then
