@@ -1,6 +1,10 @@
 return
 function(cat9, cfg, job)
 
+local function write_bpt(job, x, y, row, set, ind, _, selected)
+	job.root:write_to(x, y, row)
+end
+
 local function view_bpt(job, x, y, cols, rows, probe)
 	local data = {
 		bytecount = 0,

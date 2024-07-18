@@ -11,7 +11,16 @@ local debugger =
 --
 -- split out the rendering and interaction code for each window
 --
-local view_factories = {"thread", "breakpoint", "source"}
+local view_factories =
+{
+	"thread",
+	"breakpoint",
+	"source",
+	"disassembly",
+	"registers",
+	"variables"
+}
+
 for i=1,#view_factories do
 	view_factories[view_factories[i]] = loadfile(
 		string.format("%s/cat9/dev/support/%s_view.lua",
@@ -29,7 +38,13 @@ local errors = {
 	no_active = "debug: no active job",
 	readmem = "debug: couldn't read memory at %s+%d",
 	no_target = "debug launch >target< missing",
-	no_job = "no active debug job"
+	no_job = "no active debug job",
+	bad_ref = "debug >ref< ... is not a tied to a debugger",
+	no_cmd = "debug: no valid command specified",
+	bad_thread = "debug thread >id< ... invalid thread id",
+	bad_thread_cmd = "debug thread (id) >cmd< unknown command",
+	bad_frame = "debug thread i cmd >frame< .. unknown or missing stack frame",
+	no_source = "debug source >fn< .. missing source reference"
 }
 
 -- Probe for means that would block ptrace(pid), for linux that is ptrace_scope
@@ -59,11 +74,11 @@ end
 local cmds = {}
 local views = {}
 
-local function attach_window(key, fact)
+local function attach_window(key, fact, ...)
 	return
-	function(job)
+	function(job, ...)
 		if job.windows[key] then
-			return
+			return job.windows[key]
 		end
 
 		if type(fact) == "string" then
@@ -74,13 +89,14 @@ local function attach_window(key, fact)
 					data = job.debugger[key]
 				})
 		else
-			job.windows[key] = fact(cat9, builtin_cfg, job)
+			job.windows[key] = fact(cat9, builtin_cfg, job, ...)
 		end
 
 		table.insert(job.windows[key].hooks.on_destroy,
 		function()
 			job.windows[key] = nil
 		end)
+		return job.windows[key]
 	end
 end
 
@@ -90,8 +106,8 @@ views.errors = attach_window("errors", "Debug:errors")
 views.threads = attach_window("threads", view_factories.thread)
 views.breakpoints = attach_window("breakpoints", view_factories.breakpoint)
 views.source = attach_window("source", view_factories.source)
--- views.disassembly = attach_window("disassembly", view_factories.disassembly)
--- views.registers = attach_window("registers", view_factories.registers)
+views.disassembly = attach_window("disassembly", view_factories.disassembly)
+views.registers = attach_window("registers", view_factories.registers)
 
 local function spawn_views(job, set)
 	activejob = job
@@ -107,22 +123,124 @@ local function spawn_views(job, set)
 	end
 end
 
-function cmds.backtrace(...)
-	local set = {...}
-	if not activejob then
-		return
-	end
-	activejob.debugger:backtrace()
-end
-
-function cmds.memory(...)
+function cmds.thread(job, ...)
 	local set = {...}
 	local base = {}
 	local ok, msg = cat9.expand_arg(base, set)
 	if not ok then
 		return false, msg
 	end
-	local job = activejob
+
+	local thid
+
+-- thread [n] stop | continue
+	if tonumber(base[1]) ~= nil then
+		thid = tonumber(table.remove(base, 1))
+	end
+
+	if base[1] == "stop" then
+		job.debugger:continue(thid)
+		return
+	elseif base[1] == "continue" then
+		job.debugger:pause(thid)
+		return
+	end
+
+-- thread [n]
+	thid = thid or 1
+	local th = job.debugger.data.threads[thid]
+
+	if not th then
+		return false, errors.bad_thread
+	end
+
+	local frame
+	local domains =
+	{
+		registers =
+		function()
+			views.registers(job, th, frame)
+		end,
+		disassemble =
+		function()
+			views.disassembly(job, th, frame)
+		end,
+		variables =
+		function()
+			views.variables(job, th, frame)
+		end,
+		arguments =
+		function()
+			views.arguments(job, th, frame)
+		end
+	}
+
+	if not domains[base[1]] then
+		return false, errors.bad_thread_cmd
+	end
+
+	local fid = 0
+	if tonumber(base[2]) then
+		fid = tonumber(base[2])
+	end
+
+	for i=1,#th.stack do
+		if th.stack[i].id == fid then
+			frame = th.stack[i]
+			break
+		end
+	end
+
+	if not frame then
+		return false, errors.bad_frame
+	end
+
+	domains[base[1]]()
+
+	return true
+end
+
+function cmds.source(job, ...)
+	local set = {...}
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
+	end
+
+	if not job then
+		return false, errors.no_job
+	end
+
+	if not base[1] then
+		return false, errors.no_source
+	end
+
+	local ref = string.split(base[1], ":")
+
+	job.debugger:source(ref[1],
+		function(source)
+			if not source or #source == 0 then
+				job.debugger.output:add_line(job.debugger, "empty source for " .. ref[1])
+				return
+			end
+
+			local swnd = views.source(job, source)
+			local line = tonumber(ref[2])
+			if line then
+				swnd:move_to(line)
+			end
+		end
+	)
+end
+
+function cmds.memory(job, ...)
+	local set = {...}
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
+	end
 	local len = 10
 
 	if not job then
@@ -257,14 +375,52 @@ function cmds.attach(...)
 	spawn_views(job)
 end
 
-function builtins.debug(cmd, ...)
-	if cmds[cmd] then
-		return cmds[cmd](...)
+function builtins.thread(...)
+	local set = {...}
+	local outargs = {}
+	local ok, msg = cat9.expand_arg(outargs, set)
+end
+
+function builtins.debug(...)
+	local set = {...}
+	local job = activejob
+
+	if type(set[1]) == "table" then
+		job = table.remove(set, 1)
+
+		if job.debugger then
+		elseif job.parent and job.parent.debugger then
+			job = job.parent
+		else
+			return false, errors.bad_ref
+		end
+	end
+
+	local cmd = table.remove(set, 1)
+
+	if not cmds or not cmds[cmd] then
+		return false, errors.no_cmd
+	end
+
+	if cmd == "attach" or cmd == "launch" then
+		return cmds[cmd](unpack(set))
+	else
+		return cmds[cmd](job, unpack(set))
 	end
 end
 
 builtins["_default"] =
 function(args)
+	local job = active_job
+
+	if type(args[1]) == "table" then
+		if args[1].debugger then
+			job = table.remove(args, 1)
+		elseif args[1].parent and args[1].parent.debugger then
+			job = (table.remove(args, 1)).parent
+		end
+	end
+
 	local base = {}
 	local ok, msg = cat9.expand_arg(base, args)
 	if not ok then

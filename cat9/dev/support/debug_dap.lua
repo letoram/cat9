@@ -9,7 +9,44 @@ local errors = {
 local send_request
 
 local function get_frame_locals(frame)
+	if frame.cached_locals then
+		return frame.cached_locals
+	end
 
+--
+-- the scopes returned are just reference, then we need to actually
+-- fetch them individually
+--
+	send_request(frame.thread.dbg, "scopes", {
+		frameId = frame.id
+		},
+		function(job, msg)
+			frame.cached_locals.pending = false
+			if not msg.body or not msg.body.scopes then
+				return
+			end
+
+-- then request the actual variables, do it for all scopes even though
+-- one might want to defer the ones marked as expensive so we don't
+-- drift into Gb territory.
+			for i,v in ipairs(msg.body.scopes) do
+				send_request(frame.thread.dbg, "variables", {
+						variablesReference = v.variablesReference
+					},
+					function(job, msg)
+						frame.cached_locals[string.lower(v.name)] =
+							{
+								reference = v.variablesReference,
+								variables = msg.body.variables
+							}
+					end
+				)
+			end
+		end
+	)
+
+	frame.cached_locals = {pending = true}
+	return frame.cached_locals
 end
 
 local function synch_frame(thread)
@@ -41,6 +78,7 @@ local function synch_frame(thread)
 				if v.source then
 					frame.source = v.source.name
 					frame.path = v.source.path
+					frame.ref = v.source.sourceReference
 				else
 					frame.source = "unknown"
 					frame.path = ""
@@ -60,6 +98,16 @@ local function synch_frame(thread)
 	)
 end
 
+local function stepreq(th, req)
+	if th.state ~= "stopped" then
+		return
+	end
+	send_request(th.dbg, req, {threadId = th.id, singleThread = true},
+		function()
+		end
+	)
+end
+
 local function ensure_thread(dbg, id)
 	if dbg.data.threads[id] then
 		return dbg.data.threads[id]
@@ -69,7 +117,17 @@ local function ensure_thread(dbg, id)
 			id = id,
 			state = "unknown",
 			dbg = dbg,
-			synch_frames = synch_frame
+			synch_frames = synch_frame,
+			step = function(th)
+				stepreq(th, "next")
+			end,
+			stepin = function(th)
+				stepreq(th, "stepIn")
+			end,
+			stepout = function(th)
+				stepreq(th, "stepOut")
+			end,
+			stack = {}
 		}
 	return dbg.data.threads[id]
 end
@@ -115,6 +173,7 @@ end
 
 local function handle_continued_event(dbg, msg)
 	local b = msg.body
+
 	if b.allThreadsContinued then
 		for k,v in pairs(dbg.data.threads) do
 			v.state = "continued"
@@ -125,6 +184,7 @@ local function handle_continued_event(dbg, msg)
 	else
 		dbg.output:add_line(dbg, "'continued' on unknown thread: " .. tostring(b.threadId))
 	end
+
 	if dbg.on_update.threads then
 		dbg.on_update.threads(dbg)
 	end
@@ -153,16 +213,15 @@ local function handle_breakpoint_event(dbg, msg)
 	local bpts = dbg.data.breakpoints
 	local bpt
 
-	b.id = b.id and tonumber(b.id) or nil
 	if b.reason == "changed" then
-		if not b.id then
+		if not b.breakpoint.id then
 			dbg.errors:add_line(dbg, errors.breakpoint_id)
 			return
 		end
 
-		bpt = get_breakpoint_by_id(dbg, bpts.id)
+		bpt = get_breakpoint_by_id(dbg, b.breakpoint.id)
 		if not bpt then
-			dbg.errors:add_line(dbg, string.format(errors.breakpoint_missing, b.id))
+			dbg.errors:add_line(dbg, string.format(errors.breakpoint_missing, b.breakpoint.id))
 			return
 		end
 
@@ -172,7 +231,7 @@ local function handle_breakpoint_event(dbg, msg)
 
 	elseif b.reason == "removed" then
 		for i=1,#bpts do
-			if bpts[i].id and bpts[i].id == b.id then
+			if bpts[i].id and bpts[i].id == b.breakpoint.id then
 				table.remove(bpts, i)
 				break
 			end
@@ -185,9 +244,11 @@ local function handle_breakpoint_event(dbg, msg)
 	b = b.breakpoint
 	bpt.id = b.id
 	bpt.verified = b.verified or b.reason
+
 	if b.source then
 		bpt.source = b.source.name
 		bpt.path = b.source.path
+		bpt.ref = b.source.sourceReference
 	else
 		bpt.source = "unknown"
 		bpt.path = ""
@@ -226,7 +287,7 @@ local function handle_stopped_event(dbg, msg)
 	local b = msg.body
 
 	if b.allThreadsStopped then
-		for k,v in pairs(dbg.data.threads) do
+		for k,v in ipairs(dbg.data.threads) do
 			v.state = "stopped"
 			v:synch_frames()
 		end
@@ -324,6 +385,9 @@ function(dbg, msg)
 end
 }
 
+function Debugger:step(id)
+end
+
 function Debugger:get_suggestions(prefix, closure)
 -- since we can get many when / if the prefix changes maybe the cancellation
 -- request should be returned as a function() that the UI can call
@@ -362,18 +426,42 @@ function Debugger:input_line(line)
 	end
 end
 
-function Debugger:disassemble(closure)
+function Debugger:disassemble(addr, ofs, count, closure)
 	if not self.data.capabilities.supportsDisassembleRequest then
 		closure("Adapter does not support disassembly")
 -- fallback or complement here would be to actually read_memory out the
 -- text and forward into capstone et al. could even be useful to compare
 -- disassembly engines ..
 	else
-		closure("")
+		send_request(self, "disassemble", {
+			memoryReference = addr,
+			resolveSymbols = true,
+			instructionOffset = ofs,
+			instructionCount = count
+		},
+		function(job, msg)
+-- address, instruction bytes, instruction, symbol
+-- location? (only set on new location), line? presentationHint
+			closure("")
+		end
+		)
 	end
 end
 
-function Debugger:set_breakpoint(source, line, offset)
+function Debugger:source(ref, closure)
+	local src = {}
+	if tonumber(ref) then
+		src.sourceReference = ref
+	else
+		src.path = ref
+		src.sourceReference = 0
+	end
+
+	send_request(self, "source", {source = src, sourceReference = 0},
+		function(job, msg)
+			closure(msg.body and msg.body.content or nil)
+		end
+	)
 end
 
 function Debugger:read_memory(base, length, closure)
@@ -440,17 +528,47 @@ end
 -- other would be building ftrace() and strace() like behaviours so that
 -- we can use the same interface for tracing and pattern based trace triggers
 -- like trace(write, data %some_pattern)
-
 function Debugger:continue(id)
-	send_request(self, {threadId = id or 1},
+	local arg = {
+		threadId = 1
+	}
+
+	if id then
+		arg.threadId = id
+		arg.singleThread = true
+	end
+
+	send_request(self, "continue", arg,
 		function(job, msg)
+			if msg.success and id then
+				handle_continued_event(self,
+					{
+						body = {
+							allThreadsContinued = msg.body.allThreadsContinued,
+							threadId = id
+						}
+					}
+				)
+			end
 		end
 	)
 end
 
 function Debugger:pause(id)
+	local arg = {
+		threadId = 1
+	}
+
+	if id then
+		arg.threadId = id
+		arg.singleThread = true
+	end
+
 -- there is a pause all as well to use if [id] is not specified
-	send_request(self, "pause", {threadId = 1},
+	send_request(self, "pause",
+		{
+		--	threadId = 1
+		},
 		function(job, msg)
 		end
 	)
@@ -490,16 +608,6 @@ function Debugger:terminate(hard)
 		end
 	)
 -- kill job so we don't leave dangling DAPs around
-end
-
-function Debugger:locals(id)
-end
-
-function Debugger:registers(id)
-end
-
-function Debugger:thread_state(id, state)
--- change state for one or many threads
 end
 
 function Debugger:get_threads()
