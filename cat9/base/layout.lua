@@ -40,6 +40,7 @@ end
 
 local function inside(job, x, y)
 	return
+		job.root == lash.root and
 		x >= job.region[1] and y >= job.region[2] and
 	 	x < job.region[3] and y < job.region[4]
 end
@@ -273,6 +274,12 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 		if i ~= #itemstack and nw > 0 then
 			job.root:write_to(x, y, gs, hdrattr)
 			x = x + gs_len
+		end
+	end
+
+	if config.job_bar_pad and x <= cols-1 then
+		for i=x,cols-1 do
+			job.root:write_to(i, y, " ", hdrattr)
 		end
 	end
 end
@@ -581,6 +588,12 @@ function cat9.redraw()
 				break
 			end
 		end
+	end
+
+-- mark the jobs that couldn't be drawn as having an invalid pick region
+	while #lst > 0 do
+		local job = table.remove(lst, 1)
+		job.region = {-1, -1, -1, -1}
 	end
 
 	if message then

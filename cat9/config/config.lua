@@ -17,6 +17,7 @@ local hintbl = {
 	hex_mode = "Builtin hex editor default presentation (hex, hex_detail, hex_detail_meta)",
 	content_offset = "Number of columns of padding between line column and content",
 	job_pad = "Number of empty rows between job views",
+	job_bar_pad = "Pad header to end of job column",
 	collapsed_rows = "Number of visible rows for a contracted job",
 	autoclear_empty = "Automatically forget #jobid for completed silent jobs",
 	show_line_number = "Set view linenumber for new jobs",
@@ -117,6 +118,8 @@ return
 		prefix = {fmt_sep, "[", fmt_data},
 		suffix = {fmt_sep, "]", fmt_data}
 	},
+
+	job_bar_pad = true,
 
 -- similar to job_bar but no click-groups so only one level of tables
 -- possible specials defined in base/promptmeta.lua

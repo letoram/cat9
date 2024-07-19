@@ -33,6 +33,7 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 	end
 
 	local job = cat9.xy_to_job(self, x, y)
+	print(x, y, job and job.id or -1)
 
 	if not job then
 		cat9.selectedjob = nil
@@ -187,6 +188,7 @@ function handlers.key(self, sub, keysym, code, mods)
 
 		elseif bnd.chord[keysym] then
 			cat9.in_chord = bnd.chord[keysym]
+			cat9.flag_dirty()
 			return
 		end
 
@@ -203,7 +205,6 @@ function handlers.key(self, sub, keysym, code, mods)
 
 -- to disable readline there should be >= 1 valid jobs, and then
 -- we move selection with CTRL+ARROW|CTRL+HJLK
-
 			if not cat9.selectedjob and cat9.latestjob then
 				cat9.selectedjob = cat9.latestjob
 			elseif not cat9.selectedjob then
@@ -393,11 +394,6 @@ function handlers.paste(self, str)
 end
 
 function handlers.mouse_button(self, index, x, y, mods, active)
--- motion will update current selection so no need to do the lookup twice
-	if not cat9.selectedjob then
-		return
-	end
-
 	if active then
 		mstate[index] = active
 		return
@@ -410,6 +406,11 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 
 -- ghost release
 	if not mstate[index] then
+		return
+	end
+
+-- motion will update current selection so no need to do the lookup twice
+	if not cat9.selectedjob then
 		return
 	end
 
@@ -537,6 +538,7 @@ function handlers.utf8(self, ch)
 -- the :write is likely an nbio- table, but can be swapped out if interleaving/
 -- queuing mechanisms are needed
 	local sj = cat9.selectedjob
+
 	if not sj then
 		return
 	end
