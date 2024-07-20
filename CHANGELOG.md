@@ -16,3 +16,5 @@
 * started the 'dev' set of builtins with 'scm monitor' as first command for showing repository status of current directory
 * added the 'each' builtin for repeating a command, e.g. each #0 !! open new $arg
 * added view #job detach as a way of splitting out a view into its own
+* added config option for `job_bar_pad` for drawing job bar padded to the entire assigned colrange
+* added 'dev' builtin with 'debug' command for debug-adapter-protocol integration

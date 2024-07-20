@@ -69,7 +69,7 @@ local function synch_frame(thread)
 					id = v.id,
 					line = v.line,
 					column = v.column,
-					pc = b.instructionPointerReference,
+					pc = v.instructionPointerReference,
 					thread = thread,
 					name = v.name,
 					locals = get_frame_locals
@@ -93,6 +93,10 @@ local function synch_frame(thread)
 				end
 
 				table.insert(thread.stack, frame)
+			end
+
+			for i=#thread.handlers.invalidated,1,-1 do
+				thread.handlers.invalidated[i](thread)
 			end
 		end
 	)
@@ -127,7 +131,10 @@ local function ensure_thread(dbg, id)
 			stepout = function(th)
 				stepreq(th, "stepOut")
 			end,
-			stack = {}
+			stack = {},
+			handlers = {
+				invalidated = {}
+			}
 		}
 	return dbg.data.threads[id]
 end
@@ -206,6 +213,12 @@ local function handle_output_event(dbg, msg)
 	end
 
 	destination:add_line(dbg, line)
+end
+
+local function handle_process_event(dbg, msg)
+	local b = msg.body
+	dbg.remote = not b.isLocalProcess
+	dbg.pid = b.systemProcessId
 end
 
 local function handle_breakpoint_event(dbg, msg)
@@ -427,25 +440,35 @@ function Debugger:input_line(line)
 end
 
 function Debugger:disassemble(addr, ofs, count, closure)
-	if not self.data.capabilities.supportsDisassembleRequest then
-		closure("Adapter does not support disassembly")
--- fallback or complement here would be to actually read_memory out the
--- text and forward into capstone et al. could even be useful to compare
--- disassembly engines ..
-	else
-		send_request(self, "disassemble", {
-			memoryReference = addr,
-			resolveSymbols = true,
-			instructionOffset = ofs,
-			instructionCount = count
-		},
-		function(job, msg)
--- address, instruction bytes, instruction, symbol
--- location? (only set on new location), line? presentationHint
-			closure("")
+	send_request(self, "disassemble", {
+		memoryReference = addr,
+		resolveSymbols = true,
+		instructionOffset = ofs,
+		instructionCount = count
+	},
+	function(job, msg)
+		if not msg.success then
+			closure()
+			return
 		end
-		)
+
+		local set = {}
+		for i,v in ipairs(msg.body.instructions) do
+			local insn = {}
+			insn.str = v.instruction
+			insn.bytes = {}
+			insn.addr = v.address
+
+			for b=1,#v.instructionBytes,2 do
+				table.insert(insn.bytes, tonumber(string.sub(v.instructionBytes, b, b+1), 16))
+			end
+
+			table.insert(set, insn)
+		end
+
+		closure(set)
 	end
+	)
 end
 
 function Debugger:source(ref, closure)
@@ -626,6 +649,11 @@ local function add_tbl_line(tbl, dbg, line)
 -- presenting the number as a timeline gives weird interactions with the default
 -- crop view, track the counter as linear between the buffers but don't add it to
 -- the explicit data for now
+	line = string.trim(line)
+	if #line == 0 then
+		return
+	end
+
 	table.insert(tbl, line)
 	if not tbl.clock then
 		tbl.clock = {}
@@ -664,7 +692,8 @@ local debug = setmetatable(
 		["stopped"] = handle_stopped_event,
 		["initialized"] = handle_initialized_event,
 		["continued"] = handle_continued_event,
-		["breakpoint"] = handle_breakpoint_event
+		["breakpoint"] = handle_breakpoint_event,
+		["process"] = handle_process_event
 	},
 	request = {},
 	response = {},

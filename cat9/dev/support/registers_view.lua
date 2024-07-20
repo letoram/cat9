@@ -1,6 +1,13 @@
 return
 function(cat9, cfg, job, th, frame)
 
+-- custom view:
+--
+-- see how many we can pack based on the number of columns
+--
+-- toggle between numeric, hex and other views when clicking
+--
+
 -- useful:
 --
 --  architecture specific helpers for pretty-printing registers
@@ -29,6 +36,8 @@ local wnd =
 
 		wnd.data.linecount = #locals.registers.variables
 	end
+
+	wnd.expanded = false
 
 return wnd
 end

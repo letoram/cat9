@@ -33,7 +33,6 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 	end
 
 	local job = cat9.xy_to_job(self, x, y)
-	print(x, y, job and job.id or -1)
 
 	if not job then
 		cat9.selectedjob = nil

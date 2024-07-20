@@ -17,7 +17,7 @@ local function view_bpt(job, x, y, cols, rows, probe)
 		for i,v in pairs(dbg.data.breakpoints) do
 			lc = lc + 1
 		end
-		return lc
+		return lc > rows and rows or lc
 	end
 
 	for i,v in pairs(dbg.data.breakpoints) do
@@ -46,7 +46,7 @@ local function view_bpt(job, x, y, cols, rows, probe)
 
 	data.linecount = #data
 
-	return cat9.view_fmt_job(job, data, x, y, cols, rows)
+	return cat9.view_fmt_job(job, data, x, y, cols, rows, probe)
 end
 
 local wnd =

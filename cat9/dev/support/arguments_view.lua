@@ -20,7 +20,7 @@ end
 --
 local wnd =
 	cat9.import_job({
-		short = "Debug:variables",
+		short = "Debug:arguments",
 		parent = job,
 		thread = th,
 		data = {bytecount = 0, linecount = 0}
@@ -30,13 +30,13 @@ local wnd =
 
 	if locals.locals then
 		local max = 0
-		for i,v in ipairs(locals.locals.variables) do
+		for i,v in ipairs(locals.arguments.variables) do
 			if #v.name > max then
 				max = #v.name
 			end
 		end
 
-		for i,v in ipairs(locals.locals.variables) do
+		for i,v in ipairs(locals.arguments.variables) do
 			table.insert(wnd.data, string.lpad(v.name, max) .. " = " .. v.value)
 		end
 

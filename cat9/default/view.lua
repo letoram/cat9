@@ -132,7 +132,7 @@ function viewlut.scroll(set, i, job)
 	end
 
 	local row = 0
-	job.row_offset_relative = is_rel(set[2])
+--	job.row_offset_relative = is_rel(set[2])
 	local row = cat9.opt_number(set, 2, 0) * page_bound
 	local col = cat9.opt_number(set, 3, 0)
 

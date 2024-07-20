@@ -10,5 +10,10 @@ return
 		thread_selected = {bc = tui.colors.alert, fc = tui.colors.text, border_down = true},
 		source_line = {bc = tui.colors.text, fc = tui.colors.text},
 		breakpoint_line = {bc = tui.colors.alert, fc = tui.colors.text},
+		disassembly = {bc = tui.colors.text, fc = tui.colors.text},
+		disassembly_selected = {bc = tui.colors.alert, fc = tui.colors.text, border_down = true},
+		options = {
+			"set disassembly-flavor intel"
+		}
 	}
 }

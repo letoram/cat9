@@ -9,7 +9,7 @@ local function slice_threads(job, lines)
 	return cat9.resolve_lines(
 		job, res, lines,
 		function(i)
-			return job.data
+			return job.data[i]
 		end
 	)
 end
@@ -114,22 +114,24 @@ local function view_threads(job, x, y, cols, rows, probe)
 		table.insert(data.threads, newth)
 
 		if th.state == "stopped" then
-			table.insert(newth, "step")
+			table.insert(newth, "Step(")
+			table.insert(newth, "next")
 			newth.click[#newth] = function()
 				th:step()
 			end
 			table.insert(newth, " ")
 
-			table.insert(newth, "stepIn")
+			table.insert(newth, "in")
 			newth.click[#newth] = function()
 				th:stepin()
 			end
 			table.insert(newth, " ")
 
-			table.insert(newth, "stepOut")
+			table.insert(newth, "out")
 			newth.click[#newth] = function()
 				th:stepout()
 			end
+			table.insert(newth, ")")
 		end
 
 		newth.click[1] =
@@ -195,10 +197,11 @@ local function view_threads(job, x, y, cols, rows, probe)
 				function()
 					local str = frame.ref ~= nil and tostring(frame.ref) or frame.path
 					local str = string.format(
-						"#%d debug #%d source %s%s",
+						"#%d debug #%d source %s%s %d",
 						job.parent.id, job.parent.id,
 						str,
-						(frame.line and ":" .. tostring(frame.line)) or ""
+						(frame.line and ":" .. tostring(frame.line)) or "",
+						th.id
 					)
 					cat9.parse_string(cat9.readline, str)
 				end
@@ -206,10 +209,11 @@ local function view_threads(job, x, y, cols, rows, probe)
 				if frame.expanded then
 					local locals = frame:locals()
 					if locals.pending then
-						table.insert(data.threads, {"(pending)", click = {}})
+						table.insert(data.threads,{
+							string.lpad("(pending)", max + 8), click = {}})
 						table.insert(data, "")
 					else
-						local set = {click = {}}
+						local set = {string.lpad("", max + 8), click = {}}
 
 -- these should probably just be shown as
 -- arg1="", arg2="", arg3="" on a separate line with on-click setting the

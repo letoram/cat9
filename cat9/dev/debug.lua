@@ -18,7 +18,8 @@ local view_factories =
 	"source",
 	"disassembly",
 	"registers",
-	"variables"
+	"variables",
+	"arguments"
 }
 
 for i=1,#view_factories do
@@ -31,6 +32,11 @@ end
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
+local os_support =
+	loadfile(string.format("%s/cat9/dev/support/debug_os.lua", lash.scriptdir))()(root)
+
+local attach_block = os_support:can_attach()
+
 local activejob
 local errors = {
 	bad_pid = "debug attach >pid< : couldn't find or bind to pid",
@@ -42,61 +48,66 @@ local errors = {
 	bad_ref = "debug >ref< ... is not a tied to a debugger",
 	no_cmd = "debug: no valid command specified",
 	bad_thread = "debug thread >id< ... invalid thread id",
-	bad_thread_cmd = "debug thread (id) >cmd< unknown command",
+	bad_thread_cmd = "debug thread (id) >cmd< unknown command: %s",
 	bad_frame = "debug thread i cmd >frame< .. unknown or missing stack frame",
 	no_source = "debug source >fn< .. missing source reference"
 }
 
--- Probe for means that would block ptrace(pid), for linux that is ptrace_scope
--- this should latch into an 'explain' option with more detailed information
--- about what can be done.
---
--- Another option would be to permit builtin [name] [uid] to pick a prefix
--- runner in order to doas / sudo to run commands.
---
-local attach_block = false
-local ro = root:fopen("/proc/sys/kernel/yama/ptrace_scope", "r")
-if ro then
-	ro:lf_strip(true)
-	local state, _ = ro:read()
-	state = tonumber(state)
-	if state ~= nil then
-		if state ~= 0 then
-			attach_block = true
-		end
-	end
-
-	ro:close()
-else
--- for openBSD this would be kern.global_ptrace
-end
-
 local cmds = {}
 local views = {}
 
+-- wrapper for tracking singleton or grouped windows (sources)
 local function attach_window(key, fact, ...)
 	return
-	function(job, ...)
-		if job.windows[key] then
-			return job.windows[key]
+	function(job, opts, ...)
+		local group = opts.group or "windows"
+		local wnd
+
+		if job[group][key] then
+			return job[group][key]
 		end
 
 		if type(fact) == "string" then
-			job.windows[key] =
+			wnd =
 				cat9.import_job({
 					short = fact,
 					parent = job,
 					data = job.debugger[key]
 				})
 		else
-			job.windows[key] = fact(cat9, builtin_cfg, job, ...)
+			wnd = fact(cat9, builtin_cfg, job, ...)
+		end
+		job[group][key] = wnd
+
+-- if the contents should be rebuilt on a hook like a stack frame
+-- becoming invalid or updated
+		local track
+		if opts.invalidated then
+			track = function()
+				if wnd.invalidated then
+					wnd:invalidated()
+				end
+			end
 		end
 
-		table.insert(job.windows[key].hooks.on_destroy,
-		function()
-			job.windows[key] = nil
-		end)
-		return job.windows[key]
+		table.insert(
+			wnd.hooks.on_destroy,
+			function()
+				job[group][key] = nil
+				if opts.invalidated then
+					local ih = opts.handlers.invalidated
+
+					for i=1,#ih do
+						if ih[i] == track then
+								table.remove(ih, i)
+								break
+						end
+					end
+				end
+			end
+		)
+
+		return wnd
 	end
 end
 
@@ -108,9 +119,19 @@ views.breakpoints = attach_window("breakpoints", view_factories.breakpoint)
 views.source = attach_window("source", view_factories.source)
 views.disassembly = attach_window("disassembly", view_factories.disassembly)
 views.registers = attach_window("registers", view_factories.registers)
+views.variables = attach_window("variables", view_factories.variables)
+views.arguments = attach_window("arguments", view_factories.arguments)
 
 local function spawn_views(job, set)
 	activejob = job
+	for i,v in ipairs(builtin_cfg.debug.options) do
+		job.debugger:eval(
+			v,
+			"repl",
+			function()
+			end
+		)
+	end
 
 	if not set then
 		set = {"stderr", "stdout", "threads", "errors", "breakpoints"}
@@ -118,7 +139,7 @@ local function spawn_views(job, set)
 
 	for i,v in ipairs(set) do
 		if views[v] then
-			views[v](job)
+			views[v](job, {})
 		end
 	end
 end
@@ -132,9 +153,16 @@ function cmds.thread(job, ...)
 	end
 
 	local thid
+	local fid = 0
 
--- thread [n] stop | continue
+-- thread [n | n:f] stop | continue
 	if tonumber(base[1]) ~= nil then
+
+		local set = string.split(base[1], ":")
+		if tonumber(set[2]) then
+			fid = tonumber(set[2])
+		end
+
 		thid = tonumber(table.remove(base, 1))
 	end
 
@@ -148,6 +176,7 @@ function cmds.thread(job, ...)
 
 -- thread [n]
 	thid = thid or 1
+
 	local th = job.debugger.data.threads[thid]
 
 	if not th then
@@ -159,29 +188,34 @@ function cmds.thread(job, ...)
 	{
 		registers =
 		function()
-			views.registers(job, th, frame)
+			local wnd = views.registers(job,
+				{invalidated = frame}, th, frame)
 		end,
 		disassemble =
 		function()
-			views.disassembly(job, th, frame)
+			views.disassembly(job, {}, th, frame)
 		end,
 		variables =
 		function()
-			views.variables(job, th, frame)
+			views.variables(job, {}, th, frame)
 		end,
 		arguments =
 		function()
-			views.arguments(job, th, frame)
+			views.arguments(job, {}, th, frame)
+		end,
+		var =
+		function()
+			print("set")
 		end
 	}
-
-	if not domains[base[1]] then
-		return false, errors.bad_thread_cmd
-	end
 
 	local fid = 0
 	if tonumber(base[2]) then
 		fid = tonumber(base[2])
+	end
+
+	if not domains[base[1]] then
+		return false, string.format(errors.bad_thread_cmd, base[1])
 	end
 
 	for i=1,#th.stack do
@@ -225,11 +259,51 @@ function cmds.source(job, ...)
 				return
 			end
 
-			local swnd = views.source(job, source)
+			local swnd = views.source(job, {}, source)
 			local line = tonumber(ref[2])
 			if line then
 				swnd:move_to(line)
 			end
+
+-- do we bind to track a specific thread and/or frame?
+			local thid = tonumber(base[2])
+			if not thid then
+				return
+			end
+
+			local th = job.debugger.data.threads[thid]
+			if not th then
+				return
+			end
+
+			local track =
+			function(th)
+				if th.stack[1].path ~= ref[1] then
+					job.debugger:source(th.stack[1].path,
+						function(source)
+							th.stack[1]:source(source, th.stack[1].line)
+						end
+					)
+				else
+					swnd:move_to(th.stack[1].line)
+				end
+			end
+
+			table.insert(th.handlers.invalidated, track)
+
+-- detach tracking if we terminate
+			table.insert(swnd.hooks.on_destroy,
+				function()
+					for i=1,#th.handlers.invalidated do
+						if th.handlers[i] == track then
+							table.remove(th.handlers.invalidated, i)
+							break
+						end
+					end
+					return
+				end
+			)
+-- source closure
 		end
 	)
 end
@@ -373,12 +447,6 @@ function cmds.attach(...)
 	)
 
 	spawn_views(job)
-end
-
-function builtins.thread(...)
-	local set = {...}
-	local outargs = {}
-	local ok, msg = cat9.expand_arg(outargs, set)
 end
 
 function builtins.debug(...)
