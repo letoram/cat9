@@ -392,11 +392,11 @@ action attached. The command for that is 'trigger'. The condition can be either
 'ok' or 'fail', with an optional delay in seconds. The action is any regular
 command-line string (remember to encapsulate with "").
 
-To remove previously set triggers, use 'flush' instead of action.
+To remove previously set triggers, use 'flush'.
 
 A common case for trigger is to repeat a job that finished:
 
-    trigger #0 ok delay 10 "repeat #0"
+    trigger #0 ok delay 10 run "repeat #0"
 
 Would keep the job #0 relaunching 10 seconds after completing until removed:
 

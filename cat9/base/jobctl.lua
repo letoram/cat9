@@ -245,7 +245,8 @@ local function finish_job(job, code)
 -- without producing any output / explanation or ones that have already been hidden
 	if job.hidden then
 		cat9.remove_job(job)
-	elseif config.autoclear_empty and job.data.bytecount == 0 then
+
+	elseif config.autoclear_empty and job.data.bytecount == 0 and not job.block_clear then
 		if #job.err_buffer == 0 then
 			if job.exit and job.exit ~= 0 and not job.hidden then
 				cat9.add_message(
