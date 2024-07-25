@@ -100,7 +100,7 @@ local function view_threads(job, x, y, cols, rows, probe)
 		threads =
 		{
 			click = {}
-		}
+		},
 	}
 	local active_row
 	local active_col

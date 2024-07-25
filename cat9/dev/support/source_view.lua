@@ -4,13 +4,21 @@
 -- breakpoint set, ...
 --
 return
-function(cat9, cfg, job, source)
+function(cat9, cfg, job, source, sref)
 	local function click(job, btn, ofs, yofs, mods)
-		print("click", btn, ofs, yofs)
+		if yofs == 0 or btn ~= 1 then
+			return
+		end
+
+		job.parent.debugger:break_at(sref, yofs - 1 + job.row_offset)
+		return true
 	end
 
 	local function attr_lookup(job, set, i, pos, highlight)
 		local attr = cfg.debug.source_line
+		if job.marks[i] then
+			attr = job.marks[i]
+		end
 
 -- use background color to mark breakpoint (active, passive, hit, ...)
 		if job.cursor_line and i == job.cursor_line then
@@ -26,7 +34,8 @@ function(cat9, cfg, job, source)
 		cat9.import_job({
 			short = "Debug:source",
 			parent = job,
-			data = data
+			data = data,
+			marks = {}
 		})
 
 -- need to consider number of actually visible lines and set offset
@@ -63,10 +72,32 @@ function(cat9, cfg, job, source)
 		cat9.flag_dirty(wnd)
 	end
 
+	if thid then
+		wnd.selected_bar =
+		{
+			{
+				"Next",
+			},
+			{
+				"In"
+			},
+			{
+				"Out"
+			},
+			m1 =
+			{
+				string.format("#%d debug thread %d next", job.id, thid),
+				string.format("#%d debug thread %d in", job.id, thid),
+				string.format("#%d debug thread %d out", job.id, thid)
+			}
+		}
+	end
+
 	wnd:source(source, 1)
 	wnd.attr_lookup = attr_lookup
 	wnd.expanded = false
 	wnd.row_offset_relative = false
+	wnd.handlers.mouse_button = click
 
 return wnd
 end

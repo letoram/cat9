@@ -3,10 +3,19 @@ function(cat9, parser, args, target)
 local Debugger = {}
 local errors = {
 	breakpoint_id = "change or remove on breakpoint without valid id",
-	breakpoint_missing = "unknown breakpoint %d"
+	breakpoint_missing = "unknown breakpoint %d",
+	set_breakpoint = "breakpoint request failed"
 }
 
 local send_request
+
+local function invalidate_threads(dbg)
+	for k,thread in pairs(dbg.data.threads) do
+		for i=#thread.handlers.invalidated,1,-1 do
+			thread.handlers.invalidated[i](thread)
+		end
+	end
+end
 
 local function get_frame_locals(frame)
 	if frame.cached_locals then
@@ -106,6 +115,8 @@ local function stepreq(th, req)
 	if th.state ~= "stopped" then
 		return
 	end
+
+	th.state = "running"
 	send_request(th.dbg, req, {threadId = th.id, singleThread = true},
 		function()
 		end
@@ -139,12 +150,80 @@ local function ensure_thread(dbg, id)
 	return dbg.data.threads[id]
 end
 
-local function get_breakpoint_by_id(dbg, id)
-	for k,v in ipairs(dbg.data.breakpoints) do
-		if v.id and v.id == id then
-			return v
+local function get_breakpoint_by_addr(dbg, addr)
+	for i,v in ipairs(dbg.data.breakpoints) do
+		if v.instructionReference == addr then
+			return v, i
 		end
 	end
+end
+
+local function get_breakpoint_by_source(dbg, source, line)
+	for i,v in ipairs(dbg.data.breakpoints) do
+		if v.path and v.path == source and v.line[1] == line then
+			return v, i
+		end
+	end
+end
+
+local function get_breakpoint_by_id(dbg, id)
+	for i,v in ipairs(dbg.data.breakpoints) do
+		if v.id and v.id == id then
+			return v, i
+		end
+	end
+end
+
+local function dap_bpt_to_bpt(bpt, b)
+	bpt.id = b.id
+	bpt.verified = b.verified or b.reason
+
+	if b.source then
+		bpt.source = b.source.name
+		bpt.path = b.source.path
+		bpt.ref = b.source.sourceReference
+	else
+		bpt.source = "unknown"
+		bpt.path = ""
+	end
+
+	if b.line then
+		bpt.line = {b.line, b.endLine or b.line}
+	else
+		bpt.line = {-1, -1}
+	end
+
+	if b.column then
+		bpt.column = {b.column, b.endColumn or b.column}
+	else
+		bpt.column = {0, 0}
+	end
+
+	if b.instructionReference then
+		bpt.instruction = {b.instructionReference, b.offset or 0}
+	else
+		bpt.instruction = {"0x??", "+?"}
+	end
+end
+
+local function synch_breakpoints_handler(job, msg)
+	if not msg.success then
+		job.output:add_line(job, errors.set_breakpoint)
+		return
+	end
+	for i,v in ipairs(msg.body.breakpoints) do
+		local id, ind = get_breakpoint_by_id(job, v.id)
+		local bpt = {}
+		dap_bpt_to_bpt(bpt, v)
+
+		if not id then
+			table.insert(job.data.breakpoints, bpt)
+		else
+			job.data.breakpoints[ind] = bpt
+		end
+	end
+
+	invalidate_threads(job)
 end
 
 local function run_update(dbg, event)
@@ -254,36 +333,7 @@ local function handle_breakpoint_event(dbg, msg)
 		return
 	end
 
-	b = b.breakpoint
-	bpt.id = b.id
-	bpt.verified = b.verified or b.reason
-
-	if b.source then
-		bpt.source = b.source.name
-		bpt.path = b.source.path
-		bpt.ref = b.source.sourceReference
-	else
-		bpt.source = "unknown"
-		bpt.path = ""
-	end
-
-	if b.line then
-		bpt.line = {b.line, b.endLine or b.line}
-	else
-		bpt.line = {-1, -1}
-	end
-
-	if b.column then
-		bpt.column = {b.column, b.endColumn or b.column}
-	else
-		bpt.column = {0, 0}
-	end
-
-	if b.instructionReference then
-		bpt.instruction = {b.instructionReference, b.offset or 0}
-	else
-		bpt.instruction = {"0x??", "+?"}
-	end
+	dap_bpt_to_bpt(bpt, b.breakpoint)
 	run_update(dbg, "breakpoints")
 end
 
@@ -398,9 +448,6 @@ function(dbg, msg)
 end
 }
 
-function Debugger:step(id)
-end
-
 function Debugger:get_suggestions(prefix, closure)
 -- since we can get many when / if the prefix changes maybe the cancellation
 -- request should be returned as a function() that the UI can call
@@ -437,6 +484,64 @@ function Debugger:input_line(line)
 			self.errors:add_line(self, "Unknown message type: " .. protomsg.type)
 		end
 	end
+end
+
+function Debugger:break_at(source, line)
+	local bp = self.data.breakpoints
+	local tog
+
+	local set = {
+		source = {path = source},
+		breakpoints = {}
+	}
+
+-- check if its a toggle
+	local id, ind = get_breakpoint_by_source(self, source, line)
+	if id then
+		table.remove(bp, ind)
+	else
+		table.insert(set.breakpoints, {line = line})
+	end
+
+	for i,v in ipairs(bp) do
+		if v.path == source then
+			table.insert(set.breakpoints, {line = v.line[1]})
+		end
+	end
+
+	send_request(self, "setBreakpoints", set, synch_breakpoints_handler)
+end
+
+function Debugger:break_on(func)
+-- toggle by calling on existing with no added arguments
+	local tog
+	for i=#self.breakpoints.func, 1, -1 do
+		if self.breakpoints.addr[i].name == func then
+			table.remove(self.breakpoints.func, i)
+			tog = true
+		end
+	end
+
+	if not func then
+		self.breakpoints.addr = {}
+	else
+		if not tog and func then
+			table.insert(self.breakpoints.func, {name = func})
+		end
+	end
+
+	local set = {}
+	for i,v in ipairs(self.breakpoints.func) do
+		table.insert(set, {name = v.name})
+	end
+
+	send_request(self, "setFunctionBreakpoints", { breakpoints = set },
+		function()
+		end
+	)
+end
+
+function Debugger:break_addr(addr)
 end
 
 function Debugger:disassemble(addr, ofs, count, closure)

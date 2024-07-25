@@ -408,7 +408,7 @@ The commands included in the system set are:
 
 ### Signal
 
-    signal #jobid or pid [signal: kill, hup, user1, user2, stop, quit, continue]
+    signal [signal: kill, hup, user1, user2, stop, quit, continue] #jobid or pid
 
 The signal commands send a signal to an active running job or a process based
 on a process identifier (number).

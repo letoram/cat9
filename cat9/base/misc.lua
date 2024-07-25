@@ -751,6 +751,53 @@ function cat9.block_readline(root, on, hide)
 	cat9.readline_block_hide = hide
 end
 
+local KiB = 1024
+local MiB = 1024 * 1024
+local GiB = 1024 * 1024 * 1024
+local TiB = 1024 * 1024 * 1024 * 1024
+function cat9.sz_to_human(sz)
+	if sz < KiB then
+		return "B", sz
+	elseif sz < MiB then
+		return "K", sz / KiB
+	elseif sz < GiB then
+		return "M", sz / MiB
+	elseif sz < TiB then
+		return "G", sz / GiB
+	else
+		return "T", sz / TiB
+	end
+end
+
+function cat9.list_processes(closure)
+	local env = {}
+	local _, out, _, pid = root:popen("ps ax", "r", env)
+	cat9.add_background_job(out, pid, {lf_strip = true},
+		function(job, code)
+			if code == 0 then
+				local set = {}
+				for i,v in ipairs(job.data) do
+					local elem = string.split(string.trim(v), "%s+")
+					local pid = tonumber(elem[1])
+
+					table.insert(set, {
+						pid = tonumber(elem[1]),
+						tty = elem[2],
+						state = elem[3],
+						time = elem[4],
+						name = table.concat(elem, " ", 5)
+					}
+				)
+				end
+				table.remove(set, 1)
+				closure(set)
+			else
+				closure({})
+			end
+		end
+	)
+end
+
 function cat9.setup_readline(root)
 	if cat9.readline_block then
 		if not cat9.readline_block_hide then

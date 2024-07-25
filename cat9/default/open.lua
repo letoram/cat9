@@ -183,7 +183,13 @@ local function open_internal(mode, context, viewm)
 -- still need to do this as bufferview can't take the
 -- datatable as is, internally it would still need to resolve
 -- the table so the copy is unavoidable in this form.
-		buf = table.concat(context:slice(), "")
+		local slice = context:slice()
+		local buf
+		if type(slice) == "table" then
+			buf = table.concat(context:slice(), "\n")
+		else
+			buf = slice
+		end
 
 		if mode then
 			wnd:bufferview(buf, function() wnd:close(); end, arg)

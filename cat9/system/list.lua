@@ -735,29 +735,12 @@ function(src, path, ref)
 				end
 
 -- for human-readable presentation
-				if ext.size < KiB then
-					ext.prefix = "B"
-					ext.size_prefix = ext.size
-
-				elseif ext.size < MiB then
-					ext.prefix = "K"
-					ext.size_prefix = ext.size / KiB
-
-				elseif ext.size < GiB then
-					ext.prefix = "M"
-					ext.size_prefix = ext.size / MiB
-
-				elseif ext.size < TiB then
-					ext.prefix = "G"
-					ext.size_prefix = ext.size / GiB
-
-				else
-					ext.prefix = "T"
-					ext.size_prefix = ext.size / TiB
-				end
+				local pref, sz = cat9.sz_to_human(ext.size)
+				ext.size = sz
+				ext.size_prefix = pref
 
 				if src.size_prefix then
-					ext.size_string = string.format("%.1f%s", ext.size_prefix, ext.prefix)
+					ext.size_string = string.format("%.1f%s", ext.size, ext.size_prefix)
 				else
 					ext.size_string = tostring(ext.size)
 				end

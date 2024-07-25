@@ -10,62 +10,77 @@ local oksig = {
 	continue = true
 }
 
+local errors =
+{
+	missing_signal = "signal >sig< missing",
+	bad_signal = "signal >sig< unknown signal name",
+	bad_pid = "signal sig >job< bad process id",
+	bad_job = "signal sig >job< bad job identifier",
+	too_many_arguments = "signal sig job >...< too many arguments"
+}
+
 return function(cat9, root, builtins, suggest)
 builtins.hint["signal"] = "Send a signal to a job or pid"
 
-function builtins.signal(job, sig)
+function builtins.signal(sig, job)
 	if not sig then
-		return cat9.add_message(string.format(
-			"signal (#jobid or pid) >signal< missing: %s", sigmsg))
+		return false, errors.missing_signal
 	end
 
-	if type(sig) == "string" then
-		if not oksig[sig] then
-			return cat9.add_message(string.format(
-				"signal (#jobid or pid) >signal< unknown signal (%s) %s", sig, sigmsg))
+	if not oksig[sig] then
+		return false, errors.bad_signal
+	end
+
+	if type(job) == "string" then
+		job = tonumber(job)
+		if not job then
+			return false, errors.bad_pid
 		end
-	elseif type(sig) == "number" then
+	elseif type(job) == "table" and not job.parg and job.pid then
+		job = job.pid
 	else
-		return cat9.add_message(string.format(
-			"signal (#jobid or pid) >signal< unexpected type (string or number)"))
+		return false, errors.bad_job
 	end
 
-	local pid
-	if type(job) == "table" then
-		if not job.pid then
-			return cat9.add_message(string.format(
-				"signal #jobid - job is not tied to a process"))
-		end
-		pid = job.pid
-	elseif type(job) == "number" then
-		pid = job
-	else
-		pid = tonumber(job)
-		if not pid then
-			return cat9.add_message(
-				"signal (#jobid or pid) - unexpected type (" .. type(job) .. ")")
-		end
-	end
-
-	root:psignal(pid, sig)
+	root:psignal(job, sig)
 end
 
 function suggest.signal(args, raw)
-	local set = {}
+	local set = {hint = {}, title = "Process ID"}
+
+	if #raw == 6 then
+		return
+	end
+
+	if #args == 2 then
+		cat9.readline:suggest(cat9.prefix_filter(signame, args[2]), "word")
+		return
+	end
 
 	if #args > 3 then
-		cat9.add_message("signal #jobid signal : too many arguments")
-		return
+		return false, errors.too_many_arguments
 	end
 
-	if #args > 2 then
-		cat9.readline:suggest(cat9.prefix_filter(signame, args[3]), "word")
-		return
-	end
+	cat9.list_processes(
+	function(procs)
+		for i=1,#procs do
+			if string.sub(procs[i].name, 1, 1) ~= "[" then
+				table.insert(set, tostring(procs[i].pid))
+				table.insert(set.hint, procs[i].name)
+			end
+		end
+		local set = cat9.prefix_filter(set, args[3])
 
-	cat9.add_job_suggestions(set, false, function(job)
-		return job.pid ~= nil
-	end)
+		cat9.readline:suggest(cat9.prefix_filter(set, args[3]), "word")
+	end,
+	true
+	)
+
+	cat9.add_job_suggestions(set, false,
+		function(job)
+			return job.pid ~= nil
+		end
+	)
 
 	cat9.readline:suggest(set, "word")
 end

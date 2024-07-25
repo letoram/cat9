@@ -441,10 +441,20 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 
 	if job and id > 0 then
 		local mind = "m" .. tostring(index)
-		local cfgrp = config[job.last_key][mind]
+		local cfgrp
+		if job.hdr_stack and job.hdr_stack[mind] then
+			cfgrp = job.hdr_stack[mind]
+		else
+			cfgrp = config[job.last_key][mind]
+		end
 
 		if cfgrp and cfgrp[id] then
-			cat9.parse_string(nil, cfgrp[id])
+			if type(cfgrp[id]) == "function" then
+				local str = cfgrp[id]()
+				cat9.parse_string(nil, str)
+			else
+				cat9.parse_string(nil, cfgrp[id])
+			end
 			return
 		end
 	end

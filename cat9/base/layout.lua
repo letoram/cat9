@@ -251,6 +251,9 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 		return len
 	end
 
+-- save the latest resolved stack for ioh:mouse_button on header
+	job.hdr_stack = itemstack
+
 	for i,v in ipairs(itemstack) do
 		if type(v) ~= "table" then
 			cat9.add_message("bad config: malformed job_bar field: " .. job_key)

@@ -1,6 +1,9 @@
 return
 function(cat9, cfg, job)
 
+-- should have a click to toggle, to go to source, to go to
+-- instruction ...
+
 local function write_bpt(job, x, y, row, set, ind, _, selected)
 	job.root:write_to(x, y, row)
 end

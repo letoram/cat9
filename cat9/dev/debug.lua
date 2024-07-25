@@ -19,7 +19,9 @@ local view_factories =
 	"disassembly",
 	"registers",
 	"variables",
-	"arguments"
+	"arguments",
+	"files",
+	"maps"
 }
 
 for i=1,#view_factories do
@@ -33,7 +35,7 @@ return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 local os_support =
-	loadfile(string.format("%s/cat9/dev/support/debug_os.lua", lash.scriptdir))()(root)
+	loadfile(string.format("%s/cat9/dev/support/debug_os.lua", lash.scriptdir))()(cat9, root)
 
 local attach_block = os_support:can_attach()
 
@@ -50,7 +52,9 @@ local errors = {
 	bad_thread = "debug thread >id< ... invalid thread id",
 	bad_thread_cmd = "debug thread (id) >cmd< unknown command: %s",
 	bad_frame = "debug thread i cmd >frame< .. unknown or missing stack frame",
-	no_source = "debug source >fn< .. missing source reference"
+	no_source = "debug source >fn< .. missing source reference",
+	no_pid = "debug >job< .. no process id assigned to job",
+	no_break = "debug break job >target< ... no breakpoint target"
 }
 
 local cmds = {}
@@ -95,7 +99,7 @@ local function attach_window(key, fact, ...)
 			function()
 				job[group][key] = nil
 				if opts.invalidated then
-					local ih = opts.handlers.invalidated
+					local ih = opts.invalidated
 
 					for i=1,#ih do
 						if ih[i] == track then
@@ -121,8 +125,12 @@ views.disassembly = attach_window("disassembly", view_factories.disassembly)
 views.registers = attach_window("registers", view_factories.registers)
 views.variables = attach_window("variables", view_factories.variables)
 views.arguments = attach_window("arguments", view_factories.arguments)
+views.files = attach_window("files", view_factories.files)
+views.maps = attach_window("maps", view_factories.maps)
 
 local function spawn_views(job, set)
+	cat9.list_processes(function() end, true)
+
 	activejob = job
 	for i,v in ipairs(builtin_cfg.debug.options) do
 		job.debugger:eval(
@@ -144,6 +152,36 @@ local function spawn_views(job, set)
 	end
 end
 
+function cmds.files(job, ...)
+	local set = {...}
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
+	end
+
+	if not job or not job.debugger.pid then
+		return false, errors.no_pid
+	end
+
+	views.files(job, {}, os_support, job.debugger.pid)
+end
+
+function cmds.maps(job, ...)
+	local set = {...}
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
+	end
+
+	if not job or not job.debugger.pid then
+		return false, errors.no_pid
+	end
+
+	views.maps(job, {}, os_support, job.debugger.pid)
+end
+
 function cmds.thread(job, ...)
 	local set = {...}
 	local base = {}
@@ -154,6 +192,7 @@ function cmds.thread(job, ...)
 
 	local thid
 	local fid = 0
+	local th
 
 -- thread [n | n:f] stop | continue
 	if tonumber(base[1]) ~= nil then
@@ -164,20 +203,30 @@ function cmds.thread(job, ...)
 		end
 
 		thid = tonumber(table.remove(base, 1))
+		th = job.debugger.data.threads[thid]
 	end
 
+-- apply to all threads unless this is set
 	if base[1] == "stop" then
 		job.debugger:continue(thid)
 		return
 	elseif base[1] == "continue" then
 		job.debugger:pause(thid)
 		return
+	elseif th and base[1] == "next" then
+		th:step()
+		return
+	elseif th and base[1] == "in" then
+		th:stepin()
+		return
+	elseif th and base[1] == "out" then
+		th:stepout()
+		return
 	end
 
 -- thread [n]
 	thid = thid or 1
-
-	local th = job.debugger.data.threads[thid]
+	th = job.debugger.data.threads[thid]
 
 	if not th then
 		return false, errors.bad_thread
@@ -234,6 +283,46 @@ function cmds.thread(job, ...)
 	return true
 end
 
+cmds["break"] = function(job, ...)
+	local set = {...}
+	local base = {}
+	local ok, msg = cat9.expand_arg(base, set)
+	if not ok then
+		return false, msg
+	end
+
+-- ensure we reference a job with a debugger in its hierarchy
+	if not job then
+		return false, errors.no_job
+	end
+
+	if job.debugger then
+	elseif job.parent and job.parent.debugger then
+		job = job.parent
+	else
+		return false, errors.bad_ref
+	end
+
+	if not base[1] then
+		return false, errors.no_break
+	end
+
+-- a trailing conditional expression would be nice ...
+
+-- instruction, function, source:line
+	if string.sub(base[1], 1, 2) == "0x" then
+		job.debugger:break_addr(base[1])
+
+	elseif string.find(base[1], ":") then
+		local set = string.split(base[1], ":")
+		job.debugger:break_at(set[1], set[2])
+
+-- assume function
+	else
+		job.debugger:break_on(set[1])
+	end
+end
+
 function cmds.source(job, ...)
 	local set = {...}
 	local base = {}
@@ -259,14 +348,16 @@ function cmds.source(job, ...)
 				return
 			end
 
-			local swnd = views.source(job, {}, source)
+-- do we bind to track a specific thread and/or frame?
+			local thid = tonumber(base[2])
+			local swnd = views.source(job, {}, source, ref[1])
+			swnd.source_ref = ref[1]
+
 			local line = tonumber(ref[2])
 			if line then
 				swnd:move_to(line)
 			end
 
--- do we bind to track a specific thread and/or frame?
-			local thid = tonumber(base[2])
 			if not thid then
 				return
 			end
@@ -275,6 +366,19 @@ function cmds.source(job, ...)
 			if not th then
 				return
 			end
+			swnd.thid = thid
+
+			local synch_markers =
+			function()
+				local marks = {}
+				for i,v in ipairs(job.debugger.data.breakpoints) do
+					if v.path == swnd.source_ref then
+						marks[v.line[1]] = builtin_cfg.debug.breakpoint_line
+					end
+				end
+				swnd.marks = marks
+				cat9.flag_dirty(swnd)
+			end
 
 			local track =
 			function(th)
@@ -282,13 +386,16 @@ function cmds.source(job, ...)
 					job.debugger:source(th.stack[1].path,
 						function(source)
 							th.stack[1]:source(source, th.stack[1].line)
+							wnd.source_ref = th.stack[1].path
 						end
 					)
 				else
 					swnd:move_to(th.stack[1].line)
 				end
+				synch_markers()
 			end
 
+			synch_markers()
 			table.insert(th.handlers.invalidated, track)
 
 -- detach tracking if we terminate
