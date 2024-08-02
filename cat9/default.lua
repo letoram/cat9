@@ -1,0 +1,15 @@
+return
+{
+	'config.lua',
+	'copy.lua',
+	'each.lua',
+	'forget.lua',
+	'open.lua',
+	'view.lua',
+	'repeat.lua',
+	'trigger.lua',
+	'input.lua',
+	'views/wrap.lua',
+	'views/crop.lua',
+	'views/filter.lua',
+}
