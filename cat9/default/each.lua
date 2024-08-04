@@ -2,6 +2,14 @@ return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 	builtins.hint["each"] = "Repeat a command for each item in a referenced job"
 
+local errors = {}
+errors.no_job = "each .. >job< (parg) parg without job"
+errors.unknown_parg = "each (>arg<) unknown argument, expected 'merge'"
+errors.missing_action = "missing action separator: !!"
+errors.missing_command = "missing command argument"
+errors.recursive = "each .. !! each recursion is not permitted"
+
+local in_each_parse = false
 builtins.each =
 function(...)
 	local args = {...}
@@ -9,17 +17,20 @@ function(...)
 	local lastjob
 	local set = {}
 
-	local mode = "sequential"
-	local silent = false
+	if in_each_parse then
+		return false, errors.recursive
+	end
 
--- pargs we want:
---
---  sequential
---  	parallel
---      silent
---
---   would also want to group parallel by order
---
+	local mode = "sequential"
+
+	if type(args[1]) == "table" and args[1].parg then
+		if args[1][1] == "merge" then
+			mode = "merge"
+		else
+			return errors.unknown_parg
+		end
+	end
+
 	local gotsep = false
 
 	while args[i] do
@@ -32,10 +43,11 @@ function(...)
 				break
 			end
 		else
+-- should add mode for 'silent' jobs in the set
 			if args[i].parg then
 				if not lastjob then
 					if i > 1 then
-						return false, "() arg without job"
+						return false, errors.no_job
 					end
 				else
 					local exp =
@@ -67,19 +79,27 @@ function(...)
 	end
 
 	if not gotsep then
-		return false, "missing action separator: !!"
+		return false, errors.missing_action
 	end
 
 	if not args[i] then
-		return false, "missing command argument"
+		return false, errors.missing_command
 	end
 
 	local _, action = string.split_first(cat9.parsestr, "!!")
 
--- The actual task depends on processing mode.
--- For sequential we need to hook on_finish, on_fail and
--- on_data as all indicate that it is time for the next, if
--- we also weren't told to stop.
+-- The actual task depends on processing mode. For sequential and merge we need
+-- to hook on_finish, on_fail and on_data as all indicate changes in completion
+-- state.
+
+-- Merge also needs a container job where we link all the others, and mark them
+-- as hidden.
+	local merge_job
+
+	if mode == "merge" then
+		cat9.parse_string(nil, "contain new")
+		merge_job = cat9.latestjob
+	end
 
 	local run_item
 	local pending = 0
@@ -94,22 +114,19 @@ function(...)
 -- any collection / processing goes here
 		end
 
--- one repeat command can potentially manifest in multiple
--- jobs, since we hook into all we need to track how many
--- that are left so we know when to start the next item in
--- the sequence.
-		if pending > 0 then
+-- one repeat command can potentially manifest in multiple jobs, since we hook
+-- into all we need to track how many that are left so we know when to start
+-- the next item in the sequence.
+		if pending > 0 and mode == "sequential" then
 			return
 		end
 
 		local ni = table.remove(set, 1)
 		if not ni then
--- if we have a monitor job, mark that we are complete and
--- present / merge the data from ic.job.data
 			return
 		end
 
-		if mode == "sequential" then
+		if mode == "sequential" or mode == "merge" then
 
 -- capture the creation of any new job from the command, this is more
 -- annoying than one might think since a command can spawn jobs asynch
@@ -122,10 +139,19 @@ function(...)
 					return
 				end
 
+-- somehow added twice ?!
+				if merge_job then
+					cat9.parse_string(nil,
+						string.format("#%d contain #%d add #%d", merge_job.id, merge_job.id, job.id)
+					)
+					table.insert(merge_job.jobs, job)
+				else
+					pending = pending + 1
+				end
+
 				local opt = {armed = true, job = job, pid = job.pid}
 				local chook
 
-				pending = pending + 1
 				local ic = function() run_item(opt) end
 				table.insert(job.hooks.on_destroy, ic)
 				table.insert(job.hooks.on_fail, ic)
@@ -144,13 +170,15 @@ function(...)
 
 			cat9.hook_import_job(job_hook)
 
--- we ignore the parsing / tokenization after !! so that we can copy
+-- We ignore the parsing / tokenization after !! so that we can copy
 -- it and swap out $arg with the current item and just throw this into
--- parse_string
+-- parse_string. Make sure to prevent each from being part of the arg.
+				in_each_parse = true
 				local torun = string.gsub(
 					action, "$arg", "\"" .. string.gsub(ni, "\"", "\\\"") .. "\"")
 				cat9.parse_string(nil, torun)
-			end
+				in_each_parse = false
+		end
 	end
 
 	run_item()

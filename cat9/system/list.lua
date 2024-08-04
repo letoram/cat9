@@ -375,6 +375,7 @@ end
 local function write_at(job, x, y, str, set, i, pos, highlight, width)
 	local attr = get_attr(job, set, i, pos, highlight, str, width)
 	local ok
+
 	for _, v in ipairs(attr) do
 		ok, x, y = job.root:write_to(x, y, v[2], v[1])
 	end

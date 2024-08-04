@@ -328,17 +328,17 @@ local function rows_for_job(job, cols, rows)
 		return cap > wrows and wrows or cap
 	end
 
--- clamp
+-- clamp inarg
 	if not job.expanded then
 		rows = rows > cap and cap or rows
 	end
 
-	return job:view(0, 0, cols, rows, true) + 1
+	local count = job:view(0, 0, cols, rows, true) + 1
+	return count > rows and rows or count
 end
 
 local function draw_job(job, x, y, cols, rows, cc)
 	local rcap = rows - 1
-	rows = rows_for_job(job, cols, rows)
 	local len = 0
 
 	job.region = {x, y, x + cols, y}

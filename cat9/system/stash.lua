@@ -303,7 +303,8 @@ local function ensure_stash_job()
 		view_name = "stash",
 		short = "Stash",
 		slice = stash_slice,
-		old_ioh = cat9.resources.bin
+		old_ioh = cat9.resources.bin,
+		check_status = cat9.always_active
 	}
 
 	cat9.import_job(job)
@@ -652,7 +653,8 @@ function commands.archive(args)
 				bytecount = 10,
 				name = "archive",
 				short = "Archive",
-				full = string.format("Archive(%s)", tmpfilename)
+				full = string.format("Archive(%s)", tmpfilename),
+				check_status = cat9.always_active
 			}
 		}
 		cat9.import_job(newjob)

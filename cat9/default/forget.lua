@@ -121,15 +121,22 @@ function builtins.forget(...)
 		if not found then
 			return
 		end
-
 -- kill the thing, can't remove it yet but mark it as hidden - main
 -- loop will discovered the signalled process and then clean/remove
 -- that way
-		if job.pid then
-			root:psignal(job.pid, sig)
-			job:hide()
+		if job.protected then
+			cat9.add_message(
+				string.format(
+					"can't remove job (%d), protected set (use config #%d protect false)",
+					job.id, job.id)
+			)
 		else
-			cat9.remove_job(job)
+			if job.pid then
+				root:psignal(job.pid, sig)
+				job:hide()
+			else
+				cat9.remove_job(job)
+			end
 		end
 	end
 

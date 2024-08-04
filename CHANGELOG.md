@@ -18,3 +18,6 @@
 * added view #job detach as a way of splitting out a view into its own
 * added config option for `job_bar_pad` for drawing job bar padded to the entire assigned colrange
 * added 'dev' builtin with 'debug' command for debug-adapter-protocol integration
+* added 'contain' builtin for merging jobs into one
+* multiple layouting / mouse picking fixes
+* jobs can be protected from forget through config #job protect true | false

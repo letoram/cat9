@@ -326,7 +326,9 @@ function cat9.process_jobs()
 					if not job.hidden then
 						cat9.activevisible = cat9.activevisible - 1
 					end
-					table.remove(activejobs, i)
+					if not job.protected then
+						table.remove(activejobs, i)
+					end
 				end
 
 -- since the hooks might decide to modify the set, we need a local copy first
@@ -531,6 +533,10 @@ end
 function cat9.remove_job(job)
 	local jc = #cat9.jobs
 
+	if job.protected then
+		return
+	end
+
 	cat9.remove_match(cat9.timers, job)
 	cat9.remove_match(cat9.jobs, job)
 	if cat9.remove_match(cat9.activejobs, job) and not job.hidden then
@@ -595,8 +601,6 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	local lc = set.linecount
 	local root = job.root
 
-	lc = lc > rows and rows or lc
-
 -- and if we are probing, don't draw
 	if probe then
 		return lc
@@ -604,9 +608,9 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 -- the rows will naturally be capped to what we claimed to support
 	local lineattr = config.styles.line_number
-	local digits = #tostring(set.linecount)
+	local digits = #tostring(job.lineno_offset + set.linecount)
 	local ofs = job.row_offset
-
+	lc = lc > rows and rows or lc
 	if lc >= set.linecount then
 		ofs = 0
 	end
@@ -617,6 +621,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	end
 
 	local base = ofs
+
 	if job.row_offset_relative then
 		base = set.linecount - lc + ofs
 		if base <= 0 then
@@ -663,7 +668,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- printing line numbers?
 		if job.show_line_number then
 -- left-justify
-			local num = string.lpad(tostring(ind), digits)
+			local num = string.lpad(tostring(job.lineno_offset + ind), digits)
 
 -- set inverse attribute if mouse cursor is on top of it
 			lineattr.inverse = job.mouse and
@@ -1025,15 +1030,17 @@ local function add_line(job, line)
 	job.data.bytecount = job.data.bytecount + #line
 end
 
--- make sure the expected fields are in a job, used both when importing from an
--- outer context and when one has been created by parsing through
--- 'cat9.parse_string'.
 local counter = 0
 
 function cat9.hook_import_job(closure)
+	local old = cat9.import_hook
 	cat9.import_hook = closure
+	return old
 end
 
+-- make sure the expected fields are in a job, used both when importing from an
+-- outer context and when one has been created by parsing through
+-- 'cat9.parse_string'.
 function cat9.import_job(v, noinsert)
 	if not v.collapsed_rows then
 		v.collapsed_rows = config.collapsed_rows
@@ -1105,12 +1112,14 @@ function cat9.import_job(v, noinsert)
 		}
 	end
 
-	v.reset =
-	function(v)
+	local set_defaults =
+	function()
 		v.wrap = true
 		v.exit = nil
+		v.lineno_offset = 0
 		v.row_offset = 0
 		v.col_offset = 0
+		v.view_base = 0
 		v.row_offset_relative = true
 		v.bar_color = tui.colors.ui
 		v.view = cat9.view_raw
@@ -1125,12 +1134,16 @@ function cat9.import_job(v, noinsert)
 			linecount = 0
 		}
 	end
+	set_defaults()
+
+	if not v.reset then
+		v.reset = set_defaults
+	end
 
 	v.view = cat9.view_raw
 
 	v.closure = {}
 	if not v.data then
-		v:reset()
 	end
 
 	if not v.cookie then

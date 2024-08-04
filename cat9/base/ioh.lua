@@ -441,6 +441,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 
 	if job and id > 0 then
 		local mind = "m" .. tostring(index)
+
 		local cfgrp
 		if job.hdr_stack and job.hdr_stack[mind] then
 			cfgrp = job.hdr_stack[mind]
@@ -537,6 +538,7 @@ function handlers.tick()
 		local torem = {}
 		for i=#cat9.timers,1 do
 			if not cat9.timers[i]() then
+				print("remove", i)
 				table.remove(cat9.timers, i)
 			end
 		end

@@ -34,17 +34,29 @@ local function config_job(job, key, val)
 		return
 	end
 
-	if not job.factory then
-		cat9.add_message("config job: job does not define a factory")
-		return
-	end
-
 	if key == "alias" then
 		if tonumber(val) then
 			cat9.add_message("config job: alias must be non-numeric")
 			return
 		end
 		job.alias = val
+		cat9.add_message(
+			string.format("job (%d) now known as %s", job.id, job.alias))
+		return
+	end
+
+	if key == "protect" then
+		job.protected = val == "true"
+		return
+	end
+
+-- rest is persist command
+	if key ~= "persist" then
+		return
+	end
+
+	if not job.factory then
+		cat9.add_message("config job: job does not define a factory")
 		return
 	end
 
@@ -141,11 +153,19 @@ function suggest.config(args, raw)
 -- job configuration needs are rather sparse, persistance?
 	if type(args[2]) == "table" then
 		if #args == 3 then
-			cat9.readline:suggest(cat9.prefix_filter({"persist", "alias"}, args[3]), "word")
+			cat9.readline:suggest(cat9.prefix_filter({"persist", "alias", "protect"}, args[3]), "word")
 
-		elseif #args == 4 and (args[3] == "persist" or args[3] == "alias") then
-			cat9.readline:suggest(cat9.prefix_filter(
-				{"off", "manual", "auto"}, args[4]), "word")
+		elseif #args == 4 and
+			(args[3] == "persist" or args[3] == "alias" or args[3] == "protect") then
+
+			if args[3] == "persist" then
+				cat9.readline:suggest(cat9.prefix_filter(
+					{"off", "manual", "auto"}, args[4]), "word")
+
+			elseif args[3] == "protect" then
+				cat9.readline:suggest(cat9.prefix_filter(
+					{title = "Prevent the job from being deleted", "true", "false"}, args[4]), "word")
+			end
 
 		else
 			cat9.add_message("config: too many arguments")
