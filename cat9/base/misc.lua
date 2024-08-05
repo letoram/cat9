@@ -261,7 +261,7 @@ function cat9.get_message(dequeue)
 end
 
 function cat9.opt_number(set, ind, default)
-	local num = set[ind] and tostring(set[ind])
+	local num = set[ind] and tonumber(set[ind])
 	return num and num or default
 end
 
@@ -617,6 +617,10 @@ function cat9.template_to_str(template, helpers, job)
 -- implicit $end
 	apply_queue(res, queue, template)
 	return res
+end
+
+function cat9.always_active()
+	return true
 end
 
 function cat9.table_copy_shallow(intbl)

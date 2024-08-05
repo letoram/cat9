@@ -297,6 +297,38 @@ This tries to open the contents of [file] through a designated handler. For the
 job mode specifically, it either switches the window to a text or hex buffer.
 It is also possible to pop it out as a new window or tab.
 
+### Each
+
+    each (sequential OR merge) #job !! cmd $arg $dir
+
+This will slice data from #job and for each line in the output, parse the
+string after !! substituting arg for the line and and dir for the directory
+of #job, or if the line contains a path (/to/somewhere) the /to part. The
+later form is useful when combined with `stash`. By default each runs all
+commands in parallel.
+
+### Contain
+
+    contain new
+    contain #job add #job1 #job2 ..
+    contain #job show n1 n2 ..
+                 show append n1 n2 ..
+    contain #job release n1 n2 ..
+    contain #job forget n1 n2 ..
+    contain #job capture [on | off | toggle]
+
+This creates a container job which absorbs other visible ones into itself. It
+is useful both for reducing visible clutter and for treating a collection of
+data sources as a single discrete one.
+
+You spawn a new container job via 'contain new' and either manually add the
+jobs that should be treated this way into itself through add #id #job, or by
+enabling job capture via 'contain #id capture on'.
+
+It is not possible to nest containers, and some builtins that spawn jobs will
+refuse to be captured in this way. Jobs that are bound to a different window
+will also refuse capture.
+
 ### Forget
 
     forget #job1 #job2

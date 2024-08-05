@@ -4,6 +4,11 @@ function(cat9, root, builtins, suggest)
 local build_detach_handler =
 	loadfile(string.format("%s/cat9/base/detach.lua", lash.scriptdir))()
 
+local errors =
+{
+	bad_scroll_argument = "view #job scroll >...< : expected number"
+}
+
 builtins.hint["view"] = "Change job data view mode"
 local viewlut = {}
 function viewlut.out(set, i, job)
@@ -60,7 +65,10 @@ local function detach(job, mode)
 			job.detach_keep = keep
 
 -- since the job is hidden layout will call it separately,
-			table.insert(job.hooks.on_destroy, destroy_wnd)
+			table.insert(job.hooks.on_destroy, function()
+				destroy_wnd(job)
+			end
+			)
 			wnd:update_identity(job.name)
 
 		end, "split")
@@ -125,14 +133,22 @@ function viewlut.scroll(set, i, job)
 	end
 
 	local page_bound = 1
+
 	if set[2] == "page" then
 		table.remove(set, 2)
 		page_bound = job.region[4] - job.region[2] - 2
 		page_bound = page_bound < 1 and 1 or page_bound
+
+	elseif set[2] == "relative" then
+		table.remove(set, 2)
+		job.row_offset_realtive = true
+		job.row_offset = 0
+
+	elseif set[2] == "absolute" then
+		table.remove(set, 2)
+		job.row_offset_relative = false
 	end
 
-	local row = 0
---	job.row_offset_relative = is_rel(set[2])
 	local row = cat9.opt_number(set, 2, 0) * page_bound
 	local col = cat9.opt_number(set, 3, 0)
 
@@ -316,6 +332,7 @@ function suggest.view(args, raw)
 			table.remove(args, 1)
 			return cat9.views[args[1]](job, true, args, raw)
 		end
+		return
 	end
 
 -- view #0 command [...]

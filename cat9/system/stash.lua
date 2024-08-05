@@ -303,7 +303,8 @@ local function ensure_stash_job()
 		view_name = "stash",
 		short = "Stash",
 		slice = stash_slice,
-		old_ioh = cat9.resources.bin
+		old_ioh = cat9.resources.bin,
+		check_status = cat9.always_active
 	}
 
 	cat9.import_job(job)
@@ -324,6 +325,15 @@ local function add_file(v)
 		return false, kind
 	end
 
+-- workaround for root
+	if string.sub(v, 1, 2) == "//" then
+		v = string.sub(v, 2)
+	end
+
+	if string.sub(v, 1, 2) == "./" then
+		v = root:chdir() .. string.sub(v, 2)
+	end
+
 	local map =
 	{
 		source = v,
@@ -332,12 +342,6 @@ local function add_file(v)
 	}
 
 	map.kind = kind
-
-	if string.sub(v, 1, 2) == "./" then
-		v = root:chdir() .. string.sub(v, 2)
-		map.map = v
-		map.source = v
-	end
 
 -- O(n) ignore duplicates
 	for i=1,#active_job.set do
@@ -652,7 +656,8 @@ function commands.archive(args)
 				bytecount = 10,
 				name = "archive",
 				short = "Archive",
-				full = string.format("Archive(%s)", tmpfilename)
+				full = string.format("Archive(%s)", tmpfilename),
+				check_status = cat9.always_active
 			}
 		}
 		cat9.import_job(newjob)

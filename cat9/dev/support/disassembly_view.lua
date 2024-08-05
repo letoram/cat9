@@ -20,10 +20,7 @@ local function view_disasm(job, x, y, cols, rows, probe)
 end
 
 local function view_override(job, x, y, row, set, ind, col, selected, cols)
-	local fmt = set[ind]
-
 	--	job.pc and cfg.disassembly_selected or cfg.disassembly
-
 	job.root:write_to(x, y, set[ind])
 end
 

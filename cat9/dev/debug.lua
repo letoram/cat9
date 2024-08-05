@@ -76,7 +76,8 @@ local function attach_window(key, fact, ...)
 				cat9.import_job({
 					short = fact,
 					parent = job,
-					data = job.debugger[key]
+					data = job.debugger[key],
+					check_status = cat9.always_active
 				})
 		else
 			wnd = fact(cat9, builtin_cfg, job, ...)
@@ -489,7 +490,8 @@ function cmds.launch(...)
 	local job = {
 		short = string.format("Debug:launch(%s)", outargs[1]),
 		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, outargs),
-		windows = {}
+		windows = {},
+		check_status = cat9.always_active
 	}
 
 	job.data = job.debugger.output
@@ -530,7 +532,8 @@ function cmds.attach(...)
 	local job = {
 		short = "Debug:attach",
 		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, pid),
-		windows = {}
+		windows = {},
+		check_status = cat9.always_active
 	}
 
 -- this lets us swap out job.data between the different buffers, i.e. stderr,

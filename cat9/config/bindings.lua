@@ -5,6 +5,7 @@ function(cat9, root, config)
 	bnd[tui.keys.D] = "forget #last"
 	bnd[tui.keys.Q] = "repeat #last edit flush"
 	bnd[tui.keys.F2] = "builtin"
+	bnd[tui.keys.F3] = "view monitor"
 --	bnd[tui.keys.F3] = "builtin dev"
 	bnd.m1_click = "view #csel toggle"
 	bnd.m2_click = "open terminal #csel"
@@ -12,6 +13,8 @@ function(cat9, root, config)
 	bnd.m4_data_click = "view #csel scroll -1"
 	bnd.m5_data_click = "view #csel scroll +1"
 -- uncomment for chorded input
---	bnd.chord[tui.keys.D] = {} -- enter chord state
---	bnd.chord[tui.keys.D][tui.keys.W] = "forget #last"
+	bnd.chord[tui.keys.SPACE] = {} -- enter chord state
+--	bnd.chord[tui.keys.SPACE][tui.keys.D] = "builtin dev"
+--	bnd.chord[tui.keys.SPACE][tui.keys.S] = "builtin system"
+--	bnd.chord[tui.keys.SPACE][tui.keys.V] = "view monitor"
 end

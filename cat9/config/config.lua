@@ -168,6 +168,8 @@ return
 		line_number = {fc = tui.colors.label, bc = tui.colors.label},
 		data = {fc = tui.colors.text, bc = tui.colors.text},
 		data_highlight = {fc = tui.colors.alert, bc = tui.colors.alert},
+		error_line = {fc = tui.colors.ref_red, bc = tui.colors.text},
+		ok_line = {fc = tui.colors.ref_green, bc = tui.colors.text}
 	},
 
 	glob =

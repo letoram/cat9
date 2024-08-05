@@ -328,17 +328,17 @@ local function rows_for_job(job, cols, rows)
 		return cap > wrows and wrows or cap
 	end
 
--- clamp
+-- clamp inarg
 	if not job.expanded then
 		rows = rows > cap and cap or rows
 	end
 
-	return job:view(0, 0, cols, rows, true) + 1
+	local count = job:view(0, 0, cols, rows, true) + 1
+	return count > rows and rows or count
 end
 
 local function draw_job(job, x, y, cols, rows, cc)
 	local rcap = rows - 1
-	rows = rows_for_job(job, cols, rows)
 	local len = 0
 
 	job.region = {x, y, x + cols, y}
@@ -603,13 +603,13 @@ function cat9.redraw()
 		root:write_to(0, rows - 2, message)
 	end
 
+	if cat9.selectedjob and cat9.selectedjob.redraw then
+		cat9.selectedjob:redraw(true, true)
+	end
+
 	if cat9.readline then
 		cat9.readline:bounding_box(0, rows - 1, cols, rows - 1)
 		cat9.readline:set_prompt(cat9.get_prompt())
-	end
-
-	if cat9.selectedjob and cat9.selectedjob.redraw then
-		cat9.selectedjob:redraw(true, true)
 	end
 end
 
