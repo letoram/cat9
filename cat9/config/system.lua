@@ -83,7 +83,6 @@ return
 			[tui.keys.END] = "view #csel scroll page +100000",
 			[tui.keys.SPACE] = "view #csel select $=crow",
 		},
-
 		watch = {
 			"/usr/bin/env",
 			"/usr/bin/env",

@@ -1,9 +1,13 @@
 --
--- add:
---    compressor picking, archive destination
---    directory expansion
---    string / todo items
---    serialization
+-- this currently only handles file/directory types, question is if
+-- we should add others here or add a separate scratchpad for string
+-- / todo items.
+--
+-- there is also no state persistence for stash.
+--
+-- missing commands:
+--   compress with archive destination.
+--   expand for taking directories and flatten into files
 --
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
@@ -61,8 +65,6 @@ local commands =
 	"unlink",
 	"map",
 	"verify",
--- "compress",
--- "expand",
 	"remove",
 	"prefix",
 	hint = {

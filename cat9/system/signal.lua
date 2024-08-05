@@ -1,3 +1,6 @@
+-- this should possibly be split out into a base/osdev part to get the
+-- actual valid list of signals rather than a hardcoded set
+
 local sigmsg = "[default:kill,hup,user1,user2,stop,quit,continue]"
 local signame = {"kill", "hup", "user1", "user2", "stop", "quit", "continue"}
 local oksig = {

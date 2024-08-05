@@ -1,3 +1,11 @@
+--
+-- Currently compatibility issues with gdb, last working version was
+-- 14.1, the rest broke the python interface on serialization of scopes.
+--
+-- https://sourceware.org/bugzilla/show_bug.cgi?id=32020
+-- https://sourceware.org/bugzilla/show_bug.cgi?id=32029
+--
+
 return
 function(cat9, parser, args, target)
 local Debugger = {}

@@ -255,7 +255,6 @@ function cmds.thread(job, ...)
 		end,
 		var =
 		function()
-			print("set")
 		end
 	}
 

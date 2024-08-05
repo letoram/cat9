@@ -2,16 +2,12 @@ return
 function(cat9, root, builtins, suggest, views)
 
 -- ongoing:
--- 1. after adding the write override the contents doesn't show anymore,
---    likely what is blocking list as well.
 --
--- 2. the each command adds the job twice
+-- biggest valuable change here would be to modify the merge-set view to only
+-- process the visible parts of the set and to adjust the linenumber
+-- (job.lineno_offset) as the current cache is just a quick mitigation,
+-- currently it builds the complete one which can and will get huge.
 --
--- 3. no suggest
---
--- biggest valuable change here would be to modify the merge-set view
--- to only process the visible parts of the set and to adjust the linenumber
--- (job.lineno_offset) as the current cache is just a quick mitigation
 local errors = {
 	not_container = "contain >job< ... referenced job is not a container",
 	expected_new = "contain >arg< unknown action, expected: new",

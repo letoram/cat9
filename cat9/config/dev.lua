@@ -38,7 +38,7 @@ return
 -- commands to run when debugger is initalised
 		options = {
 			"set disassembly-flavor intel",
-			"set debug dap-log-file /tmp/dap.log"
+--			"set debug dap-log-file /tmp/dap.log"
 		}
 	}
 }

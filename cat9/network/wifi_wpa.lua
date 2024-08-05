@@ -17,6 +17,7 @@
 -- i. set key to = to query for password (mask_character = *)
 -- j. on-ip-retrieved, on-ip-not-retrieved
 -- k. map rfkill block on-off
+-- l. remember passwords for later (opt-in)
 --
 
 local poll_cmd

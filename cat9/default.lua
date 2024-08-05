@@ -1,5 +1,4 @@
-return
-{
+return {
 	'config.lua',
 	'copy.lua',
 	'each.lua',

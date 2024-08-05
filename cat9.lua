@@ -2,6 +2,7 @@
 -- License:     Unlicense
 -- Reference:   https://github.com/letoram/cat9
 -- See also:    HACKING.md, TODO.md
+--
 
 local cat9 =  -- vtable for local support functions
 {

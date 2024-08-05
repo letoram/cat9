@@ -7,6 +7,8 @@ function(cat9, cfg, job, th, frame)
 --  * make value clickable for toggle representation to force hex or binary (need bigInt)
 --  * hover for readMemory if it's natively hex-provided
 --  * arg for setting the visible registry group
+--  * trace / plot history for specific registers
+--  * sampling profiler?
 --
 
 local function get_group(job, group, cols)

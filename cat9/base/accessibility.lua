@@ -11,12 +11,15 @@ if config.accessibility then
 			cat9.a11y = wnd
 			new:hint({max_cols = 80, max_rows = 2})
 
--- first row will be claimed by readline, >1 are for us to populate
-			new:write_to(0, 0, "hi access")
-			new:alert("this is an alert")
-			new:notification("this is a notification")
-			new:failure("something went wrong")
-			new:refresh()
+--
+-- still just for testing.
+--
+--first row will be claimed by readline, >1 are for us to populate
+--			new:write_to(0, 0, "hi access")
+--			new:alert("this is an alert")
+--			new:notification("this is a notification")
+--			new:failure("something went wrong")
+--			new:refresh()
 		end
 	)
 end

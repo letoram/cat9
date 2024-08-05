@@ -20,6 +20,11 @@
 
 -- change the default lexer operator treatment so that /hi would becomes
 -- TOK_STR(/hi) and not OP_DIV TOK_STR.
+--
+-- This should be kept synch to pipeworld so the same general parser and lexical
+-- format can be re-used, albeit by default here with a simpler processing mode
+-- as we don't expose function calls.
+--
 local lex_opts =
 {
 	operator_mask = {

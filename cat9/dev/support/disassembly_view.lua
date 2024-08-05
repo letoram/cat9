@@ -11,7 +11,7 @@ function(cat9, cfg, job, th, frame)
 --      if it is going to be taken
 --
 --  * copy / lift into emulator to test with different arguments and
---    register states
+--    register states or fuzz
 --
 
 local function view_disasm(job, x, y, cols, rows, probe)
@@ -38,6 +38,7 @@ end
 local wnd =
 	cat9.import_job({
 		short = "Debug:disassembly",
+		raw = "Debug:disassembly",
 		parent = job,
 		data = {bytecount = 0, linecount = 0}
 	})

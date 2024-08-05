@@ -20,7 +20,6 @@
 -- unregister a job from being processed or drawn. iostreams won't be
 -- closed immediately but deferred to garbage collection.
 --
---
 -- import_job(tbl) -> tbl:
 --
 -- take a job table and ensure that necessary fields are present or are

@@ -217,11 +217,13 @@ function(args, raw)
 	end
 
 	if si == 0 then
-		local set = {}
+		local set = {hint = {}}
 		if #raw > 6 then
 			table.insert(set, "!!")
+			table.insert(set.hint, "Separate job list from command template")
 		end
 		cat9.add_job_suggestions(set, false)
+		set.title = "Source job",
 		cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
 		return
 	end
@@ -234,6 +236,7 @@ function(args, raw)
 		for i=si+1,#args do
 			table.insert(reduce, args[i])
 		end
+		cat9.add_message("expand: $arg and/or $dir")
 		if suggest[cmd] then
 			return suggest[cmd](reduce, b)
 		end

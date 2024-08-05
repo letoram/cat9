@@ -1,3 +1,6 @@
+-- similar to jobmeta, possible entries that can be referenced in
+-- config.lua to generate the dynamic prompt.
+
 return
 function(cat9, root, config)
 

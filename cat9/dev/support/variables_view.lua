@@ -2,7 +2,7 @@ return
 function(cat9, cfg, job, th, frame)
 
 local function var_click(job, btn, ofs, yofs, mods)
--- shift-click to set watch?
+-- shift-click to set or toggle watch?
 	if cat9.readline then
 		cat9.readline:set(
 			string.format(

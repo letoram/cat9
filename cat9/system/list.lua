@@ -1,4 +1,3 @@
--- filter- view through fuzzy match or~
 --
 -- with long paths we need to compact the path for titlebar to not overflow
 -- justify pad user/group

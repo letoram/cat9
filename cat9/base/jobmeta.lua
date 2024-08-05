@@ -1,3 +1,6 @@
+-- these are possible fields that can be referenced in the config for which
+-- default entires can be shown in a selected or unselected jobs
+
 return
 function(cat9, root, config)
 	cat9.jobmeta["id"] =

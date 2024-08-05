@@ -11,6 +11,9 @@
 --   xy_to_hdr       - test if the specific xy hits a job on the job header bar
 --   xy_to_data      - test if the specific xy hits a job in its data region
 --
+-- job hooks:
+--   redraw(), event trigger after redrawing a job has been completed
+--
 return function(cat9, root, config)
 
 local handlers = cat9.handlers

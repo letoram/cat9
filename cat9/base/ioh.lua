@@ -1,6 +1,6 @@
--- defines the subset of window event handlers that implement the
--- reactive user-input logic for keypresses, mouse actions as well
--- as more abstract paste/binary drop.
+-- defines the subset of window event handlers that implement the reactive
+-- user-input logic for keypresses, mouse actions as well as more abstract
+-- paste/binary drop.
 return
 
 function(cat9, root, config)

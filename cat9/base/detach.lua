@@ -1,3 +1,8 @@
+--
+-- todo:
+--  handle bchunk state for drag and drop
+--
+
 return
 function(cat9, job)
 

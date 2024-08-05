@@ -1,6 +1,5 @@
 return function(cat9, root)
 local os_support = {}
-
 function os_support.files(pid, closure)
 -- for linux it is proc/pid/fds and listing or resolve
 -- for openBSD it is fstat -p

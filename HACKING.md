@@ -63,6 +63,11 @@ function(args, raw)
     cat9.readline:suggest(cat9.prefix_filter({"one", "thing", "to", "show", offset, 0), "word"))
 end
 
+The table provided to `prefix_filter` also accepts some other fields,
+title = "the current command" and hint = {} where hint is n- indexed to match
+the index of the suggest set result with a longer description, or key indexed
+with the same value for a similar effect.
+
 Views will be covered further down, but is only really useful if you want to
 provide other visualisers for the data that you add to any jobs created.
 

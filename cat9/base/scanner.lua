@@ -1,4 +1,3 @@
-
 -- provides helper functions for generating and filter readline completions
 -- using external oracles (e.g. find -maxdepth 1 -type d):
 --

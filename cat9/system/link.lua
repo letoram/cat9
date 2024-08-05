@@ -3,10 +3,6 @@
 -- it's src -> dst, dst -> src, repeat with softlink when hardlink constraints
 -- are not possible ..
 --
--- we should have a jobctl- like shared service for tracking mounts and mount
--- changes if inotify is available and mtab is there.
---
-
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 

@@ -4,9 +4,9 @@ function(cat9, cfg, job)
 local function slice_threads(job, lines)
 	local res = {}
 
--- return a more informed view of each thread so that we can use it
--- to copy out all resolved information about an execution thread
-	return cat9.resolve_lines(
+-- return a more informed view of each thread so that we can use it to copy out
+-- all resolved information about an execution thread
+return cat9.resolve_lines(
 		job, res, lines,
 		function(i)
 			return job.data[i]

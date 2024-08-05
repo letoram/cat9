@@ -21,3 +21,4 @@
 * added 'contain' builtin for merging jobs into one
 * multiple layouting / mouse picking fixes
 * jobs can be protected from forget through config #job protect true | false
+

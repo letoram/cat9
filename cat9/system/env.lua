@@ -1,3 +1,5 @@
+-- missing some form of persistence or per builtin- group setting
+
 return
 function(cat9, root, builtins, suggest)
 

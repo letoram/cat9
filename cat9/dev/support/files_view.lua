@@ -35,7 +35,7 @@ local wnd =
 
 	wnd.attr_lookup = attr_lookup
 	wnd:invalidated()
-
---	wnd.handlers.mouse_button = var_click -- click should just map to open
+--	wnd.handlers.mouse_button = var_click
+--	click should just map to open and stash with a timer option on verify
 	return wnd
 end

@@ -11,6 +11,31 @@
 --    match to a lut of [key = fptr(set, i, job)] and invoke all entries with
 --    a match.
 --
+--   each_ch(str, callback, error):
+--    works on logical complete utf8-encoded codepoints running callback with
+--    the codepoint and error if there was invalid data.
+--
+--   remove_match(tbl, ent):
+--    for i,v in ipairs(tbl) remove first matching ent
+--
+--   table.copy_recursive(tbl):
+--    naive k = v and recurse if type == table copy
+--
+--   string.split_first(str, ptn) => str, rest
+--
+--   compact_path(path):
+--    compress a file path label to /a/b/last/last for /all/but/last
+--
+--   modifier_string(mod):
+--    convert a modifier bitmap to a string representation
+--
+--   list_processes(closure):
+--    build a list of known system processes, pack into a table and run
+--    closure.
+--
+--   sz_to_human(bytes) -> prefix(M, B, ..), value
+--    create human readable short form of bytes
+--
 return
 function(cat9, root, config)
 local lastmsg
@@ -98,7 +123,7 @@ if not string.lpad then
 	end
 end
 
-function cat9.compact_path(str, lastcap)
+function cat9.compact_path(str)
 	local set = string.split(str, "/")
 	local compact = {}
 

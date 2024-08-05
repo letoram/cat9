@@ -1,3 +1,7 @@
+-- more is needed here for spawn arcan, though possible that it should be moved
+-- to open on a directory with an appl and complemented with parser for .desktop
+-- .appImage and similar files.
+
 return function(cat9, root, builtins, suggest)
 
 local function shc_helper(mode, ...)
@@ -37,11 +41,6 @@ local function shc_helper(mode, ...)
 	end
 
 	return job
-end
-
-local function spawn_arcan(...)
--- setup with a monitor channel so we can do things to it later
--- monitor-ctrl
 end
 
 -- alias for handover into vt100

@@ -3,8 +3,8 @@
 -- to eventually evolve into a more complete terminal emulator for the !!
 -- execution mode, but focus for now is just getting basic formatting to work.
 --
--- the structure is built / modelled after vt100.net/emu/dec_ansi_parser
--- (the vt500 series parser by paul flo williams).
+-- the structure is built / modelled after vt100.net/emu/dec_ansi_parser (the
+-- vt500 series parser by paul flo williams).
 --
 
 local esc_lut = {}

@@ -20,6 +20,7 @@ end
 local wnd =
 	cat9.import_job({
 		short = "Debug:maps",
+		raw = "Debug:maps",
 		parent = job,
 		thread = th,
 	})

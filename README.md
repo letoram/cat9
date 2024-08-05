@@ -44,6 +44,16 @@ or graphical application output into clipped regions of its own window.
 
 https://user-images.githubusercontent.com/5888792/161494402-9e5636e3-dd78-4fcf-bff0-fe5c3dd0a369.mp4
 
+Write-ups
+=========
+There is a growing set of posts that highlight specific use of new commands as
+they are added. These also work as help and demonstrations of how these can be
+used. The current ones are as follows:
+
+https://arcan-fe.com/2024/08/05/cat9-microdosing-each-and-contain/
+
+https://arcan-fe.com/2024/05/17/cat9-microdosing-stash-and-list/
+
 Installation
 ============
 

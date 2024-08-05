@@ -1,9 +1,9 @@
 return
 function(cat9, root, builtins, suggest, builtin_cfg)
 
--- this history should possibly also be job- contextual, i.e. when
--- we actively switch env, attach hist to that as well. this makes
--- the state store more complex so something for later.
+-- this history should possibly also be job- contextual, i.e. when we actively
+-- switch env, attach hist to that as well. this makes the state store more
+-- complex so something for later.
 local last_dir = root:chdir()
 local hist = {}
 local hist_cutoff = 2

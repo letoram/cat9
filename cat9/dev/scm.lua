@@ -4,6 +4,8 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 -- other useful extensions: 'github' tool
 -- fossil should show timeline, chat, issues to inject into commit message, ...
 --
+-- show the active tagset and use them on commit.
+--
 -- for the 'chat' we need to figure out the database and have sqlite3
 --     .find fslckout -> grab 'repository' from vvar;
 --     SELECT fmime FROM chat WHERE msgid=%d
