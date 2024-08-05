@@ -297,6 +297,16 @@ This tries to open the contents of [file] through a designated handler. For the
 job mode specifically, it either switches the window to a text or hex buffer.
 It is also possible to pop it out as a new window or tab.
 
+### Each
+
+    each (sequential OR merge) #job !! cmd $arg $dir
+
+This will slice data from #job and for each line in the output, parse the
+string after !! substituting arg for the line and and dir for the directory
+of #job, or if the line contains a path (/to/somewhere) the /to part. The
+later form is useful when combined with `stash`. By default each runs all
+commands in parallel.
+
 ### Contain
 
     contain new

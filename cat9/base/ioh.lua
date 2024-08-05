@@ -538,7 +538,6 @@ function handlers.tick()
 		local torem = {}
 		for i=#cat9.timers,1 do
 			if not cat9.timers[i]() then
-				print("remove", i)
 				table.remove(cat9.timers, i)
 			end
 		end

@@ -603,13 +603,13 @@ function cat9.redraw()
 		root:write_to(0, rows - 2, message)
 	end
 
+	if cat9.selectedjob and cat9.selectedjob.redraw then
+		cat9.selectedjob:redraw(true, true)
+	end
+
 	if cat9.readline then
 		cat9.readline:bounding_box(0, rows - 1, cols, rows - 1)
 		cat9.readline:set_prompt(cat9.get_prompt())
-	end
-
-	if cat9.selectedjob and cat9.selectedjob.redraw then
-		cat9.selectedjob:redraw(true, true)
 	end
 end
 

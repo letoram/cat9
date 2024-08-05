@@ -325,6 +325,15 @@ local function add_file(v)
 		return false, kind
 	end
 
+-- workaround for root
+	if string.sub(v, 1, 2) == "//" then
+		v = string.sub(v, 2)
+	end
+
+	if string.sub(v, 1, 2) == "./" then
+		v = root:chdir() .. string.sub(v, 2)
+	end
+
 	local map =
 	{
 		source = v,
@@ -333,12 +342,6 @@ local function add_file(v)
 	}
 
 	map.kind = kind
-
-	if string.sub(v, 1, 2) == "./" then
-		v = root:chdir() .. string.sub(v, 2)
-		map.map = v
-		map.source = v
-	end
 
 -- O(n) ignore duplicates
 	for i=1,#active_job.set do

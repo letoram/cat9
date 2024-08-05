@@ -21,11 +21,13 @@ function(...)
 		return false, errors.recursive
 	end
 
-	local mode = "sequential"
+	local mode = "split"
 
 	if type(args[1]) == "table" and args[1].parg then
 		if args[1][1] == "merge" then
 			mode = "merge"
+		elseif args[1][1] == "sequential" then
+			mode = "sequential"
 		else
 			return errors.unknown_parg
 		end
@@ -123,11 +125,11 @@ function(...)
 
 		local ni = table.remove(set, 1)
 		if not ni then
+			cat9.hook_import_job()
 			return
 		end
 
 		if mode == "sequential" or mode == "merge" then
-
 -- capture the creation of any new job from the command, this is more
 -- annoying than one might think since a command can spawn jobs asynch
 -- that trigger other jobs etc. and we need to hook / batch all of them.
@@ -135,24 +137,26 @@ function(...)
 			job_hook =
 			function(job)
 				if not job then
-					cat9.hook_import_job(job_hook)
+					cat9.hook_import_job()
 					return
 				end
 
--- somehow added twice ?!
 				if merge_job then
 					cat9.parse_string(nil,
 						string.format("#%d contain #%d add #%d", merge_job.id, merge_job.id, job.id)
 					)
-					table.insert(merge_job.jobs, job)
-				else
-					pending = pending + 1
 				end
+				pending = pending + 1
 
 				local opt = {armed = true, job = job, pid = job.pid}
 				local chook
 
-				local ic = function() run_item(opt) end
+				local ic =
+				function()
+					print("event callback")
+					run_item(opt)
+				end
+
 				table.insert(job.hooks.on_destroy, ic)
 				table.insert(job.hooks.on_fail, ic)
 				table.insert(job.hooks.on_finish, ic)
@@ -162,23 +166,34 @@ function(...)
 							chook = cat9.import_hook
 							cat9.hook_import_job(job_hook)
 						else
-							cat9.import_hook = chook
+							cat9.import_hook = chook == ic and nil or chook
 						end
 					end
 				)
 			end
-
 			cat9.hook_import_job(job_hook)
+		end
 
 -- We ignore the parsing / tokenization after !! so that we can copy
 -- it and swap out $arg with the current item and just throw this into
 -- parse_string. Make sure to prevent each from being part of the arg.
-				in_each_parse = true
-				local torun = string.gsub(
-					action, "$arg", "\"" .. string.gsub(ni, "\"", "\\\"") .. "\"")
-				cat9.parse_string(nil, torun)
-				in_each_parse = false
+		in_each_parse = true
+		local torun = string.gsub(
+			action, "$arg", "\"" .. string.gsub(ni, "\"", "\\\"") .. "\"")
+
+-- special-case /some/item and give that priority for things to work from slicing
+-- the stash, otherwise use the cwd for the job
+		local dir = root:chdir()
+		if string.sub(ni, 1, 1) == "/" or string.sub(ni, 1, 2) == "./" then
+			dir = string.match(ni, "(.*)/")
 		end
+
+		torun = string.gsub(
+			torun, "$dir", "\"" .. string.gsub(dir, "\"", "\\\"") .. "\"")
+
+		cat9.parse_string(nil, torun)
+		in_each_parse = false
+		run_item()
 	end
 
 	run_item()

@@ -367,7 +367,7 @@ local function on_redraw(job, over, selected)
 	end
 
 -- we are in control over the cursor, move it to the view_base+cursor
-	if over and selected and (job.hidden or not cat9.readline) then
+	if over and selected and (job.hidden and not cat9.readline) then
 		job.root:cursor_to(0, job.region[2] + job.cursor[2] + 1)
 	end
 end

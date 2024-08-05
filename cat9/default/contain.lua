@@ -187,7 +187,7 @@ local function container_changed(job)
 			table.insert(job.selected_bar.m1,
 				tostring(string.format("#%d contain #%d show %d", job.id, job.id, i)))
 			table.insert(job.selected_bar.m2,
-				tostring(string.format("#%d contain #%d show append %d", job.id, job.id, i)))
+				tostring(string.format("#%d contain #%d show flip %d", job.id, job.id, i)))
 		end
 	else
 		job.selected_bar = nil
@@ -214,6 +214,10 @@ local function add_job(container, job)
 	job.hidden = true
 	job.old_protected = job.protected -- save so we can restore on release
 	job.protected = true
+
+	if cat9.latestjob == job then
+		cat9.latestjob = container
+	end
 
 	if job.pid then
 		container.container_running = container.container_running + 1
@@ -264,6 +268,7 @@ function cmds.forget(job, args)
 
 				local job = table.remove(job.jobs, i)
 				job.hidden = false
+				job.protected = false
 				cat9.parse_string(string.format("forget #%d", job.id))
 				break
 			end
@@ -321,11 +326,13 @@ function cmds.add(job, args)
 end
 
 function cmds.show(job, args)
-	local append = false
+	local flip = false
 	local set = {}
 
-	if type(args[1]) == "string" and args[1] == "append" then
+	local toggle
+	if type(args[1]) == "string" and args[1] == "flip" then
 		set = job.active_set and job.active_set or {}
+		flip = args[1] == "flip"
 		table.remove(args, 1)
 	end
 
@@ -340,21 +347,29 @@ function cmds.show(job, args)
 		return
 	end
 
--- make sure we don't expose duplicates
-	for _,v in ipairs(args) do
-		local found = false
-		for _,k in ipairs(set) do
-			if k == v then
-				found = true
-				break
+	local in_set = function(val)
+		for i,v in ipairs(set) do
+			if v == val then
+				return i
 			end
 		end
-		if not found then
+	end
+
+	for _,v in ipairs(args) do
+		local ind = in_set(v)
+		if ind and flip then
+			table.remove(set, ind)
+		elseif not ind then
 			table.insert(set, v)
 		end
 	end
 
-	job.active_set = set
+	if #set == 0 then
+		job.active_set = nil
+	else
+		job.active_set = set
+	end
+
 	container_changed(job)
 	cat9.flag_dirty(job)
 end
@@ -637,6 +652,7 @@ function builtins.contain(...)
 			function()
 				job.in_container = false
 				if job.in_capture then
+					job.in_capture = false
 					cat9.hook_import_job()
 				end
 			end
