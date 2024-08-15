@@ -389,15 +389,26 @@ end
 
 local function handle_initialized_event(dbg, msg)
 	dbg.data.capabilities = msg.body or {}
+
 	if type(target) == "number" then
-		send_request(dbg, "attach", {pid = target}, function()
-			send_request(dbg, "startDebugging", {request = "attach"}, function(dbg, msg)
-			end)
-		end)
+		send_request(dbg, "attach", {pid = target},
+		function()
+		end
+	)
 	elseif type(target) == "table" then
+		local target = table.copy_shallow(target)
+		local program = table.remove(target, 1)
+
+		if args.dap_create then
+			for i,v in ipairs(args.dap_create) do
+				print(string.format(v, program))
+				send_request(dbg, string.format(v, program))
+			end
+		end
+
 		local launchopt = {
 			stopAtBeginningOfMainSubprogram = true,
-			program = table.remove(target, 1)
+			program = program
 		}
 		launchopt.args = target
 		launchopt.env = cat9.env
@@ -835,7 +846,18 @@ table.insert(
 )
 
 -- the actual trigger event is "initialized" not the reply to "initialize"
-send_request(debug, "initialize", {adapterID = "gdb"}, function() end)
+send_request(debug, "initialize", {adapterID = args.dap_id},
+	function()
+		local target = cat9.table_copy_shallow(target)
+		local program = table.remove(target, 1)
+
+		if args.dap_create then
+			for i,v in ipairs(args.dap_create) do
+				debug:eval(string.format(v, program), "repl", function() end)
+			end
+		end
+	end
+)
 
 return debug
 end
