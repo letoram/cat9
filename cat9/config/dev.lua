@@ -3,6 +3,11 @@ return
 	debug =
 	{
 		dap_default = {"gdb", "gdb", "-i", "dap", "-q"},
+--		dap_default = {"lldb-dap", "lldb-dap"},
+		dap_create = {
+--			"target create %s",
+		},
+		dap_id = {"gdb"},
 		default_views = {"stderr", "stdout", "threads", "errors"},
 		hide_while_runnning = false,
 		thread = {bc = tui.colors.text, fc = tui.colors.text},

@@ -4,7 +4,8 @@ local Debugger = {}
 local errors = {
 	breakpoint_id = "change or remove on breakpoint without valid id",
 	breakpoint_missing = "unknown breakpoint %d",
-	set_breakpoint = "breakpoint request failed"
+	set_breakpoint = "breakpoint request failed",
+	set_variable, "set %s failed: %s"
 }
 
 local send_request
@@ -15,6 +16,23 @@ local function invalidate_threads(dbg)
 			thread.handlers.invalidated[i](thread)
 		end
 	end
+end
+
+local function send_set_variable(dbg, ref, name, val)
+	send_request(
+	dbg, "setVariable", {
+			variablesReference = ref,
+			name = name,
+			value = val,
+		},
+		function(job, msg)
+			if msg.success then
+				return
+			end
+			dbg.errors:add_line(dbg,
+				string.format(errors.set_variable, name, msg.message))
+		end
+	)
 end
 
 local function get_frame_locals(frame)
@@ -43,11 +61,23 @@ local function get_frame_locals(frame)
 						variablesReference = v.variablesReference
 					},
 					function(job, msg)
-						frame.cached_locals[string.lower(v.name)] =
-							{
-								reference = v.variablesReference,
-								variables = msg.body.variables
-							}
+						local ref = {
+							reference = v.variablesReference,
+						}
+						if msg.success and msg.body.variables then
+							ref.variables = msg.body.variables
+
+							for _, var in ipairs(msg.body.variables) do
+								var.modify =
+								function(var, val)
+									send_set_variable(
+										frame.thread.dbg, v.variablesReference, var.name, val)
+								end
+							end
+						else
+							error = not msg.success and msg.message or nil
+						end
+						frame.cached_locals[string.lower(v.name)] = ref
 					end
 				)
 			end
@@ -206,24 +236,24 @@ local function dap_bpt_to_bpt(bpt, b)
 	end
 end
 
-local function synch_breakpoints_handler(job, msg)
+local function synch_breakpoints_handler(dbg, msg)
 	if not msg.success then
-		job.output:add_line(job, errors.set_breakpoint)
+		dbg.output:add_line(dbg, errors.set_breakpoint)
 		return
 	end
 	for i,v in ipairs(msg.body.breakpoints) do
-		local id, ind = get_breakpoint_by_id(job, v.id)
+		local id, ind = get_breakpoint_by_id(dbg, v.id)
 		local bpt = {}
 		dap_bpt_to_bpt(bpt, v)
 
 		if not id then
-			table.insert(job.data.breakpoints, bpt)
+			table.insert(dbg.data.breakpoints, bpt)
 		else
-			job.data.breakpoints[ind] = bpt
+			dbg.data.breakpoints[ind] = bpt
 		end
 	end
 
-	invalidate_threads(job)
+	invalidate_threads(dbg)
 end
 
 local function run_update(dbg, event)
@@ -395,6 +425,15 @@ local function handle_initialized_event(dbg, msg)
 			end)
 		end)
 	elseif type(target) == "table" then
+		local target = cat9.table_copy_shallow(target)
+		local program = table.remove(target, 1)
+
+		if args.dap_create then
+			for i,v in ipairs(args.dap_create) do
+				send_request(dbg, string.format(v, program))
+			end
+		end
+
 		local launchopt = {
 			stopAtBeginningOfMainSubprogram = true,
 			program = table.remove(target, 1)
@@ -405,7 +444,7 @@ local function handle_initialized_event(dbg, msg)
 
 		send_request(dbg, "launch", launchopt,
 			function()
-				send_request(dbg, "startDebugging", {request = "launch"}, function(dbg, msg) end)
+--				send_request(dbg, "startDebugging", {request = "launch"}, function(dbg, msg) end)
 			end
 		)
 	else
@@ -631,7 +670,9 @@ function Debugger:eval(expression, context, closure)
 	send_request(self, "evaluate", {expression = expression, context = context},
 		function(job, msg)
 			local b = msg.body
-			if b and b.result then
+			if not msg.success then
+				self.errors:add_line(self, msg.message)
+			elseif b and b.result then
 				for _, line in ipairs(string.split(b.result, "\n")) do
 					self.output:add_line(self, line)
 				end

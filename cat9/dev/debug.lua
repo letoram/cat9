@@ -21,7 +21,7 @@ local view_factories =
 	"variables",
 	"arguments",
 	"files",
-	"maps"
+	"maps",
 }
 
 for i=1,#view_factories do
@@ -255,13 +255,23 @@ function cmds.thread(job, ...)
 		end,
 		var =
 		function()
-			print("set")
+			local locals = frame:locals()
+			if locals.locals then
+				for _,v in ipairs(locals.locals.variables) do
+					if v.name == base[2] and base[3] == "=" then
+						v:modify(base[4])
+						return
+					end
+				end
+			end
+				job.debugger.errors:add_line(job.debugger, "variable not in frame")
 		end
 	}
 
 	local fid = 0
-	if tonumber(base[2]) then
-		fid = tonumber(base[2])
+	if tonumber(base[1]) then
+		fid = tonumber(base[1])
+		table.remove(base, 1)
 	end
 
 	if not domains[base[1]] then
