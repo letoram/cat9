@@ -20,7 +20,8 @@ end
 
 local function destroy_wnd(job)
 	if job.root ~= lash.root then
-		job.root:destroy()
+		job.root:close()
+		job.root = lash.root
 	end
 
 	job.redraw = job.detach_redraw
