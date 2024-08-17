@@ -32,7 +32,7 @@ for i=1,#view_factories do
 end
 
 return
-function(cat9, root, builtins, suggest, views, builtin_cfg)
+function(cat9, root, builtins, suggest, _, builtin_cfg)
 
 local os_support =
 	loadfile(string.format("%s/cat9/dev/support/debug_os.lua", lash.scriptdir))()(cat9, root)
@@ -63,7 +63,7 @@ local views = {}
 -- wrapper for tracking singleton or grouped windows (sources)
 local function attach_window(key, fact, ...)
 	return
-	function(job, opts, ...)
+	function(job, opts, th, frame)
 		local group = opts.group or "windows"
 		local wnd
 
@@ -80,12 +80,14 @@ local function attach_window(key, fact, ...)
 					check_status = cat9.always_active
 				})
 		else
-			wnd = fact(cat9, builtin_cfg, job, ...)
+			wnd = fact(cat9, builtin_cfg, job, th, frame)
 		end
 		job[group][key] = wnd
 
--- if the contents should be rebuilt on a hook like a stack frame
--- becoming invalid or updated
+-- if the contents should be rebuilt on a hook like a stack frame becoming
+-- invalid or updated, this will be called whenever a thread changes state from
+-- running or stopped or when certain locally cached data has changed like
+-- variables being set.
 		local track
 		if opts.invalidated then
 			track = function()
@@ -93,6 +95,7 @@ local function attach_window(key, fact, ...)
 					wnd:invalidated()
 				end
 			end
+			table.insert(th.handlers.invalidated, track)
 		end
 
 		table.insert(
@@ -100,7 +103,7 @@ local function attach_window(key, fact, ...)
 			function()
 				job[group][key] = nil
 				if opts.invalidated then
-					local ih = opts.invalidated
+					local ih = th.handlers.invalidated
 
 					for i=1,#ih do
 						if ih[i] == track then
@@ -247,7 +250,8 @@ function cmds.thread(job, ...)
 		end,
 		variables =
 		function()
-			views.variables(job, {}, th, frame)
+			views.variables(job,
+				{invalidated = frame}, th, frame)
 		end,
 		arguments =
 		function()
@@ -255,22 +259,24 @@ function cmds.thread(job, ...)
 		end,
 		var =
 		function()
-			local locals = frame:locals()
-			if locals.locals then
-				for _,v in ipairs(locals.locals.variables) do
-					if v.name == base[2] and base[3] == "=" then
-						v:modify(base[4])
-						return
+			th:locals(frame,
+				function(locals)
+					if locals.locals then
+						for _,v in ipairs(locals.locals.variables) do
+							if v.name == base[2] and base[3] == "=" then
+								v:modify(base[4])
+								return
+						end
 					end
+					job.debugger.errors:add_line(job.debugger, "variable not in frame")
 				end
-			end
-				job.debugger.errors:add_line(job.debugger, "variable not in frame")
+			end)
 		end
 	}
 
-	local fid = 0
+	frame = 0
 	if tonumber(base[1]) then
-		fid = tonumber(base[1])
+		frame = tonumber(base[1])
 		table.remove(base, 1)
 	end
 
@@ -278,14 +284,7 @@ function cmds.thread(job, ...)
 		return false, string.format(errors.bad_thread_cmd, base[1])
 	end
 
-	for i=1,#th.stack do
-		if th.stack[i].id == fid then
-			frame = th.stack[i]
-			break
-		end
-	end
-
-	if not frame then
+	if not th:frame(frame) then
 		return false, errors.bad_frame
 	end
 
@@ -396,7 +395,7 @@ function cmds.source(job, ...)
 				if th.stack[1].path ~= ref[1] then
 					job.debugger:source(th.stack[1].path,
 						function(source)
-							th.stack[1]:source(source, th.stack[1].line)
+							th.stack[1].source = th.stack[1].line
 							wnd.source_ref = th.stack[1].path
 						end
 					)

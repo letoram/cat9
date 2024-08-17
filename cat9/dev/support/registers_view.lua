@@ -1,5 +1,5 @@
 return
-function(cat9, cfg, job, th, frame)
+function(cat9, cfg, job, th, frameid)
 
 -- improvements todo:
 --
@@ -116,19 +116,23 @@ local wnd =
 
 	wnd.invalidated =
 	function()
-		local locals = frame:locals()
-		if not locals.registers then
-			return
-		end
+		th:locals(frameid,
+			function(locals)
+				if not locals.registers then
+					return
+				end
 
 -- prepare data for slice to work
-		for _, v in ipairs(locals.registers.variables) do
-			table.insert(wnd.data,
-				string.format("%s = %s", v.name, v.value))
-		end
+			wnd.data = {bytecount = 0}
+			for _, v in ipairs(locals.registers.variables) do
+				table.insert(wnd.data,
+					string.format("%s = %s", v.name, v.value))
+				end
 
-		wnd.data.linecount = #wnd.data
-		wnd.data.raw = locals.registers.variables
+				wnd.data.linecount = #wnd.data
+				wnd.data.raw = locals.registers.variables
+				cat9.flag_dirty(wnd)
+		end)
 	end
 
 	wnd:invalidated()

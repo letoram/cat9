@@ -207,38 +207,34 @@ local function view_threads(job, x, y, cols, rows, probe)
 				end
 
 				if frame.expanded then
-					local locals = frame:locals()
-					if locals.pending then
-						table.insert(data.threads,{
-							string.lpad("(pending)", max + 8), click = {}})
-						table.insert(data, "")
-					else
-						local set = {string.lpad("", max + 8), click = {}}
+					frame:locals(
+						function(locals)
+							local set = {string.lpad("", max + 8), click = {}}
 
 -- these should probably just be shown as
 -- arg1="", arg2="", arg3="" on a separate line with on-click setting the
 -- prompt to edit the argument with debug set id var value
-						if locals.arguments then
-							table.insert(set, "Arguments ")
-							set.click[#set] = gen_debug_call(frame.id, "arguments")
-						end
+							if locals.arguments then
+								table.insert(set, "Arguments ")
+								set.click[#set] = gen_debug_call(frame.id, "arguments")
+							end
 
-						if locals.registers then
-							table.insert(set, "Registers ")
-							set.click[#set] = gen_debug_call(frame.id, "registers")
-						end
+							if locals.registers then
+								table.insert(set, "Registers ")
+								set.click[#set] = gen_debug_call(frame.id, "registers")
+							end
 
-						if locals.locals then
-							table.insert(set, "Variables ")
-							set.click[#set] = gen_debug_call(frame.id, "variables")
-						end
+							if locals.locals then
+								table.insert(set, "Variables ")
+								set.click[#set] = gen_debug_call(frame.id, "variables")
+							end
 
-						table.insert(set, "Disassemble ")
-						set.click[#set] = gen_debug_call(frame.id, "disassemble")
+							table.insert(set, "Disassemble ")
+							set.click[#set] = gen_debug_call(frame.id, "disassemble")
 
-						table.insert(data, "")
-						table.insert(data.threads, set)
-					end
+							table.insert(data, "")
+							table.insert(data.threads, set)
+						end)
 				end
 
 			end

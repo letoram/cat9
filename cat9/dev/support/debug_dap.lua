@@ -5,7 +5,8 @@ local errors = {
 	breakpoint_id = "change or remove on breakpoint without valid id",
 	breakpoint_missing = "unknown breakpoint %d",
 	set_breakpoint = "breakpoint request failed",
-	set_variable, "set %s failed: %s"
+	set_variable, "set %s failed: %s",
+	no_frame = "missing requested frame %d"
 }
 
 local send_request
@@ -18,37 +19,46 @@ local function invalidate_threads(dbg)
 	end
 end
 
-local function send_set_variable(dbg, ref, name, val)
+local function send_set_variable(dbg, ref, var, val)
 	send_request(
 	dbg, "setVariable", {
 			variablesReference = ref,
-			name = name,
+			name = var.name,
 			value = val,
 		},
 		function(job, msg)
 			if msg.success then
+				var.value = val
 				return
 			end
+
 			dbg.errors:add_line(dbg,
 				string.format(errors.set_variable, name, msg.message))
 		end
 	)
 end
 
-local function get_frame_locals(frame)
+local function get_frame_locals(frame, on_response)
 	if frame.cached_locals then
-		return frame.cached_locals
+
+		if frame.cached_locals.pending then
+			table.insert(frame.cached_locals.pending, on_response)
+		else
+			on_response(frame.cached_locals)
+		end
+		return
 	end
 
+	frame.cached_locals = {pending = {count = 0}}
+
 --
--- the scopes returned are just reference, then we need to actually
--- fetch them individually
+-- the scopes returned are just reference,
+-- then we need to actually fetch them individually
 --
 	send_request(frame.thread.dbg, "scopes", {
 		frameId = frame.id
 		},
 		function(job, msg)
-			frame.cached_locals.pending = false
 			if not msg.body or not msg.body.scopes then
 				return
 			end
@@ -57,10 +67,16 @@ local function get_frame_locals(frame)
 -- one might want to defer the ones marked as expensive so we don't
 -- drift into Gb territory.
 			for i,v in ipairs(msg.body.scopes) do
+
+				local pending = frame.cached_locals.pending
+				pending.count = pending.count + 1
+
 				send_request(frame.thread.dbg, "variables", {
 						variablesReference = v.variablesReference
 					},
 					function(job, msg)
+						pending.count = pending.count - 1
+
 						local ref = {
 							reference = v.variablesReference,
 						}
@@ -71,27 +87,36 @@ local function get_frame_locals(frame)
 								var.modify =
 								function(var, val)
 									send_set_variable(
-										frame.thread.dbg, v.variablesReference, var.name, val)
+										frame.thread.dbg, v.variablesReference, var, val)
 								end
 							end
 						else
 							error = not msg.success and msg.message or nil
 						end
 						frame.cached_locals[string.lower(v.name)] = ref
+
+-- last one requested, wake everyone
+						if pending.count == 0 then
+							frame.cached_locals.pending = nil
+							for _,v in ipairs(pending) do
+								v(frame.cached_locals)
+							end
+						end
 					end
 				)
 			end
 		end
 	)
-
-	frame.cached_locals = {pending = true}
-	return frame.cached_locals
 end
 
 local function synch_frame(thread)
 	if thread.state ~= "stopped" then
 		return
 	end
+
+-- fair optimization here would be to request locals here for the frames
+-- that have cached_locals requested (but with stepping that would quickly
+-- become all of them)
 
 	thread.stack = {}
 
@@ -171,6 +196,21 @@ local function ensure_thread(dbg, id)
 			end,
 			stepout = function(th)
 				stepreq(th, "stepOut")
+			end,
+			locals = function(th, fid, cb)
+				local frame = th:frame(fid)
+				if not frame then
+					cb({error = string.format(errors.no_frame, fid)})
+					return
+				end
+				frame:locals(cb)
+			end,
+			frame = function(th, fid)
+				for i=1,#th.stack do
+					if th.stack[i].id == fid then
+						return th.stack[i]
+					end
+				end
 			end,
 			stack = {},
 			handlers = {
@@ -420,10 +460,9 @@ end
 local function handle_initialized_event(dbg, msg)
 	dbg.data.capabilities = msg.body or {}
 	if type(target) == "number" then
-		send_request(dbg, "attach", {pid = target}, function()
-			send_request(dbg, "startDebugging", {request = "attach"}, function(dbg, msg)
+		send_request(dbg, "attach", {pid = target},
+			function()
 			end)
-		end)
 	elseif type(target) == "table" then
 		local target = cat9.table_copy_shallow(target)
 		local program = table.remove(target, 1)
@@ -436,7 +475,7 @@ local function handle_initialized_event(dbg, msg)
 
 		local launchopt = {
 			stopAtBeginningOfMainSubprogram = true,
-			program = table.remove(target, 1)
+			program = program
 		}
 		launchopt.args = target
 		launchopt.env = cat9.env
