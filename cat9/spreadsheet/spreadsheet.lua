@@ -1,5 +1,4 @@
 --
--- import_csv / append_row
 -- draw
 --
 -- keyboard navigation
@@ -20,29 +19,24 @@ local errors =
 	bad_cols = "new rows >cols<: expected number of columns"
 }
 
--- builtin_cfg needs:
---
-
---
--- import(csv)
--- grow
--- set row, col value or expression
--- insert [row] job(slice)
--- list token table and parse_resolve from pipeworld
---
-
 builtins.hint["new"] = "Create a new spreadsheet job with rows * cols cells"
 
 local function new_cell(val)
-	return
-	{
-		label = "",
--- fgc, bgc
---  expression
---  shaper = function
---  value
---  links
+	local tmpl = {
+		label = ""
 	}
+
+	if val == nil then
+		return tmpl
+	end
+
+	tmpl.raw = val
+	if type(val) == "number" then
+		val = tostring(val)
+	end
+	tmpl.label = val
+
+	return tmpl
 end
 
 local function view_spread(job, x, y, cols, rows, probe)
@@ -52,9 +46,28 @@ local function view_spread(job, x, y, cols, rows, probe)
 
 	local cy = y
 	local cw = 0
+	local yi = 1 + job.row_ofs
 
-	for ly=y,y+rows-1,1 do
-		job.root:write_to(x, ly, "abcabcabc")
+-- draw the base rowset,
+-- if we hit the currently selected one, pick other draw
+-- parameters.
+	local bg1 = builtin_cfg.col_1
+	local bg2 = builtin_cfg.col_2
+	local cw  = builtin_cfg.min_col_width
+	local nc  = math.floor((cols-1) / cw)
+
+-- draw outer border main header and column header first
+	for x=0, nc * cw, cw do
+	end
+
+	for ly=y+1,y+rows-2,1 do
+		local row = job.cells[yi + ly-y]
+
+-- if not row then pad
+		for x=0,nc * cw,cw do
+			job.root:write_to(x, ly,
+				string.lpad(" ", cw), (x+ly) % 2 == 1 and bg1 or bg2)
+		end
 	end
 
 	return rows
