@@ -211,9 +211,15 @@ local function view_threads(job, x, y, cols, rows, probe)
 						function(locals)
 							local set = {string.lpad("", max + 8), click = {}}
 
+							if locals.globals then
+								table.insert(set, "Globals ")
+								set.click[#set] = gen_debug_call(frame.id, "globals")
+							end
+
 -- these should probably just be shown as
 -- arg1="", arg2="", arg3="" on a separate line with on-click setting the
--- prompt to edit the argument with debug set id var value
+-- prompt to edit the argument with debug set id var value as well as annotate
+-- back into any source view.
 							if locals.arguments then
 								table.insert(set, "Arguments ")
 								set.click[#set] = gen_debug_call(frame.id, "arguments")

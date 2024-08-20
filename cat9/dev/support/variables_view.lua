@@ -1,21 +1,60 @@
 return
-function(cat9, cfg, job, th, frameid)
+function(cat9, cfg, job, th, frameid, opts)
 
 local function var_click(job, btn, ofs, yofs, mods)
 -- shift-click to set watch?
-	if cat9.readline and job.data[yofs] then
-		cat9.readline:set(
-			string.format(
-				"#%d debug #%d thread %d %d var %s",
-				job.id, job.id, job.thread.id, frameid, job.data[yofs])
-		)
+	if not cat9.readline or not job.data[yofs] then
+		return false
+	end
+
+	local var = job.data.vars[yofs]
+	if var.namedVariables and var.namedVariables > 0 then
+		if not var.variables then
+			var:fetch(
+				function(inv)
+					var.expanded = true
+					job:invalidated()
+				end
+			)
+		else
+			var.expanded = not var.expanded
+			job:invalidated()
+		end
+
 		return true
+	end
+
+-- with modifier click a variable tracker should be spawned or appended to
+-- (which should also support sampling various memory addresses)
+
+-- are we on the the name or on the value?
+	cat9.readline:set(
+		string.format(
+			"#%d debug #%d thread %d %d var %s",
+			job.id, job.id, job.thread.id, frameid, job.data[yofs])
+	)
+	return true
+end
+
+local function recurse_append(data, max, v)
+	table.insert(data.vars, v)
+	if v.expanded and v.variables then
+		table.insert(data, string.lpad(v.name, max) .. ":")
+		table.insert(data.vars, v)
+
+		for _,iv in ipairs(v.variables) do
+			recurse_append(data, max + 4, iv)
+		end
+	else
+		table.insert(data.vars, v)
+		table.insert(data, string.lpad(v.name, max) .. " = " ..
+			(v.variables and " ... " or v.value))
 	end
 end
 
 local wnd =
 cat9.import_job({
-	short = "Debug:variables",
+	short = "Debug:" .. (opts.globals and "globals" or "variables"),
 	parent = job,
 	thread = th,
 	data = {bytecount = 0, linecount = 0}
@@ -27,20 +66,22 @@ function()
 -- locals might be pending, defer update until that happens
 	th:locals(frameid,
 		function(locals)
-			wnd.data = {linecount = 0, bytecount = 0}
+			wnd.data = {linecount = 0, bytecount = 0, vars = {}}
+			local key = opts.globals and "globals" or "locals"
 
-			if locals.locals then
+			if locals[key] then
 				local max = 0
 
-				for i,v in ipairs(locals.locals.variables) do
+-- align left part for first layer
+				for i,v in ipairs(locals[key].variables) do
 					if #v.name > max then
 						max = #v.name
 					end
 				end
 
-				for i,v in ipairs(locals.locals.variables) do
+				for i,v in ipairs(locals[key].variables) do
 					if not v.error then
-						table.insert(wnd.data, string.lpad(v.name, max) .. " = " .. v.value)
+						recurse_append(wnd.data, max, v)
 					end
 				end
 			end

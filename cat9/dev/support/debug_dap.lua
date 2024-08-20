@@ -6,7 +6,8 @@ local errors = {
 	breakpoint_missing = "unknown breakpoint %d",
 	set_breakpoint = "breakpoint request failed",
 	set_variable, "set %s failed: %s",
-	no_frame = "missing requested frame %d"
+	no_frame = "missing requested frame %d",
+	popen = "couldn't execute the debug adapter",
 }
 
 local send_request
@@ -37,6 +38,38 @@ local function send_set_variable(dbg, ref, var, val)
 		end
 	)
 end
+
+local append_var_opts
+local function send_get_variable(dbg, invar, cb)
+	send_request(
+		dbg, "variables", {variablesReference = invar.variablesReference},
+			function(job, msg)
+				if msg.success and msg.body.variables then
+					invar.variables = msg.body.variables
+					for _, var in ipairs(msg.body.variables) do
+						append_var_opts(frame, invar, var)
+					end
+					cb(invar)
+				else
+					cb()
+				end
+			end
+		)
+end
+
+append_var_opts =
+function(frame, parent, var)
+	var.modify =
+		function(var, val)
+			send_set_variable(
+				frame.thread.dbg, parents.variablesReference, var, val)
+		end
+
+	var.fetch =
+		function(var, cb)
+			send_get_variable(frame.thread.dbg, var, cb)
+		end
+	end
 
 local function get_frame_locals(frame, on_response)
 	if frame.cached_locals then
@@ -84,15 +117,14 @@ local function get_frame_locals(frame, on_response)
 							ref.variables = msg.body.variables
 
 							for _, var in ipairs(msg.body.variables) do
-								var.modify =
-								function(var, val)
-									send_set_variable(
-										frame.thread.dbg, v.variablesReference, var, val)
-								end
+								append_var_opts(frame, v, var)
 							end
 						else
 							error = not msg.success and msg.message or nil
 						end
+
+-- if there are namedVariables or indexedVariables it means that we we
+-- subsequently fetch the children of that one and so on.
 						frame.cached_locals[string.lower(v.name)] = ref
 
 -- last one requested, wake everyone
@@ -852,7 +884,11 @@ end
 
 local inf, outf, errf, pid =
 	lash.root:popen(args.dap_default, "rw")
-	-- TODO Handle popen failure
+
+	if not pid then
+		cat9.add_message(errors.popen)
+		return
+	end
 
 local job =
 cat9.import_job({

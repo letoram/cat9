@@ -80,7 +80,7 @@ local function attach_window(key, fact, ...)
 					check_status = cat9.always_active
 				})
 		else
-			wnd = fact(cat9, builtin_cfg, job, th, frame)
+			wnd = fact(cat9, builtin_cfg, job, th, frame, opts)
 		end
 		job[group][key] = wnd
 
@@ -257,6 +257,11 @@ function cmds.thread(job, ...)
 		function()
 			views.arguments(job, {}, th, frame)
 		end,
+		globals =
+		function()
+			views.variables(job,
+				{invalidated = frame, globals = true}, th, frame)
+		end,
 		var =
 		function()
 			th:locals(frame,
@@ -396,7 +401,7 @@ function cmds.source(job, ...)
 					job.debugger:source(th.stack[1].path,
 						function(source)
 							th.stack[1].source = th.stack[1].line
-							wnd.source_ref = th.stack[1].path
+							swnd.source_ref = th.stack[1].path
 						end
 					)
 				else
