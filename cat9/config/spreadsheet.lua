@@ -1,5 +1,5 @@
 return {
-	min_col_width = 5,
+	min_col_width = 6,
 	label_1 = {
 		fc = tui.colors.label, bc = tui.colors.text
 	},
@@ -12,12 +12,16 @@ return {
 	label_2 = {
 
 	},
+	cursor = {
+		fc = tui.colors.ref_black,
+		bc = tui.colors.ref_yellow,
+	},
 	col_1 = {
-		fc = tui.colors.ref_light_grey,
-		bc = tui.colors.ref_light_grey
+		fc = tui.colors.ref_black,
+		bc = tui.colors.ref_yellow,
 	},
 	col_2 = {
-		fc = tui.colors.ref_grey,
-		bc = tui.colors.ref_grey
+		fc = tui.colors.ref_black,
+		bc = tui.colors.ref_yellow
 	}
 }
