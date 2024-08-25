@@ -15,11 +15,15 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 local errors =
 {
-	bad_rows = "new >rows< cols: expected number of rows",
-	bad_cols = "new rows >cols<: expected number of columns"
+	missing_csv = "new csv >file or job< : missing source argument",
+	open_fail = "new csv >file< : couldn't open file",
+	missing_row = "cell specifier lacks row reference (e.g. A1)",
+	set_job = "set >job< : job missing or not a spreadsheet",
+	set_args = "set >...< : expected set [addr] \"value\" or \"=expression\" or \"=`command`'"
 }
 
 builtins.hint["new"] = "Create a new spreadsheet job with rows * cols cells"
+builtins.hint["set"] = "Provide a value or expression for a specific cell"
 
 local function new_cell(val)
 	local tmpl = {
@@ -46,11 +50,22 @@ local function col_to_az(x)
 	local cq = math.floor(x / azc)
 	local ch = string.sub(az, ci+1, ci+1)
 
-	while cq >= 1 do
-		return col_to_az(cq) .. ch
+	if cq >= 1 then
+		return col_to_az(cq - 1) .. ch
 	end
 
 	return ch
+end
+
+local function view_for_cell(cell, ccw)
+	local res = ""
+	cat9.each_ch(cell.label,
+	function(ch, pos)
+		res = res .. ch
+		ccw = ccw - 1
+		return ccw <= 0
+	end)
+	return res
 end
 
 local function view_spread(job, x, y, cols, rows, probe)
@@ -74,7 +89,7 @@ local function view_spread(job, x, y, cols, rows, probe)
 		end
 
 		local ccw = job.column_sizes[col] or cw
-		local fmt = job.cell_cursor[1] == x and builtin_cfg.cursor or rowfmt
+		local fmt = job.cell_cursor[1] == x and builtin_cfg.cursor or colfmt
 
 		local label = col_to_az(col-1)
 		col = col + 1
@@ -94,7 +109,8 @@ local function view_spread(job, x, y, cols, rows, probe)
 	for ly=y+1,y+rows-2,1 do
 		local yofs = yi + ly - y - 1
 		local cpad = math.floor(#tostring(yi) - cw * 0.5)
-		local fmt = (job.cell_cursor[2] == ly - y) and builtin_cfg.cursor or rowfmt
+		local fmt = (job.selected_row and job.selected_row == yofs)
+			and builtin_cfg.cursor or rowfmt
 
 		job.root:write_to(
 			x, ly,
@@ -104,20 +120,45 @@ local function view_spread(job, x, y, cols, rows, probe)
 	end
 
 -- draw the cell window
+	local selected_x, selected_y, selected_width
+
 	for ly=y+1,y+rows-2,1 do
 		local row = job.cells[yi]
-		yi = yi + 1
 		local cx = cw
 
 		if row then
 			for cc=job.col_ofs+1,row.cells do
-				job.root:write_to(x + cx, ly, row[cc].label)
+				local fmt = builtin_cfg.cell
+				local selected = job.cell_cursor[1] == cc and job.cell_cursor[2] == yi
+				local ccw = job.column_sizes[cc] or cw
+
+				if selected then
+					fmt = builtin_cfg.cursor
+					selected_x = x + cx
+					selected_y = ly
+					selected_width = ccw
+				end
+
+				job.root:write_to(x + cx, ly, view_for_cell(row[cc], ccw), fmt)
+
 				cx = cx + (job.column_sizes[cc] or cw)
 				if cx > cols then
 					break
 				end
 			end
 		end
+
+		yi = yi + 1
+	end
+
+-- draw border around selected region
+	if builtin_cfg.cursor_border and selected_x then
+		job.root:write_border(
+			selected_x, selected_y,
+			selected_x + selected_width - 1, selected_y,
+			builtin_cfg.cursor,
+			1
+		)
 	end
 
 	return rows
@@ -125,6 +166,7 @@ end
 
 local function slice_spread(job, lines, set)
 -- we want 'lines' to specify format, but default to csv or resolved values
+-- as well as having subset options, e.g. specific columns
 end
 
 local function append_row(job, at_cursor, ...)
@@ -153,14 +195,39 @@ end
 
 -- opts should control separator
 local function import_csv(job, io, opts)
-	opts = opts or {sep = ','}
+	opts = opts or {sep = ',', escape = "\""}
 	io:lf_strip(true)
 
+-- this should really use coroutines and yield often enough
 	io:data_handler(
 		function()
 			local line, alive = io:read()
 			while line do
-				local tbl = string.split(line, opts.sep)
+				local tbl = {}
+
+				local in_escape, in_mask
+				local entry = {}
+
+				if not opts.escape then
+					tbl = string.split(line, opts.sep)
+				else
+					cat9.each_ch(line,
+						function(ch)
+							if ch == "," and not in_escape then
+								table.insert(tbl, table.concat(entry, ""))
+								entry = {}
+							elseif opts.escape and ch == "\\" then
+								in_mask = true
+							elseif opts.escape and ch == opts.escape and not in_mask then
+								in_escape = not in_escape
+							else
+								table.insert(entry, ch)
+								in_mask = false
+							end
+						end
+					)
+				end
+
 				append_row(job, opts.at_cursor, tbl)
 				line, alive = io:read()
 			end
@@ -217,6 +284,27 @@ local function xy_to_cell(job, x, y)
 	return cell, row, col
 end
 
+local function to_cell_address(col, row)
+	local pref = col_to_az(col)
+	return pref .. tostring(row)
+end
+
+local function refresh_spread(job)
+	for _, v in pairs(job.cells) do
+		local nc = v.cells
+		local i = 1
+		while nc > 0 do
+			if v[i] then
+				if v[i].handler then
+					v[i].handler()
+				end
+				i = i + 1
+				nc = nc - 1
+			end
+		end
+	end
+end
+
 local function item_click(job, btn, ofs, yofs, mods)
 	if yofs == 0 then
 		return
@@ -268,12 +356,14 @@ local function item_click(job, btn, ofs, yofs, mods)
 	end
 
 	local cell, row, col = xy_to_cell(job, ofs, yofs - 1)
+	job.cell_cursor[1] = col
+	job.cell_cursor[2] = row
 
 	if not cell then
 		if cat9.readline then
 			cat9.readline:set(
 				string.format(
-					"#%d set %s %d ",
+					"#%d set %s%d ",
 					job.id,
 					col_to_az(col-1), row
 				)
@@ -284,9 +374,10 @@ local function item_click(job, btn, ofs, yofs, mods)
 			if cat9.readline then
 				cat9.readline:set(
 					string.format(
-						"#%d set %s %d %s",
+						"#%d set %s %s",
 						job.id,
-						col_to_az(col-1), row, cell.label
+						to_cell_address(col-1, row),
+						cell.label
 					)
 				)
 			end
@@ -338,27 +429,149 @@ function builtins.new(...)
 		col_ofs = 0,
 		last_mx = 0,
 		last_my = 0,
-		cell_cursor = {2, 2},
+		cell_cursor = {1, 1},
 		last_click = {0, 0, 0},
-		show_line_number = false
+		show_line_number = false,
+		spreadsheet = true
 	}
 
--- set custom view that draws the rows and cells
+	if set[1] and set[1] == "csv" then
+		if not set[2] then
+			return false, errors.missing_csv
+		end
+
+-- if set[2] is a table + slice reference, handle that
+		local io, msg = root:fopen(set[2], "r")
+		if not io then
+			return false, errors.open_fail
+		else
+			import_csv(job, io)
+		end
+	end
+
 	cat9.import_job(job)
-	job.handlers.mouse_button = item_click
-	job.handlers.mouse_motion = item_motion
+	job["repeat"] = refresh_spread
 
 	job:set_view(view_spread, slice_spread, nil, "Spreadsheet")
-	local path = string.format(
-		"%s/cat9/spreadsheet/test.csv",
-		lash.scriptdir
-	)
+	job.handlers.mouse_button = item_click
+	job.handlers.mouse_motion = item_motion
+end
 
-	local io, msg = job.root:fopen(path, "r")
-	if not io then
-		print("failed", msg)
+local function expand_addr(addr, cb)
+-- missing: handle ranges A1:B2 -> A1, A2, B1:B2 ..
+--	local set = string.split(addr, ":")
+	local col, row = string.match(addr, "(%a+)(%d+)")
+	row = tonumber(row)
+	if not row then
+		return false, errors.missing_row
+	end
+
+	local cv = 0
+	local aval = string.byte("A") - 1
+	col = string.upper(col)
+
+	for ind=1,#col do
+		cv = cv + (string.byte(col, ind) - aval) * math.pow(#az, ind - 1)
+	end
+
+	cb(cv, row)
+end
+
+local function flood_set(job, row, col, args)
+	local row = job.cells[row]
+	for i=1,col do
+		if not row[i] then
+			row[i] = new_cell()
+			row.cells = row.cells + 1
+		end
+	end
+
+	local cmd = table.concat(args, " ")
+	local prefix = string.sub(cmd, 1, 1)
+	if prefix == "=" then
+		row[col].expression = string.sub(cmd, 2)
+-- expression
+	elseif prefix == "`" then
+		cmd = string.sub(cmd, 2)
+		row[col].handler =
+		function()
+			local _, out, _, pid = root:popen("/bin/sh -c \"" .. cmd .. "\"", "r", {})
+			cat9.add_background_job(out, pid, {lf_strip = true},
+				function(job, code)
+					if code == 0 then
+						row[col].label = table.concat(job.data, "")
+						row[col].value = row[col].label
+					else
+						row[col].label = "#ERROR"
+						row[col].value = row[col].label
+					end
+					cat9.flag_dirty(job)
+				end
+			)
+		end
+		row[col].handler()
 	else
-		import_csv(job, io)
+		row[col].label = cmd
+		row[col].value = cmd
+	end
+
+	cat9.flag_dirty(job)
+end
+
+function builtins.set(...)
+	local base = {...}
+	local dst
+
+	if type(base[1]) == "table" then
+		dst = table.remove(base, 1)
+	else
+		dst = cat9.selectedjob
+	end
+
+-- ensure #job or set #job ...
+	if not dst or not dst.spreadsheet then
+		return false, errors.set_job
+	end
+
+	local args = {}
+
+-- get rid of tables and references
+	local ok, msg = cat9.expand_arg(args, base)
+	if not ok then
+		return false, msg
+	end
+
+-- if address is provided (#args > 2) use that, otherwise use cursor
+--
+-- for address though the question is if we should have syntax for a1c1 form
+-- or just stick to 'baby' mode.
+	local addr
+
+	if #args >= 2 then
+		addr = table.remove(args, 1)
+
+-- priority should be 'selected set -> active cursor'
+	elseif #args == 1 then
+		addr = to_cell_address(dst.cell_cursor[1], dst.cell_cursor[2])
+
+	else
+		return false, errors.set_args
+	end
+
+	local ok, msg =
+		expand_addr(addr,
+			function(col, row)
+				if not dst.cells[row] then
+					dst.cells[row] = {cells = 0}
+				end
+
+				flood_set(dst, row, col, args)
+			end
+		)
+
+	if not ok then
+		return false, msg
 	end
 end
+
 end

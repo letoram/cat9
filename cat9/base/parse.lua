@@ -606,6 +606,7 @@ function cat9.parse_string(rl, line)
 -- job, setup an explicit data forward / copy
 	local revert = false
 	local commands = groups[1]
+	local oldsel = cat9.selectedjob
 
 	if type(commands[1]) == "table" then
 		local tbl = table.remove(commands, 1)
@@ -616,6 +617,7 @@ function cat9.parse_string(rl, line)
 			return
 		end
 
+		cat9.selectedjob = tbl
 		revert = true
 	end
 
@@ -631,6 +633,11 @@ function cat9.parse_string(rl, line)
 			cat9.add_message(msg)
 		end
 		cat9.stdin = nil
+		if revert then
+			cat9.switch_env()
+			cat9.selectedjob = oldsel
+		end
+
 		return ok
 	elseif cat9.builtins["_default"] then
 		res = cat9.builtins["_default"](commands, inp, line)
@@ -640,6 +647,7 @@ function cat9.parse_string(rl, line)
 
 	if revert then
 		cat9.switch_env()
+		cat9.selectedjob = tbl
 	end
 
 	return res
