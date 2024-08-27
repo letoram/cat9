@@ -13,6 +13,17 @@
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
+local parse_expr, types, type_strtbl =
+	loadfile(string.format("%s/cat9/spreadsheet/parser.lua", lash.scriptdir))()()
+
+local history = {}
+local expand_addr
+
+-- each function:
+--  handler = function(...)
+--  args = {types.TYPE}
+local functions = {}
+
 local errors =
 {
 	missing_csv = "new csv >file or job< : missing source argument",
@@ -457,7 +468,8 @@ function builtins.new(...)
 	job.handlers.mouse_motion = item_motion
 end
 
-local function expand_addr(addr, cb)
+expand_addr =
+function(addr, cb)
 -- missing: handle ranges A1:B2 -> A1, A2, B1:B2 ..
 --	local set = string.split(addr, ":")
 	local col, row = string.match(addr, "(%a+)(%d+)")
@@ -477,6 +489,49 @@ local function expand_addr(addr, cb)
 	cb(cv, row)
 end
 
+local function parse_expression(job, cell)
+	local res = parse_expr(
+		cell.expression,
+		function(name, name_type)
+			local rv, rt = nil, types.STRING
+
+			local ok, msg = expand_addr(
+				name,
+				function(col, row)
+					if job.cells[row] and job.cells[row][col] then
+						rv = job.cells[row][col].label
+					end
+				end
+			)
+
+			if name_type and name_type == types.NUMBER then
+				return tonumber(rv)
+			end
+
+			return rv, rt
+		end,
+		function(...) -- function lookup
+			return false
+		end,
+		function(...)
+		end
+	)
+
+	if type(res) ~= "function" then
+		cell.label = "#PARSE_ERROR"
+		return false
+	end
+
+	local act, kind, val = res()
+	if kind == types.NUMBER then
+		cell.value = val
+		cell.label = tostring(val)
+	else
+-- unhandled return type, this could support synthesis of objects that
+-- we then export through bchunkhandler or handover into open
+	end
+end
+
 local function flood_set(job, row, col, args)
 	local row = job.cells[row]
 	for i=1,col do
@@ -490,6 +545,7 @@ local function flood_set(job, row, col, args)
 	local prefix = string.sub(cmd, 1, 1)
 	if prefix == "=" then
 		row[col].expression = string.sub(cmd, 2)
+		parse_expression(job, row[col])
 -- expression
 	elseif prefix == "`" then
 		cmd = string.sub(cmd, 2)
