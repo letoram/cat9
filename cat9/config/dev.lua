@@ -2,7 +2,12 @@ return
 {
 	debug =
 	{
-		dap_default = {"gdb", "gdb", "-i", "dap", "-q"},
+--		dap_default = {"gdb", "gdb", "-i", "dap", "-q"},
+		dap_default = {"lldb-dap", "lldb-dap"},
+		dap_create = {
+			"target create %s",
+		},
+		dap_id = {"lldb"},
 --		dap_default = {"lldb-dap", "lldb-dap"},
 		dap_create = {
 --			"target create %s",
