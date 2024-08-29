@@ -16,8 +16,14 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 local parse_expr, types, type_strtbl =
 	loadfile(string.format("%s/cat9/spreadsheet/parser.lua", lash.scriptdir))()()
 
+lash.types = types
+local expr_funcs =
+	loadfile(string.format("%s/cat9/spreadsheet/functions.lua", lash.scriptdir))()
+
 local history = {}
+
 local expand_addr
+local parse_expression
 
 -- each function:
 --  handler = function(...)
@@ -30,15 +36,20 @@ local errors =
 	open_fail = "new csv >file< : couldn't open file",
 	missing_row = "cell specifier lacks row reference (e.g. A1)",
 	set_job = "set >job< : job missing or not a spreadsheet",
-	set_args = "set >...< : expected set [addr] \"value\" or \"=expression\" or \"=`command`'"
+	set_args = "set >...< : expected set [addr] \"value\" or \"=expression\" or \"=!command"
 }
 
 builtins.hint["new"] = "Create a new spreadsheet job with rows * cols cells"
 builtins.hint["set"] = "Provide a value or expression for a specific cell"
 
-local function new_cell(val)
+local function new_cell(job, val)
 	local tmpl = {
-		label = ""
+		label = "",
+		update = -- accessor to add into history buffer
+		function(cell, val)
+			cell.label = tostring(val)
+			cell.value = val
+		end
 	}
 
 	if val == nil then
@@ -49,6 +60,7 @@ local function new_cell(val)
 	if type(val) == "number" then
 		val = tostring(val)
 	end
+
 	tmpl.label = val
 
 	return tmpl
@@ -196,7 +208,7 @@ local function append_row(job, at_cursor, ...)
 
 	local new_row = {}
 	for i,v in ipairs(args) do
-		table.insert(new_row, new_cell(v))
+		table.insert(new_row, new_cell(job, v))
 	end
 
 	new_row.cells = #new_row
@@ -304,10 +316,14 @@ local function refresh_spread(job)
 	for _, v in pairs(job.cells) do
 		local nc = v.cells
 		local i = 1
+
 		while nc > 0 do
 			if v[i] then
 				if v[i].handler then
 					v[i].handler()
+
+				elseif v[i].expression then
+					parse_expression(job, v)
 				end
 				i = i + 1
 				nc = nc - 1
@@ -374,7 +390,7 @@ local function item_click(job, btn, ofs, yofs, mods)
 		if cat9.readline then
 			cat9.readline:set(
 				string.format(
-					"#%d set %s%d ",
+					"#%d set %s%d val \"\"",
 					job.id,
 					col_to_az(col-1), row
 				)
@@ -385,7 +401,7 @@ local function item_click(job, btn, ofs, yofs, mods)
 			if cat9.readline then
 				cat9.readline:set(
 					string.format(
-						"#%d set %s %s",
+						"#%d set %s val %s",
 						job.id,
 						to_cell_address(col-1, row),
 						cell.label
@@ -489,7 +505,8 @@ function(addr, cb)
 	cb(cv, row)
 end
 
-local function parse_expression(job, cell)
+parse_expression =
+function(job, cell)
 	local res = parse_expr(
 		cell.expression,
 		function(name, name_type)
@@ -510,23 +527,27 @@ local function parse_expression(job, cell)
 
 			return rv, rt
 		end,
-		function(...) -- function lookup
-			return false
+		function(name) -- function lookup
+			local fn = expr_funcs[name]
+			print("lookup", name)
+			if not fn then
+				return false
+			end
+			return fn.handler, fn.args, fn.argc
 		end,
-		function(...)
+		function(val)
+			print("error", val)
 		end
 	)
 
 	if type(res) ~= "function" then
-		cell.label = "#PARSE_ERROR"
+		cell.label = "#ERROR"
 		return false
 	end
 
 	local act, kind, val = res()
-	if kind == types.NUMBER then
-		cell.value = val
-		cell.label = tostring(val)
-	else
+	if kind == types.NUMBER or kind == types.STRING then
+		cell:update(val, tostring(val))
 -- unhandled return type, this could support synthesis of objects that
 -- we then export through bchunkhandler or handover into open
 	end
@@ -534,32 +555,40 @@ end
 
 local function flood_set(job, row, col, args)
 	local row = job.cells[row]
+
 	for i=1,col do
 		if not row[i] then
-			row[i] = new_cell()
+			row[i] = new_cell(job)
 			row.cells = row.cells + 1
 		end
 	end
 
+	local domain = table.remove(args, 1)
+
+	if domain ~= "val" then
+-- format, name, ...
+		return
+	end
+
 	local cmd = table.concat(args, " ")
 	local prefix = string.sub(cmd, 1, 1)
+
 	if prefix == "=" then
 		row[col].expression = string.sub(cmd, 2)
 		parse_expression(job, row[col])
 -- expression
-	elseif prefix == "`" then
+	elseif prefix == "!" then
 		cmd = string.sub(cmd, 2)
+
 		row[col].handler =
 		function()
 			local _, out, _, pid = root:popen("/bin/sh -c \"" .. cmd .. "\"", "r", {})
 			cat9.add_background_job(out, pid, {lf_strip = true},
 				function(job, code)
 					if code == 0 then
-						row[col].label = table.concat(job.data, "")
-						row[col].value = row[col].label
+						row[col]:update(table.concat(job.data, ""), row[col].label)
 					else
-						row[col].label = "#ERROR"
-						row[col].value = row[col].label
+						row[col]:update("#ERROR", row[col].label)
 					end
 					cat9.flag_dirty(job)
 				end
@@ -567,11 +596,25 @@ local function flood_set(job, row, col, args)
 		end
 		row[col].handler()
 	else
-		row[col].label = cmd
-		row[col].value = cmd
+		row[col]:update(cmd, cmd)
 	end
 
 	cat9.flag_dirty(job)
+end
+
+function builtins.remove(...)
+-- [row | col]
+end
+
+function builtins.configure(...)
+-- [row to header, substitute a-z]
+end
+
+-- insert [row | col] [cursor | url] source
+-- append [row | col]
+
+function builtins.insert(...)
+
 end
 
 function builtins.set(...)
@@ -597,17 +640,18 @@ function builtins.set(...)
 		return false, msg
 	end
 
--- if address is provided (#args > 2) use that, otherwise use cursor
+-- if address is provided (#args > 2) use that. If not, use selection set or
+-- finally, cursor.
 --
 -- for address though the question is if we should have syntax for a1c1 form
 -- or just stick to 'baby' mode.
 	local addr
 
-	if #args >= 2 then
+	if #args >= 3 then
 		addr = table.remove(args, 1)
 
 -- priority should be 'selected set -> active cursor'
-	elseif #args == 1 then
+	elseif #args == 2 then
 		addr = to_cell_address(dst.cell_cursor[1], dst.cell_cursor[2])
 
 	else

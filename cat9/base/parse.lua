@@ -117,7 +117,7 @@ local function build_ptable(t)
 	end}
 	ptable[t.OP_NOT    ] = {
 		function(s, v)
-			if #v > 0 and type(v[#v]) == "string" then
+			if #v > 0 and type(v[#v]) == "string" and v[#v] == "!" then
 				v[#v] = v[#v] .. "!"
 			else
 				table.insert(v, "!");
