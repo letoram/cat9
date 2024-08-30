@@ -2,16 +2,13 @@ return
 {
 	debug =
 	{
---		dap_default = {"gdb", "gdb", "-i", "dap", "-q"},
-		dap_default = {"lldb-dap", "lldb-dap"},
-		dap_create = {
-			"target create %s",
-		},
-		dap_id = {"lldb"},
+		dap_default = {"gdb", "gdb", "-i", "dap", "-q"},
 --		dap_default = {"lldb-dap", "lldb-dap"},
 		dap_create = {
---			"target create %s",
+--		"target create %s",
 		},
+		dap_id = {"gdb"},
+--		dap_default = {"lldb-dap", "lldb-dap"}, },
 		dap_id = {"gdb"},
 		default_views = {"stderr", "stdout", "threads", "errors"},
 		hide_while_runnning = false,

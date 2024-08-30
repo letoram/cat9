@@ -511,8 +511,6 @@ local function handle_initialized_event(dbg, msg)
 			stopAtBeginningOfMainSubprogram = true,
 			program = program
 		}
-		local target = table.copy_shallow(target)
-		local program = table.remove(target, 1)
 
 		if args.dap_create then
 			for i,v in ipairs(args.dap_create) do
@@ -897,10 +895,10 @@ end
 local inf, outf, errf, pid =
 	lash.root:popen(args.dap_default, "rw")
 
-	if not pid then
-		cat9.add_message(errors.popen)
-		return
-	end
+if not pid then
+	cat9.add_message(errors.popen)
+	return
+end
 
 local job =
 cat9.import_job({
