@@ -483,6 +483,8 @@ function builtins.new(...)
 
 	cat9.import_job(job)
 	job["repeat"] = refresh_spread
+	job["reset"] = function()
+	end
 
 	job:set_view(view_spread, slice_spread, nil, "Spreadsheet")
 	job.handlers.mouse_button = item_click
