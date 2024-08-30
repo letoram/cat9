@@ -570,6 +570,10 @@ end
 -- [on_error](error_message, character_position, input_message)
 --
 local function parse_expression(msg, lookup_sym, lookup_fcall, on_error, token_out)
+	if not msg then
+		print("bad msg", debug.traceback())
+	end
+
 	local tokens, err, err_ofs = tokenize(msg)
 
 -- missing show this as an overlay and highlight the offending offset in the input box

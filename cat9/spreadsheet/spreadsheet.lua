@@ -317,13 +317,18 @@ local function refresh_spread(job)
 		local nc = v.cells
 		local i = 1
 
+-- this is a fair place to track history of values
 		while nc > 0 do
 			if v[i] then
+
+-- the ugly part here is asynchronous handling of updated cells with expression
+-- dependencies which would need to be marked deferred if there is a handler,
+-- and register on set/reference as part of symbol lookup.
 				if v[i].handler then
 					v[i].handler()
 
 				elseif v[i].expression then
-					parse_expression(job, v)
+					parse_expression(job, v[i])
 				end
 				i = i + 1
 				nc = nc - 1
@@ -507,7 +512,8 @@ end
 
 parse_expression =
 function(job, cell)
-	local res = parse_expr(
+	local ret, res = pcall(
+		parse_expr,
 		cell.expression,
 		function(name, name_type)
 			local rv, rt = nil, types.STRING
@@ -529,16 +535,20 @@ function(job, cell)
 		end,
 		function(name) -- function lookup
 			local fn = expr_funcs[name]
-			print("lookup", name)
 			if not fn then
 				return false
 			end
 			return fn.handler, fn.args, fn.argc
 		end,
 		function(val)
-			print("error", val)
+			cell.error = val
+			cell.label = "#ERROR"
 		end
 	)
+
+	if not ret then
+		return
+	end
 
 	if type(res) ~= "function" then
 		cell.label = "#ERROR"
