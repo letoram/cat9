@@ -26,7 +26,9 @@ function cat9.each_ch(str, cb, err)
 			end
 			return
 		end
-		cb(string.sub(str, pos, nextch-1), pos)
+		if cb(string.sub(str, pos, nextch-1), pos) then
+			break
+		end
 		if nextch - pos > 1 then
 		end
 

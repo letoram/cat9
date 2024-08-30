@@ -39,6 +39,12 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 		return
 	end
 
+	if job.handlers.mouse_motion then
+		if job.handlers.mouse_motion(job, rel, x, y, mods) then
+			return
+		end
+	end
+
 -- if we don't do this we can get phantom-clicks into detached views
 	if self ~= job.root then
 		return

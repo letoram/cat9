@@ -14,7 +14,8 @@ function(cat9, root, config)
 	bnd.m5_data_click = "view #csel scroll +1"
 -- uncomment for chorded input
 	bnd.chord[tui.keys.SPACE] = {} -- enter chord state
---	bnd.chord[tui.keys.SPACE][tui.keys.D] = "builtin dev"
---	bnd.chord[tui.keys.SPACE][tui.keys.S] = "builtin system"
---	bnd.chord[tui.keys.SPACE][tui.keys.V] = "view monitor"
+	bnd.chord[tui.keys.SPACE][tui.keys.D] = "builtin dev"
+	bnd.chord[tui.keys.SPACE][tui.keys.L] = "debug launch /home/void/testf"
+	bnd.chord[tui.keys.SPACE][tui.keys.S] = "builtin spreadsheet"
+	bnd.chord[tui.keys.SPACE][tui.keys.V] = "view monitor"
 end
