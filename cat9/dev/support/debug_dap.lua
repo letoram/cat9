@@ -40,7 +40,7 @@ local function send_set_variable(dbg, ref, var, val)
 end
 
 local append_var_opts
-local function send_get_variable(dbg, invar, cb)
+local function send_get_variable(dbg, frame, invar, cb)
 	send_request(
 		dbg, "variables", {variablesReference = invar.variablesReference},
 			function(job, msg)
@@ -62,12 +62,12 @@ function(frame, parent, var)
 	var.modify =
 		function(var, val)
 			send_set_variable(
-				frame.thread.dbg, parents.variablesReference, var, val)
+				frame.thread.dbg, parent.variablesReference, var, val)
 		end
 
 	var.fetch =
 		function(var, cb)
-			send_get_variable(frame.thread.dbg, var, cb)
+			send_get_variable(frame.thread.dbg, frame, var, cb)
 		end
 	end
 

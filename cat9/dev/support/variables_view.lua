@@ -27,7 +27,7 @@ local function var_click(job, btn, ofs, yofs, mods)
 -- with modifier click a variable tracker should be spawned or appended to
 -- (which should also support sampling various memory addresses)
 
--- are we on the the name or on the value?
+-- this does not work recursively, we need to bind to parent so b->bb would say b.bb. etc.
 	cat9.readline:set(
 		string.format(
 			"#%d debug #%d thread %d %d var %s",
@@ -38,15 +38,14 @@ end
 
 local function recurse_append(data, max, v)
 	table.insert(data.vars, v)
+
 	if v.expanded and v.variables then
 		table.insert(data, string.lpad(v.name, max) .. ":")
-		table.insert(data.vars, v)
 
 		for _,iv in ipairs(v.variables) do
 			recurse_append(data, max + 4, iv)
 		end
 	else
-		table.insert(data.vars, v)
 		table.insert(data, string.lpad(v.name, max) .. " = " ..
 			(v.variables and " ... " or v.value))
 	end
