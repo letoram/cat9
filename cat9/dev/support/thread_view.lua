@@ -154,8 +154,8 @@ local function view_threads(job, x, y, cols, rows, probe)
 			return
 			function()
 				local str = string.format(
-						"#%d debug #%d thread %d %s %d",
-						job.parent.id, job.parent.id, th.id, arg, frame
+						"#%d debug #%d thread %d %s %s",
+						job.parent.id, job.parent.id, th.id, frame, arg
 				)
 				cat9.parse_string(cat9.readline, str)
 			end

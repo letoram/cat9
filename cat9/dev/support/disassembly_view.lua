@@ -1,5 +1,5 @@
 return
-function(cat9, cfg, job, th, frame)
+function(cat9, cfg, job, th, frameid, opts)
 
 -- options:
 --
@@ -48,6 +48,12 @@ local wnd =
 	wnd.invalidated =
 	function()
 -- if frame changed, re-request disassembly
+		local frame = th:frame(frameid)
+		if not frame then
+			wnd.data = {bytecount = 0, linecount = 0, "invalid frame: " .. tostring(frameid)}
+			return
+		end
+
 		wnd.pc = frame.pc
 		th.dbg:disassemble(frame.pc, 0, 100,
 			function(set)

@@ -73,16 +73,16 @@ function(frame, parent, var)
 
 local function get_frame_locals(frame, on_response)
 	if frame.cached_locals then
-
 		if frame.cached_locals.pending then
 			table.insert(frame.cached_locals.pending, on_response)
 		else
 			on_response(frame.cached_locals)
 		end
 		return
-	end
 
-	frame.cached_locals = {pending = {count = 0}}
+	else
+		frame.cached_locals = {pending = {count = 0, on_response}}
+	end
 
 --
 -- the scopes returned are just reference,
@@ -130,9 +130,11 @@ local function get_frame_locals(frame, on_response)
 -- last one requested, wake everyone
 						if pending.count == 0 then
 							frame.cached_locals.pending = nil
+
 							for _,v in ipairs(pending) do
 								v(frame.cached_locals)
 							end
+						else
 						end
 					end
 				)
@@ -514,7 +516,6 @@ local function handle_initialized_event(dbg, msg)
 
 		if args.dap_create then
 			for i,v in ipairs(args.dap_create) do
-				print(string.format(v, program))
 				send_request(dbg, string.format(v, program))
 			end
 		end

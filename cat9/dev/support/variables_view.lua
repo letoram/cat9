@@ -61,7 +61,6 @@ cat9.import_job({
 
 wnd.invalidated =
 function()
-
 -- locals might be pending, defer update until that happens
 	th:locals(frameid,
 		function(locals)

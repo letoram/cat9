@@ -153,7 +153,6 @@ function(...)
 
 				local ic =
 				function()
-					print("event callback")
 					run_item(opt)
 				end
 

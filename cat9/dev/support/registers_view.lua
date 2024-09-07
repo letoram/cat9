@@ -1,13 +1,34 @@
 return
 function(cat9, cfg, job, th, frameid)
 
--- improvements todo:
---
---  * make reg clickable for set reg value
---  * make value clickable for toggle representation to force hex or binary (need bigInt)
---  * hover for readMemory if it's natively hex-provided
---  * arg for setting the visible registry group
---
+local function reg_click(job, btn, ofs, yofs, mods)
+	if yofs == 0 then
+		return
+	end
+
+-- now we know if it's register (add tracking), value (toggle rep, add watch)
+	local row = job.xy_map[yofs]
+	if not row or not row[ofs] then
+		return
+	end
+
+-- click on register
+	if row[ofs][1] then
+		if btn == 1 then
+-- toggle between dec, hex and binary
+		elseif btn == 3 then
+		elseif btn == 2 then
+			local str = string.format(
+				"#%d debug #%d thread %d %s watches register %s",
+				job.parent.id, job.parent.id, th.id, frameid, row[ofs][2])
+			cat9.parse_string(cat9.readline, str)
+		end
+
+		return true
+	end
+
+	return true
+end
 
 local function get_group(job, group, cols)
 	local set = job.data.raw
@@ -73,12 +94,59 @@ end
 
 local function write_regs(job, x, y, row, set, ind, _, selected)
 	local ents = string.split(row, "\t")
+	local rx = x - job.region[1]
+	local ry = y - job.region[2]
+	local regfmt
+	local valfmt
+
 	job.root:cursor_to(x, y)
 
 	for _,v in ipairs(ents) do
 		local regv = string.split(v, "=")
-		job.root:write(regv[1] .. "=", cfg.debug.register)
-		job.root:write((regv[2] or "") .. " ", cfg.debug.register_value)
+		if #regv[1] == 0 then
+			break
+		end
+		regv[2] = regv[2] or ""
+
+-- track so we can resolve clicks
+		local cx = rx
+		if not job.xy_map[ry] then
+			job.xy_map[ry] = {}
+		end
+
+		for i=1,#regv[1] do
+			job.xy_map[ry][rx] = {true, regv[1]}
+			rx = rx + 1
+		end
+
+-- visual feedback for mouse over reg or value
+		regfmt = cfg.debug.register
+		if job.mouse and job.mouse.on_row == ind then
+			if job.mouse[1] >= cx and job.mouse[1] <= rx then
+				regfmt = table.copy_recursive(regfmt)
+				regfmt.border_down = true
+			end
+		end
+
+		cx = rx
+
+		for i=1,#regv[2] do
+			job.xy_map[ry][rx] = {false, regv[2]}
+			rx = rx + 1
+		end
+
+		valfmt = cfg.debug.register_value
+		if job.mouse and job.mouse.on_row == ind then
+			if job.mouse[1] >= cx and job.mouse[1] <= rx then
+				valfmt = table.copy_recursive(valfmt)
+				valfmt.border_down = true
+			end
+		end
+
+		job.root:write(regv[1] .. "=", regfmt)
+		job.root:write(regv[2] .. " ", valfmt)
+
+		rx = rx + 2
 	end
 end
 
@@ -86,6 +154,8 @@ end
 -- the color values for name versus value
 
 local function view_regs(job, x, y, cols, rows, probe)
+	job.xy_map = {}
+
 	local set = pack_for_group(job, nil, job.data.raw, cols)
 	if probe then
 		return set.linecount
@@ -135,6 +205,7 @@ local wnd =
 		end)
 	end
 
+	wnd.handlers.mouse_button = reg_click
 	wnd:invalidated()
 	wnd.expanded = false
 	wnd.show_line_number = false

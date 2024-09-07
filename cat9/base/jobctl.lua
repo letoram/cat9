@@ -1076,6 +1076,7 @@ function cat9.import_job(v, noinsert)
 
 -- save the CLI environment so it can be restored later (or when repeating)
 	v.builtins = cat9.builtins
+	v.builtin_name = cat9.builtin_name
 	v.views = cat9.views
 	v.suggest = cat9.suggest
 

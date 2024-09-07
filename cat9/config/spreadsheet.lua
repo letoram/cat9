@@ -11,6 +11,8 @@ return {
 		bc = tui.colors.ref_black,
 	},
 	cursor_border = true,
+	row_border = true,
+	column_border = true,
 
 	col_1 = {
 		fc = tui.colors.ref_black,
@@ -22,6 +24,6 @@ return {
 	},
 	cell = {
 		fc = tui.colors.text,
-		bc = tui.colors.text
+		bc = tui.colors.text,
 	}
 }

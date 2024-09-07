@@ -22,6 +22,7 @@ local view_factories =
 	"arguments",
 	"files",
 	"maps",
+	"watches"
 }
 
 for i=1,#view_factories do
@@ -131,6 +132,7 @@ views.variables = attach_window("variables", view_factories.variables)
 views.arguments = attach_window("arguments", view_factories.arguments)
 views.files = attach_window("files", view_factories.files)
 views.maps = attach_window("maps", view_factories.maps)
+views.watches = attach_window("watches", view_factories.watches)
 
 local function spawn_views(job, set)
 	cat9.list_processes(function() end, true)
@@ -184,6 +186,47 @@ function cmds.maps(job, ...)
 	end
 
 	views.maps(job, {}, os_support, job.debugger.pid)
+end
+
+local function add_watch_spread(wnd)
+	local ob = cat9.builtin_name
+	cat9.builtins["builtin"]("spreadsheet")
+	cat9.parse_string(cat9.readline, "new")
+	wnd.spreadsheet = {
+		wnd = cat9.latestjob
+	}
+
+	if not wnd.spreadsheet.wnd then
+		cat9.add_message("spreadsheet builtin not available")
+		return
+	end
+
+	table.insert(wnd.spreadsheet.wnd.hooks.on_destroy,
+	function()
+		wnd.spreadsheet = nil
+	end
+	)
+
+	local columns = {}
+	for i,v in ipairs(wnd.registers) do
+		table.insert(columns, '"' .. string.gsub(v.name, '"', "\\\"") .. '"')
+		v.in_spread = #columns
+	end
+	for i,v in ipairs(wnd.variables) do
+		table.insert(columns, v.name)
+		v.in_spread = #columns
+	end
+	for i,v in ipairs(wnd.globals) do
+		table.insert(columns, v.name)
+		v.in_spread = #columns
+	end
+
+	wnd.spreadsheet.next_row = 2
+
+	cat9.parse_string(cat9.readline, string.format(
+		"insert #%d 1 %s", wnd.spreadsheet.wnd.id, table.concat(columns, " "))
+	)
+	cat9.builtins["builtin"](ob)
 end
 
 function cmds.thread(job, ...)
@@ -262,6 +305,19 @@ function cmds.thread(job, ...)
 			views.variables(job,
 				{invalidated = frame, globals = true}, th, frame)
 		end,
+		watches =
+		function()
+			local wnd = views.watches(job, {invalidated = frame}, th, frame)
+			if base[1] == "spreadsheet" then
+				if not wnd.spreadsheet then
+					add_watch_spread(wnd)
+				end
+				wnd:invalidated()
+			else
+				wnd:add_watch(base[1], base[2], th, frame)
+				wnd:invalidated()
+			end
+		end,
 		var =
 		function()
 			th:locals(frame,
@@ -293,12 +349,13 @@ function cmds.thread(job, ...)
 		return false, errors.bad_frame
 	end
 
-	domains[base[1]]()
+	domains[table.remove(base, 1)]()
 
 	return true
 end
 
-cmds["break"] = function(job, ...)
+cmds["break"] =
+function(job, ...)
 	local set = {...}
 	local base = {}
 	local ok, msg = cat9.expand_arg(base, set)

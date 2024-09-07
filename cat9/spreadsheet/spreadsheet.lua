@@ -35,6 +35,9 @@ local errors =
 	missing_csv = "new csv >file or job< : missing source argument",
 	open_fail = "new csv >file< : couldn't open file",
 	missing_row = "cell specifier lacks row reference (e.g. A1)",
+	bad_addr = "cell address specifier has invalid values",
+	insert_job = "insert >job< : job missing or not a spreadsheet",
+	replace_job = "replace >job< : job missing or not a spreadsheet",
 	set_job = "set >job< : job missing or not a spreadsheet",
 	set_args = "set >...< : expected set [addr] \"value\" or \"=expression\" or \"=!command"
 }
@@ -78,6 +81,22 @@ local function col_to_az(x)
 	end
 
 	return ch
+end
+
+local function border_column(job, x, y, y2)
+	for cy=y,y2 do
+		local ch, attr = job.root:get(x, cy)
+		attr.border_right = true
+		job.root:write_to(x, cy, attr)
+	end
+end
+
+local function border_row(job, x, y, x2)
+	for cx=x,x2 do
+		local ch, attr = job.root:get(cx, y)
+		attr.border_down = true
+		job.root:write_to(cx, y, attr)
+	end
 end
 
 local function view_for_cell(cell, ccw)
@@ -129,7 +148,7 @@ local function view_spread(job, x, y, cols, rows, probe)
 	end
 
 -- draw row header
-	for ly=y+1,y+rows-2,1 do
+	for ly=y+1,y+rows-1,1 do
 		local yofs = yi + ly - y - 1
 		local cpad = math.floor(#tostring(yi) - cw * 0.5)
 		local fmt = (job.selected_row and job.selected_row == yofs)
@@ -150,7 +169,7 @@ local function view_spread(job, x, y, cols, rows, probe)
 		local cx = cw
 
 		if row then
-			for cc=job.col_ofs+1,row.cells do
+			for cc=job.col_ofs+1,#row do
 				local fmt = builtin_cfg.cell
 				local selected = job.cell_cursor[1] == cc and job.cell_cursor[2] == yi
 				local ccw = job.column_sizes[cc] or cw
@@ -174,6 +193,28 @@ local function view_spread(job, x, y, cols, rows, probe)
 		yi = yi + 1
 	end
 
+	if builtin_cfg.column_border then
+		local col = job.col_ofs + 1
+		local lx = cw
+
+		while lx < cols do
+			if lx > cols then
+				break
+			end
+
+			local ccw = job.column_sizes[col] or cw
+			col = col + 1
+			lx = lx + ccw
+			border_column(job, lx - 1, y + 1, y + rows - 1)
+		end
+	end
+
+	if builtin_cfg.row_border then
+		for ly=y+1,y+rows-1,1 do
+			border_row(job, x + 1, ly, cols)
+		end
+	end
+
 -- draw border around selected region
 	if builtin_cfg.cursor_border and selected_x then
 		job.root:write_border(
@@ -187,7 +228,62 @@ local function view_spread(job, x, y, cols, rows, probe)
 	return rows
 end
 
-local function slice_spread(job, lines, set)
+local function ensure_insert_row(job, row, col, cols)
+	for i=1,row do
+		if not job.cells[i] then
+			job.cells[i] = {}
+		end
+	end
+
+	local drow = {}
+
+	for i=1,col do
+		drow[i] = new_cell(job, "")
+	end
+
+	for i=1, #cols do
+		drow[i+ col - 1] = new_cell(job, cols[i])
+	end
+
+	table.insert(job.cells, row, drow)
+end
+
+local function ensure_replace_row(job, row, col, cols)
+	for i=1,row do
+		if not job.cells[i] then
+			job.cells[i] = {}
+		end
+	end
+
+-- prefill to the boundary
+	for i=1,col do
+		if not job.cells[row][i] then
+			job.cells[row][i] = new_cell(job, "")
+		end
+	end
+
+-- and create
+	for i=1,#cols do
+		job.cells[row][i+col-1] = new_cell(job, cols[i])
+	end
+end
+
+local function slice_spread(job, lines)
+	local res = {
+		bytecount = 0,
+		linecount = 0
+	}
+
+-- copy all cells
+	if not lines or #lines == 0 then
+	end
+
+--	for i,v in ipairs(lines) do
+--		print("lines", i, v)
+--	end
+
+	return res
+
 -- we want 'lines' to specify format, but default to csv or resolved values
 -- as well as having subset options, e.g. specific columns
 end
@@ -203,8 +299,6 @@ local function append_row(job, at_cursor, ...)
 	if at_cursor then
 		row_ind = args.cell_cursor[2] + 1
 	end
-
-	local col_ind = 1
 
 	local new_row = {}
 	for i,v in ipairs(args) do
@@ -366,8 +460,8 @@ local function item_click(job, btn, ofs, yofs, mods)
 -- switch the cursor unless it is on a column or row header.
 	if ofs <= builtin_cfg.min_col_width - 1 then
 		if yofs > 0 then
-			job.cells[job.row_ofs + yofs].selected =
-				not job.cells[job.row_ofs + yofs].selected
+--			job.cells[job.row_ofs + yofs].selected =
+--				not job.cells[job.row_ofs + yofs].selected
 		end
 		cat9.flag_dirty(job)
 		return true
@@ -441,6 +535,16 @@ local function item_motion(job, rel, x, y, mods)
 
 -- make sure we'll be drawn with underline
 	cat9.flag_dirty(job)
+end
+
+function builtins.plot(...)
+-- gnuplot and graphviz into svg into afsrv_decode into embed.
+--
+-- set terminal svg dynamic enhanced background rgb 'white'
+-- set datafile separator ","
+-- plot "/dev/stdin" using col:1 with lines
+-- \eof to separate passes?
+--
 end
 
 function builtins.new(...)
@@ -622,11 +726,101 @@ function builtins.configure(...)
 -- [row to header, substitute a-z]
 end
 
--- insert [row | col] [cursor | url] source
--- append [row | col]
+local function run_insert(replace, ...)
+	local base = {...}
+	local dst
+
+	if type(base[1]) == "table" then
+		dst = table.remove(base, 1)
+	else
+		dst = cat9.selectedjob
+	end
+
+-- ensure #job or set #job ...
+	if not dst or not dst.spreadsheet then
+		return false, errors.insert_job
+	end
+
+	local set = {}
+
+-- now it's safe to expand #args
+	local ok, msg = cat9.expand_arg(set, base)
+	if not ok then
+		return false, msg
+	end
+
+-- get address
+	if not set[1] then
+		return false, errors.missing_row
+	end
+
+	local col_ofs = 1
+	local row_ofs = 1
+
+	if set[1] == "cursor" then
+		col_ofs = dst.cell_cursor[1]
+		row_ofs = dst.cell_cursor[2]
+
+-- allow colrow or just row
+	elseif string.byte(set[1], 1) >= string.byte('A') then
+		expand_addr(table.remove(set, 1), function(col, row)
+			col_ofs = col
+			row_ofs = row
+		end)
+	else
+		row_ofs = tonumber(table.remove(set, 1))
+	end
+
+	if not row_ofs or row_ofs <= 0 then
+		return false, errors.bad_addr
+	end
+
+-- optional separate [ptn], split [ptn]
+	local col_ptn
+	local row_ptn
+
+	while #set > 0 do
+		if set[1] == "separate" then
+			table.remove(set, 1)
+			if not set[1] then
+				return false, errors.missing_separate
+			end
+			col_ptn = table.remove(set, 1)
+		elseif set[1] == "split" then
+			if not set[1] then
+				return false, errors.missing_split
+			end
+			row_ptn = table.remove(set, 1)
+
+-- out of options, run the actual thing
+		else
+
+-- with ! prefix we shell out and then post-process the results
+			if string.sub(set[1], 1, 1) == "!" then
+
+-- otherwise treat the expanded command-line as a single string and
+-- then apply the col/row split operations
+			else
+				if not replace then
+					ensure_insert_row(dst, row_ofs, col_ofs, set)
+				else
+					ensure_replace_row(dst, row_ofs, col_ofs, set)
+				end
+
+				cat9.flag_dirty(dst)
+				break
+			end
+			break
+		end
+	end
+end
 
 function builtins.insert(...)
+	run_insert(false, ...)
+end
 
+function builtins.replace(...)
+	run_insert(true, ...)
 end
 
 function builtins.set(...)
