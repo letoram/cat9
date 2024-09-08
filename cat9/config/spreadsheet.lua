@@ -10,7 +10,6 @@ return {
 		fc = tui.colors.ref_yellow,
 		bc = tui.colors.ref_black,
 	},
-	cursor_border = true,
 	row_border = true,
 	column_border = true,
 

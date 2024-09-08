@@ -122,12 +122,17 @@ local function view_spread(job, x, y, cols, rows, probe)
 	local colfmt = builtin_cfg.col_2
 	local cw  = builtin_cfg.min_col_width
 	local col = job.col_ofs + 1
+	local endcol = col
 
 -- draw column headers
 	local lx = cw
 	while lx < cols do
 		if lx > cols then
 			break
+-- recall the ending column so we can draw the cursor even if there
+-- is nothing on the row
+		else
+			endcol = col
 		end
 
 		local ccw = job.column_sizes[col] or cw
@@ -164,29 +169,30 @@ local function view_spread(job, x, y, cols, rows, probe)
 -- draw the cell window
 	local selected_x, selected_y, selected_width
 
-	for ly=y+1,y+rows-2,1 do
+	for ly=y+1,y+rows-1,1 do
 		local row = job.cells[yi]
 		local cx = cw
+		local cap = row and #row or endcol
 
-		if row then
-			for cc=job.col_ofs+1,#row do
-				local fmt = builtin_cfg.cell
-				local selected = job.cell_cursor[1] == cc and job.cell_cursor[2] == yi
-				local ccw = job.column_sizes[cc] or cw
+		for cc=job.col_ofs+1,endcol do
+			local fmt = builtin_cfg.cell
+			local selected = job.cell_cursor[1] == cc and job.cell_cursor[2] == yi
+			local ccw = job.column_sizes[cc] or cw
 
-				if selected then
-					fmt = builtin_cfg.cursor
-					selected_x = x + cx
-					selected_y = ly
-					selected_width = ccw
-				end
+			if selected then
+				fmt = builtin_cfg.cursor
+				selected_x = x + cx
+				selected_y = ly
+				selected_width = ccw
+			end
 
+			if row and row[cc] then
 				job.root:write_to(x + cx, ly, view_for_cell(row[cc], ccw), fmt)
+			end
 
-				cx = cx + (job.column_sizes[cc] or cw)
-				if cx > cols then
-					break
-				end
+			cx = cx + (job.column_sizes[cc] or cw)
+			if cx > cols then
+				break
 			end
 		end
 
@@ -215,14 +221,18 @@ local function view_spread(job, x, y, cols, rows, probe)
 		end
 	end
 
--- draw border around selected region
-	if builtin_cfg.cursor_border and selected_x then
-		job.root:write_border(
-			selected_x, selected_y,
-			selected_x + selected_width - 1, selected_y,
-			builtin_cfg.cursor,
-			1
-		)
+-- draw cursor into selected region
+	if selected_x then
+		for x=selected_x,selected_x + selected_width-1 do
+			local _, attr = job.root:get(x, y)
+			attr.fc = builtin_cfg.cursor.fc
+			attr.bc = builtin_cfg.cursor.bc
+			attr.border_left = x==selected_x
+			attr.border_top = true
+			attr.border_down = true
+			attr.border_right = x == selected_x + selected_width - 1
+			job.root:write_to(x, selected_y, attr)
+		end
 	end
 
 	return rows
