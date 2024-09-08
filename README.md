@@ -529,6 +529,92 @@ Then build an archive:
 
 Omit the destination file to get the contents into a job.
 
+## Builtins:Spreadsheet
+
+The spreadsheet is a neat way of organising and processing data, and some other
+commands will create one automatically as needed. It has a basic programming
+language with the same syntax as the regular Cat9 CLI.
+
+### New
+
+To create a new spreadsheet you run:
+
+    new
+
+### Insert / Replace
+
+The generic format is:
+
+    insert location item1 [...]
+
+Where location can be a single row reference, or a cell reference (e.g. C4).
+The item1 are subject to the same argument parsing and job slicing rules as
+everything else, but can also be populated by an external command that will
+run through /bin/sh:
+
+    insert 4 [separate "ptn"="%s+"] [split "ptn"="\n"] !shell-command
+
+Where (ptn) is a valid Lua pattern. 'Split' will be used to split into new
+rows and separate to divide up into columns.
+
+### Set
+
+To populate a single cell, you use the 'set' command:
+
+    set location value
+
+Where (value) can be a string, number or expression.
+Expressions are distinguished by the '=' prefix:
+
+   set C1 =max(A1:A5)
+
+Would populate C1 with the maximum value found in the range of cells from
+A1,A2..A5.
+
+### Remove
+
+The remove command is used to remove a full row or column.
+
+   remove [shift] row or column [count=1]
+
+If the shift option is specified, everything below the row or to the right of
+the column will be shifted up/left (count) number of times.
+
+### Plot
+
+The plot command combines embedded media job creation like 'open' would, with a
+copy operation, forwarding the sliced data to an external renderer like
+'gnuplot' or 'dot' to generate a chart or graph and finally afsrv\_decode to
+render it back into the job.
+
+## Dev
+
+The dev builtin set is experimental and ongoing. It aims to consolidate developer
+tooling such as build systems, debuggers, revision control and so on.
+
+### Debug
+
+This implements debugger protocols such as DAP. It is a fairly complex one as
+it is a complete debugger frontend with the many views and controls that
+entails.
+
+It starts simple enough:
+
+    debug launch /path/to/program arg1 ..
+    debug attach pid
+
+This will spawn a number of views (or a warning in the case of attach where
+permission restrictions may prevent you from attaching to a process) and the
+command-line will default to forward commands to the debugger process itself.
+
+### Debug:thread
+
+Most debug commands requires a thread and a frame reference.
+
+### Debug:files
+
+### Debug:maps
+
 Backstory
 =========
 

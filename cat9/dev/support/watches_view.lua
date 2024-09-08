@@ -43,13 +43,16 @@ local function dec_pending(pending, wnd)
 		cat9.flag_dirty(wnd)
 
 		if wnd.spreadsheet then
-			cat9.parse_string(cat9.readline, string.format(
+			local line =
+			string.format(
 			"#%d insert #%d %d %s",
 				wnd.spreadsheet.wnd.id,
 				wnd.spreadsheet.wnd.id,
 				wnd.spreadsheet.next_row,
 				table.concat(columns, " "))
-			)
+
+			cat9.parse_string(cat9.readline,  line)
+
 			wnd.spreadsheet.next_row = wnd.spreadsheet.next_row + 1
 		end
 -- synch to spreadsheet is the next option

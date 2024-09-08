@@ -804,10 +804,37 @@ local function run_insert(replace, ...)
 
 -- out of options, run the actual thing
 		else
+			local fun = replace and ensure_replace_row or ensure_insert_row
 
 -- with ! prefix we shell out and then post-process the results
-			if string.sub(set[1], 1, 1) == "!" then
+			if set[1] == "!" then
+				col_ptn = col_ptn or "%s+"
+				row_ptn = row_ptn or "\n"
+				table.remove(set, 1)
+				local cmd = string.gsub(table.concat(set, " "), "\"", "\\\"")
+				local _, out, _, pid = root:popen("/bin/sh -c \"" .. cmd .. "\"", "r", {})
+				cat9.add_background_job(out, pid, {lf_strip = false},
+					function(job, code)
+						local set = {"#ERROR"}
+						if code == 0 then
+							local base = table.concat(job.data, "")
+							for _,v in ipairs(string.split(base, row_ptn)) do
+								local set = string.split(v, col_ptn)
+								fun(dst, row_ofs, col_ofs, set)
+								row_ofs = row_ofs + 1
+							end
+						else
+							fun(dst, row_ofs, col_ofs, set)
+						end
 
+						if not replace then
+							ensure_insert_row(dst, row_ofs, col_ofs, set)
+						else
+							ensure_insert_row(dst, row_ofs, col_ofs, set)
+						end
+					end
+				)
+				break
 -- otherwise treat the expanded command-line as a single string and
 -- then apply the col/row split operations
 			else
