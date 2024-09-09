@@ -10,7 +10,7 @@ local errors = {
 	popen = "couldn't execute the debug adapter",
 }
 
-local send_request
+local send_request, synch_frame
 
 local function invalidate_threads(dbg)
 	for k,thread in pairs(dbg.data.threads) do
@@ -63,6 +63,7 @@ function(frame, parent, var)
 		function(var, val)
 			send_set_variable(
 				frame.thread.dbg, parent.variablesReference, var, val)
+			synch_frame(frame.thread)
 		end
 
 	var.fetch =
@@ -143,7 +144,8 @@ local function get_frame_locals(frame, on_response)
 	)
 end
 
-local function synch_frame(thread)
+synch_frame =
+function(thread)
 	if thread.state ~= "stopped" then
 		return
 	end
@@ -200,13 +202,14 @@ local function synch_frame(thread)
 	)
 end
 
-local function stepreq(th, req)
+local function stepreq(th, req, granularity)
 	if th.state ~= "stopped" then
 		return
 	end
 
 	th.state = "running"
-	send_request(th.dbg, req, {threadId = th.id, singleThread = true},
+	send_request(th.dbg, req,
+		{threadId = th.id, singleThread = true, granularity = granularity},
 		function()
 		end
 	)
@@ -230,6 +233,9 @@ local function ensure_thread(dbg, id)
 			end,
 			stepout = function(th)
 				stepreq(th, "stepOut")
+			end,
+			stepi = function(th)
+				stepreq(th, "next", "instruction")
 			end,
 			locals = function(th, fid, cb)
 				local frame = th:frame(fid)
@@ -684,6 +690,10 @@ function Debugger:disassemble(addr, ofs, count, closure)
 			insn.str = v.instruction
 			insn.bytes = {}
 			insn.addr = v.address
+			insn.valid = not v.presentationHint or v.presentationHint == 'normal'
+			if insn.str == "(bad)" then
+				insn.valid = false
+			end
 
 			for b=1,#v.instructionBytes,2 do
 				table.insert(insn.bytes, tonumber(string.sub(v.instructionBytes, b, b+1), 16))

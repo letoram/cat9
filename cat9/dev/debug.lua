@@ -19,7 +19,6 @@ local view_factories =
 	"disassembly",
 	"registers",
 	"variables",
-	"arguments",
 	"files",
 	"maps",
 	"watches"
@@ -68,8 +67,8 @@ local function attach_window(key, fact, ...)
 		local group = opts.group or "windows"
 		local wnd
 
-		if job[group][key] then
-			return job[group][key]
+		if job[group][opts.override_key or key] then
+			return job[group][opts.override_key or key]
 		end
 
 		if type(fact) == "string" then
@@ -83,7 +82,8 @@ local function attach_window(key, fact, ...)
 		else
 			wnd = fact(cat9, builtin_cfg, job, th, frame, opts)
 		end
-		job[group][key] = wnd
+
+		job[group][opts.override_key or key] = wnd
 
 -- if the contents should be rebuilt on a hook like a stack frame becoming
 -- invalid or updated, this will be called whenever a thread changes state from
@@ -263,6 +263,9 @@ function cmds.thread(job, ...)
 	elseif th and base[1] == "next" then
 		th:step()
 		return
+	elseif th and base[1] == "stepi" then
+		th:stepi()
+		return
 	elseif th and base[1] == "in" then
 		th:stepin()
 		return
@@ -294,16 +297,19 @@ function cmds.thread(job, ...)
 		variables =
 		function()
 			views.variables(job,
-				{invalidated = frame}, th, frame)
+				{invalidated = frame, override_key = "locals"}, th, frame)
 		end,
 		arguments =
 		function()
-			views.arguments(job, {}, th, frame)
+			views.variables(job,
+				{invalidated = frame,
+				scope = "arguments", override_key = "args", silent = true}, th, frame)
 		end,
 		globals =
 		function()
 			views.variables(job,
-				{invalidated = frame, globals = true}, th, frame)
+				{invalidated = frame, scope = "globals",
+				override_key = "globals", silent = true}, th, frame)
 		end,
 		watches =
 		function()
@@ -324,8 +330,8 @@ function cmds.thread(job, ...)
 				function(locals)
 					if locals.locals then
 						for _,v in ipairs(locals.locals.variables) do
-							if v.name == base[2] and base[3] == "=" then
-								v:modify(base[4])
+							if v.name == base[1] and base[2] == "=" then
+								v:modify(base[3])
 								return
 						end
 					end

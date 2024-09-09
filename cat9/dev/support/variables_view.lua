@@ -53,7 +53,7 @@ end
 
 local wnd =
 cat9.import_job({
-	short = "Debug:" .. (opts.globals and "globals" or "variables"),
+	short = "Debug:" .. (opts.scope and opts.scope or "variables"),
 	parent = job,
 	thread = th,
 	data = {bytecount = 0, linecount = 0}
@@ -65,7 +65,7 @@ function()
 	th:locals(frameid,
 		function(locals)
 			wnd.data = {linecount = 0, bytecount = 0, vars = {}}
-			local key = opts.globals and "globals" or "locals"
+			local key = opts.scope and opts.scope or "locals"
 
 			if locals[key] then
 				local max = 0

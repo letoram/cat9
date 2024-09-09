@@ -21,7 +21,13 @@ end
 
 local function view_override(job, x, y, row, set, ind, col, selected, cols)
 	--	job.pc and cfg.disassembly_selected or cfg.disassembly
-	job.root:write_to(x, y, set[ind])
+	local frame = th:frame(frameid)
+	local attr = cfg.debug.disassembly
+
+	if frame and frame.pc == set.source[ind].addr then
+		attr = cfg.debug.disassembly_selected
+	end
+	job.root:write_to(x, y, set[ind], attr)
 end
 
 local function slice_disasm(job, lines)
@@ -65,17 +71,26 @@ local wnd =
 				wnd.data.source = {}
 				for i=1,#set do
 -- this is debugger dependent (seriously why not an attribute?!)
-					table.insert(wnd.data, set[i].str)
-					table.insert(wnd.data.source, set[i])
-					wnd.data.bytecount = wnd.data.bytecount + #set[i].bytes
-					if set[i].str == "(bad)" then
+					if set[i].valid then
+						table.insert(wnd.data, set[i].str)
+						table.insert(wnd.data.source, set[i])
+						wnd.data.bytecount = wnd.data.bytecount + #set[i].bytes
+					else
 						break
 					end
 				end
-				wnd.data.linecount = #wnd.data.source
+				wnd.data.linecount = #wnd.data
 			end
 		)
 	end
+
+	wnd.selected_bar =
+	{
+		{"Step"},
+		m1 = {
+			string.format("#%d debug #%d thread %d stepi", wnd.id, wnd.id, th.id)
+		}
+	}
 
 	wnd:invalidated()
 
