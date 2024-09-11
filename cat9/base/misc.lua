@@ -711,11 +711,16 @@ function cat9.switch_env(job, force_prompt)
 		dir = root:chdir(),
 		env = cat9.table_copy_shallow(cat9.env),
 		get_prompt = cat9.get_prompt,
-		views = job.views,
-		builtins = job.builtins,
-		builtin_name = job.builtin_name,
+		views = cat9.views,
+		builtins = cat9.builtins,
+		builtin_name = cat9.builtin_name,
 		suggest = job.suggest
 	}
+
+-- actually swap out the builtins, this doesn't cover views though
+-- perhaps it should.
+	cat9.builtins = job.builtins
+	cat9.builtin_name = job.builtin_name
 
 	if force_prompt then
 		cat9.get_prompt =
@@ -891,6 +896,32 @@ function cat9.misc_resolve_mode(arg, cmode)
 	end
 
 	return open_mode, cmode
+end
+
+function cat9.expand_arg_dst(cmd, ...)
+	local base = {...}
+	local dst
+
+	if type(base[1]) == "table" then
+		dst = table.remove(base, 1)
+	else
+		dst = cat9.selectedjob
+	end
+
+-- ensure #job or set #job ...
+	if not dst then
+		return false, cmd .. " >job< : job specifier missing"
+	end
+
+	local set = {}
+
+-- now it's safe to expand #args
+	local ok, msg = cat9.expand_arg(set, base)
+	if not ok then
+		return false, msg
+	end
+
+	return dst, set
 end
 
 function cat9.get_active_root()

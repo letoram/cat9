@@ -25,6 +25,7 @@ local hintbl = {
 	plumber = "Binary used for external open",
 	main_column_width = "Number of columns for main jobs",
 	min_column_width = "Number of columns for side jobs",
+	multicolumn = "Allow splitting into multiple columns",
 	open_spawn_default = "Suggested open mode (embed, split, join-r, tab, swallow)",
 	clipboard_job = "Create a new job that absorbs all pasted input",
 	sh_runner = "Program to invoke for subshell commands",
@@ -66,6 +67,7 @@ return
 
 	main_column_width = 80,
 	min_column_width = 40,
+	multicolumn = false,
 
 	open_spawn_default = "swallow",
 	open_embed_collapsed_rows = 4,

@@ -142,7 +142,7 @@ function viewlut.scroll(set, i, job)
 
 	elseif set[2] == "relative" then
 		table.remove(set, 2)
-		job.row_offset_realtive = true
+		job.row_offset_relative = true
 		job.row_offset = 0
 
 	elseif set[2] == "absolute" then
@@ -159,6 +159,9 @@ function viewlut.scroll(set, i, job)
 
 -- clamp relative so we don't go outside actual data range
 	if job.row_offset_relative and job.row_offset > 0 then
+		job.row_offset = 0
+
+	elseif not job.row_offset_relative and job.row_offset < 0 then
 		job.row_offset = 0
 	end
 

@@ -560,6 +560,10 @@ function cat9.parse_string(rl, line)
 		return
 	end
 
+	if config.debug then
+		print(line)
+	end
+
 	cat9.parsestr = line
 	cat9.laststr = ""
 	cat9.flag_dirty()

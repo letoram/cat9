@@ -485,7 +485,7 @@ function cat9.redraw()
 	local maincol_w = config.main_column_width > 0 and config.main_column_width or 80
 	local left = cols - maincol_w
 
-	if left > 0 then
+	if left > 0 and config.multicolumn then
 		if left >= sidecol_w then
 			jobcols = jobcols + math.floor(left / sidecol_w)
 		end

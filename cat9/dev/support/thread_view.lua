@@ -131,7 +131,17 @@ local function view_threads(job, x, y, cols, rows, probe)
 			newth.click[#newth] = function()
 				th:stepout()
 			end
-			table.insert(newth, ")")
+			table.insert(newth, ") ")
+
+-- if there is any watchset, also add the option to freerun
+			table.insert(newth, "Watch")
+			newth.click[#newth] = function()
+				local str = string.format(
+					"#%d debug #%d thread %d watches thread",
+					job.parent.id, job.parent.id, th.id
+				)
+				cat9.parse_string(cat9.readline, str)
+			end
 		end
 
 		newth.click[1] =

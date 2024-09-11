@@ -36,8 +36,8 @@ local errors =
 	open_fail = "new csv >file< : couldn't open file",
 	missing_row = "cell specifier lacks row reference (e.g. A1)",
 	bad_addr = "cell address specifier has invalid values",
-	insert_job = "insert >job< : job missing or not a spreadsheet",
-	replace_job = "replace >job< : job missing or not a spreadsheet",
+	insert_job = "insert >job< : job is not a spreadsheet",
+	replace_job = "replace >job< : job is not a spreadsheet",
 	set_job = "set >job< : job missing or not a spreadsheet",
 	set_args = "set >...< : expected set [addr] \"value\" or \"=expression\" or \"=!command"
 }
@@ -191,7 +191,7 @@ local function view_spread(job, x, y, cols, rows, probe)
 			end
 
 			cx = cx + (job.column_sizes[cc] or cw)
-			if cx > cols then
+			if cx > x + cols then
 				break
 			end
 		end
@@ -201,13 +201,9 @@ local function view_spread(job, x, y, cols, rows, probe)
 
 	if builtin_cfg.column_border then
 		local col = job.col_ofs + 1
-		local lx = cw
+		local lx = cw + x
 
-		while lx < cols do
-			if lx > cols then
-				break
-			end
-
+		while lx < x + cols do
 			local ccw = job.column_sizes[col] or cw
 			col = col + 1
 			lx = lx + ccw
@@ -729,34 +725,33 @@ local function flood_set(job, row, col, args)
 end
 
 function builtins.remove(...)
--- [row | col]
+	local dst, set = cat9.expand_arg_dst("remove", ...)
+	if not dst then
+		return false, set
+	end
+
+	local noshift
+	if dst[1] == "noshift" then
+		noshift = true
+		table.remove(dst, 1)
+	end
+
+-- for row it's just a table.remove
 end
 
 function builtins.configure(...)
--- [row to header, substitute a-z]
+-- [row to header, substitute a-z, swap presentation]
 end
 
 local function run_insert(replace, ...)
-	local base = {...}
-	local dst
-
-	if type(base[1]) == "table" then
-		dst = table.remove(base, 1)
-	else
-		dst = cat9.selectedjob
+	local dst, set = cat9.expand_arg_dst(replace and "replace" or "insert", ...)
+	if not dst then
+		return false, set
 	end
 
 -- ensure #job or set #job ...
-	if not dst or not dst.spreadsheet then
+	if not dst.spreadsheet then
 		return false, errors.insert_job
-	end
-
-	local set = {}
-
--- now it's safe to expand #args
-	local ok, msg = cat9.expand_arg(set, base)
-	if not ok then
-		return false, msg
 	end
 
 -- get address
@@ -832,6 +827,7 @@ local function run_insert(replace, ...)
 						else
 							ensure_insert_row(dst, row_ofs, col_ofs, set)
 						end
+						cat9.flag_dirty(dst)
 					end
 				)
 				break
@@ -861,26 +857,14 @@ function builtins.replace(...)
 end
 
 function builtins.set(...)
-	local base = {...}
-	local dst
-
-	if type(base[1]) == "table" then
-		dst = table.remove(base, 1)
-	else
-		dst = cat9.selectedjob
+	local dst, args = cat9.expand_arg_dst("set", ...)
+	if not dst then
+		return false, args
 	end
 
 -- ensure #job or set #job ...
-	if not dst or not dst.spreadsheet then
+	if not dst.spreadsheet then
 		return false, errors.set_job
-	end
-
-	local args = {}
-
--- get rid of tables and references
-	local ok, msg = cat9.expand_arg(args, base)
-	if not ok then
-		return false, msg
 	end
 
 -- if address is provided (#args > 2) use that. If not, use selection set or

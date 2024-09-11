@@ -52,6 +52,11 @@ function(cat9, cfg, job, source, sref)
 			wnd.row_offset = 0
 		end
 
+		if wnd.row_offset + rows > data.linecount then
+			print("overflow", wnd.row_offset)
+--			wnd.row_offset = data.linecount - rows
+		end
+
 		wnd.cursor_line = line
 		cat9.flag_dirty(wnd)
 	end

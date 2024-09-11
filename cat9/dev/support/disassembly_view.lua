@@ -92,6 +92,7 @@ local wnd =
 		}
 	}
 
+	wnd.row_offset_relative = false
 	wnd:invalidated()
 
 	return wnd

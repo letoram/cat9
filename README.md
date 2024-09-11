@@ -575,7 +575,7 @@ A1,A2..A5.
 
 The remove command is used to remove a full row or column.
 
-   remove [shift] row or column [count=1]
+   remove [noshift] row or column [count=1]
 
 If the shift option is specified, everything below the row or to the right of
 the column will be shifted up/left (count) number of times.

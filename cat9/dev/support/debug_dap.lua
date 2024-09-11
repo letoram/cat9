@@ -208,6 +208,7 @@ local function stepreq(th, req, granularity)
 	end
 
 	th.state = "running"
+	th.expanded = false
 	send_request(th.dbg, req,
 		{threadId = th.id, singleThread = true, granularity = granularity},
 		function()
@@ -233,6 +234,15 @@ local function ensure_thread(dbg, id)
 			end,
 			stepout = function(th)
 				stepreq(th, "stepOut")
+			end,
+			freerun = function(th, mode, granularity)
+				mode = mode or "stepIn"
+				if th.freerunning == nil then
+					th.freerunning = mode
+					stepreq(th, mode, granularity)
+				else
+					th.freerunning = nil
+				end
 			end,
 			stepi = function(th)
 				stepreq(th, "next", "instruction")
@@ -336,17 +346,12 @@ local function synch_breakpoints_handler(dbg, msg)
 	invalidate_threads(dbg)
 end
 
-local function run_update(dbg, event)
-	if dbg.on_update[event] then
-		dbg.on_update[event](dbg)
-	end
-end
-
 send_request =
 function(dbg, req, args, handler)
 	local seq = dbg.dap_seq
 	dbg.dap_seq = dbg.dap_seq + 1
 	dbg.response[seq] = handler
+	dbg.pending = dbg.pending + 1
 
 	local kvc = 0
 	for k,v in pairs(args) do
@@ -379,10 +384,6 @@ local function handle_continued_event(dbg, msg)
 		dbg.data.threads[b.threadId].state = "continued"
 	else
 		dbg.output:add_line(dbg, "'continued' on unknown thread: " .. tostring(b.threadId))
-	end
-
-	if dbg.on_update.threads then
-		dbg.on_update.threads(dbg)
 	end
 end
 
@@ -439,12 +440,10 @@ local function handle_breakpoint_event(dbg, msg)
 			end
 		end
 
-		run_update(dbg, "breakpoints")
 		return
 	end
 
 	dap_bpt_to_bpt(bpt, b.breakpoint)
-	run_update(dbg, "breakpoints")
 end
 
 local function handle_stopped_event(dbg, msg)
@@ -458,23 +457,21 @@ local function handle_stopped_event(dbg, msg)
 -- allThreadsStopped?
 -- hitBreakpointIds?
 	local b = msg.body
+	dbg.clock = dbg.clock + 1
 
 	if b.allThreadsStopped then
 		for k,v in ipairs(dbg.data.threads) do
 			v.state = "stopped"
+			v.reason = b.reason
 			v:synch_frames()
 		end
+
 	elseif b.threadId then
 		local th = ensure_thread(dbg, b.threadId)
 		th.state = "stopped"
+		th.reason = b.reason
 		th:synch_frames()
 	end
-
-	if dbg.state_hook then
-		dbg:state_hook("stopped")
-	end
-
-	run_update(dbg, "threads")
 end
 
 local function handle_thread_event(dbg, msg)
@@ -488,8 +485,6 @@ local function handle_thread_event(dbg, msg)
 	else
 		dbg.errors:add_line(dbg, "Unknown thread event reason: ", b.reason)
 	end
-
-	run_update(dbg, "threads")
 end
 
 local function handle_module_event(dbg, msg)
@@ -545,7 +540,6 @@ local function handle_stop_event(dbg, msg)
 	local thread = ensure_thread(dbg, b.threadId)
 	thread.state = "stopped"
 	thread.reason = b.reason
-	run_update(dbg, "threads")
 end
 
 local msghandlers =
@@ -567,8 +561,23 @@ function(dbg, msg)
 	local seq = tonumber(msg.request_seq)
 
 	if dbg.response[seq] then
+		dbg.pending = dbg.pending - 1
+
 		dbg.response[seq](dbg, msg)
 		dbg.response[seq] = nil
+
+-- now that there are no outstanding requests, trigger any freerunning thread
+		if dbg.pending == 0 then
+			for k,thread in pairs(dbg.data.threads) do
+				if thread.freerunning then
+					if thread.reason ~= "step" then
+						thread.freerunning = false
+					else
+						stepreq(thread, thread.freerunning)
+					end
+				end
+			end
+		end
 	else
 		dbg.errors:add_line(dbg, "No response handler for " .. (seq and seq or "bad_seqence"))
 	end
@@ -578,10 +587,6 @@ end
 function Debugger:get_suggestions(prefix, closure)
 -- since we can get many when / if the prefix changes maybe the cancellation
 -- request should be returned as a function() that the UI can call
-end
-
-function Debugger:set_state_hook(hook)
-	self.state_hook = hook
 end
 
 -- public interface
@@ -893,12 +898,6 @@ local function add_tbl_line(tbl, dbg, line)
 	end
 
 	table.insert(tbl, line)
-	if not tbl.clock then
-		tbl.clock = {}
-		table.insert(tbl.clock, dbg.counter)
-	end
-
-	dbg.counter = dbg.counter + 1
 	tbl.linecount = tbl.linecount + 1
 	tbl.bytecount = tbl.bytecount + #line
 end
@@ -939,7 +938,8 @@ local debug = setmetatable(
 	},
 	request = {},
 	response = {},
-	counter = 1,
+	clock = 1,
+	pending = 0,
 	output = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	stderr = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	stdout = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
@@ -955,7 +955,6 @@ local debug = setmetatable(
 		breakpoints = {},
 	},
 
-	on_update = {},
 	job = job,
 -- (uncomment to see data before parse)
 	log = lash.root:fopen("/tmp/dbglog.in", "w"),

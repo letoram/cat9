@@ -66,9 +66,10 @@ local function attach_window(key, fact, ...)
 	function(job, opts, th, frame)
 		local group = opts.group or "windows"
 		local wnd
+		local dkey = opts.override_key or key
 
-		if job[group][opts.override_key or key] then
-			return job[group][opts.override_key or key]
+		if job[group][dkey] then
+			return job[group][dkey]
 		end
 
 		if type(fact) == "string" then
@@ -83,7 +84,7 @@ local function attach_window(key, fact, ...)
 			wnd = fact(cat9, builtin_cfg, job, th, frame, opts)
 		end
 
-		job[group][opts.override_key or key] = wnd
+		job[group][dkey] = wnd
 
 -- if the contents should be rebuilt on a hook like a stack frame becoming
 -- invalid or updated, this will be called whenever a thread changes state from
@@ -102,7 +103,7 @@ local function attach_window(key, fact, ...)
 		table.insert(
 			wnd.hooks.on_destroy,
 			function()
-				job[group][key] = nil
+				job[group][dkey] = nil
 				if opts.invalidated then
 					local ih = th.handlers.invalidated
 
@@ -193,7 +194,8 @@ local function add_watch_spread(wnd)
 	cat9.builtins["builtin"]("spreadsheet")
 	cat9.parse_string(cat9.readline, "new")
 	wnd.spreadsheet = {
-		wnd = cat9.latestjob
+		wnd = cat9.latestjob,
+		clock = 0
 	}
 
 	if not wnd.spreadsheet.wnd then
@@ -208,6 +210,10 @@ local function add_watch_spread(wnd)
 	)
 
 	local columns = {}
+	for i,v in ipairs(wnd.threads) do
+		table.insert(columns, string.format("\"Thread(%s)\"", tostring(v.id)))
+		v.in_spread = #columns
+	end
 	for i,v in ipairs(wnd.registers) do
 		table.insert(columns, '"' .. string.gsub(v.name, '"', "\\\"") .. '"')
 		v.in_spread = #columns
@@ -223,9 +229,11 @@ local function add_watch_spread(wnd)
 
 	wnd.spreadsheet.next_row = 2
 
-	cat9.parse_string(cat9.readline, string.format(
+	local str = string.format(
 		"insert #%d 1 %s", wnd.spreadsheet.wnd.id, table.concat(columns, " "))
-	)
+
+	cat9.parse_string(cat9.readline, str)
+
 	cat9.builtins["builtin"](ob)
 end
 
@@ -268,6 +276,9 @@ function cmds.thread(job, ...)
 		return
 	elseif th and base[1] == "in" then
 		th:stepin()
+		return
+	elseif th and base[1] == "freerun" then
+		th:freerun()
 		return
 	elseif th and base[1] == "out" then
 		th:stepout()
@@ -622,14 +633,6 @@ function cmds.attach(...)
 	table.insert(job.hooks.on_destroy,
 		function()
 			job.debugger:terminate(false)
-		end
-	)
-
--- this is if we want to perform a lot of tasks when large state transitions
--- happen, like hitting a breakpoint. Invalidation of the views happen through
--- update hooks added in spawn_views
-	job.debugger:set_state_hook(
-		function()
 		end
 	)
 
