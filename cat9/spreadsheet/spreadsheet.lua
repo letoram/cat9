@@ -65,6 +65,7 @@ local function new_cell(job, val)
 	end
 
 	tmpl.label = val
+	tmpl.value = val
 
 	return tmpl
 end
@@ -234,6 +235,61 @@ local function view_spread(job, x, y, cols, rows, probe)
 	return rows
 end
 
+local function flood_set(job, row, col, args)
+	if not job.cells[row] then
+		for i=1,row do
+			if not job.cells[i] then
+				job.cells[i] = {}
+			end
+		end
+	end
+	local row = job.cells[row]
+
+	for i=1,col do
+		if not row[i] then
+			row[i] = new_cell(job)
+		end
+	end
+
+	local domain = table.remove(args, 1)
+
+	if domain ~= "val" then
+-- format, name, ...
+		return
+	end
+
+	local cmd = table.concat(args, " ")
+	local prefix = string.sub(cmd, 1, 1)
+
+	if prefix == "=" then
+		row[col].expression = string.sub(cmd, 2)
+		parse_expression(job, row[col])
+-- expression
+	elseif prefix == "!" then
+		cmd = string.sub(cmd, 2)
+
+		row[col].handler =
+		function()
+			local _, out, _, pid = root:popen("/bin/sh -c \"" .. cmd .. "\"", "r", {})
+			cat9.add_background_job(out, pid, {lf_strip = true},
+				function(job, code)
+					if code == 0 then
+						row[col]:update(table.concat(job.data, ""), row[col].label)
+					else
+						row[col]:update("#ERROR", row[col].label)
+					end
+					cat9.flag_dirty(job)
+				end
+			)
+		end
+		row[col].handler()
+	else
+		row[col]:update(cmd, cmd)
+	end
+
+	cat9.flag_dirty(job)
+end
+
 local function ensure_insert_row(job, row, col, cols)
 	for i=1,row do
 		if not job.cells[i] then
@@ -280,18 +336,33 @@ local function slice_spread(job, lines)
 		linecount = 0
 	}
 
--- copy all cells
-	if not lines or #lines == 0 then
+	local format = "csv"
+	local elemsep = ","
+	local rowsep = "\n"
+	local compact = false
+
+	if lines then
+-- need to grab options (format, elemsep, rowsep, compact) and
+-- then resolve line ranges and ordering into a set then work through
+-- that set.
+	else
+		for i=1,#job.cells do
+			local row = job.cells[i]
+			local set = {}
+			for i=1,#row do
+				if row[i].value then
+					table.insert(set, tostring(row[i].value))
+				elseif not compact then
+					table.insert(set, "")
+				end
+			end
+			table.insert(res, table.concat(set, elemsep))
+			res.bytecount = res.bytecount + #res[#res]
+		end
 	end
 
---	for i,v in ipairs(lines) do
---		print("lines", i, v)
---	end
-
+	res.linecount = #res
 	return res
-
--- we want 'lines' to specify format, but default to csv or resolved values
--- as well as having subset options, e.g. specific columns
 end
 
 local function append_row(job, at_cursor, ...)
@@ -311,7 +382,6 @@ local function append_row(job, at_cursor, ...)
 		table.insert(new_row, new_cell(job, v))
 	end
 
-	new_row.cells = #new_row
 	table.insert(job.cells, row_ind, new_row)
 	cat9.flag_dirty(job)
 end
@@ -437,6 +507,71 @@ local function refresh_spread(job)
 	end
 end
 
+local function query_value(job, value, closure)
+	local oprompt = cat9.get_prompt
+	local got_readline = cat9.readline
+
+-- this should really spawn a new readline if the job is detached, and
+-- anchor / clip it closer to the cell itself
+	cat9.set_readline(
+		lash.root:readline(
+			function(self, line)
+				cat9.get_prompt = oprompt
+				cat9.block_readline(lash.root, false, false)
+				cat9.reset()
+				job.in_query = false
+				if not got_readline then
+					cat9.hide_readline(lash.root)
+				end
+				closure(line)
+			end
+		, {
+
+-- this is where we can latch in our expression specific helper that
+-- provides type and completion hints for the related function space
+-- just like done in pipeworld
+			cancellable = true,
+			forward_meta = false,
+			forward_paste = false,
+			forward_mouse = true
+		}), "spread:set"
+	)
+
+	job.in_query = true
+	cat9.block_readline(lash.root, true, true)
+	cat9.readline:set(value)
+
+	cat9.get_prompt = function()
+		return {string.format("(XY = %s) ", value)}
+	end
+end
+
+local function key_input(job, sub, sym, code, mods)
+
+	if sym == tui.keys.UP then
+		if job.cell_cursor[2] > 1 then
+			job.cell_cursor[2] = job.cell_cursor[2] - 1
+		end
+	elseif sym == tui.keys.DOWN then
+		job.cell_cursor[2] = job.cell_cursor[2] + 1
+	elseif sym == tui.keys.LEFT then
+		if job.cell_cursor[1] > 1 then
+			job.cell_cursor[1] = job.cell_cursor[1] - 1
+		end
+	elseif sym == tui.keys.RIGHT then
+		job.cell_cursor[1] = job.cell_cursor[1] + 1
+	elseif sym == tui.keys.BACKSPACE then
+		flood_set(job, job.cell_cursor[2], job.cell_cursor[1], {"val", ""})
+	elseif sym == tui.keys.ENTER or sym == tui.keys.RETURN then
+		query_value(job, "",
+			function(val)
+				flood_set(job, job.cell_cursor[2], job.cell_cursor[1], {"val", val})
+			end
+		)
+	end
+	cat9.flag_dirty(job)
+end
+
 local function item_click(job, btn, ofs, yofs, mods)
 	if yofs == 0 then
 		return
@@ -473,6 +608,7 @@ local function item_click(job, btn, ofs, yofs, mods)
 		return true
 	end
 
+-- toggle row width to fit
 	if yofs == 1 then
 		local cell, row, col = xy_to_cell(job, ofs, yofs - 1)
 		if col > 0 then
@@ -487,30 +623,39 @@ local function item_click(job, btn, ofs, yofs, mods)
 		return true
 	end
 
+-- if we are querying for a value, just append the cell to the expression
 	local cell, row, col = xy_to_cell(job, ofs, yofs - 1)
+
+	if job.in_query then
+-- it would help to determine if we are in a function argument context
+-- and add argument separator instead, drag range should also be handled
+		cat9.readline:set(
+			cat9.readline:get() .. col_to_az(col - 1) .. tostring(row)
+		)
+		return true
+	end
+
+-- otherwise move the cursor
 	job.cell_cursor[1] = col
 	job.cell_cursor[2] = row
 
+-- new insertion?
 	if not cell then
 		if cat9.readline then
-			cat9.readline:set(
-				string.format(
-					"#%d set %s%d val \"\"",
-					job.id,
-					col_to_az(col-1), row
-				)
+			query_value(job, "",
+				function(val)
+					flood_set(job, row, col, {"val", val})
+				end
 			)
 		end
+-- existing cell
 	else
 		if job.last_click[1] == row and job.last_click[2] == col then
 			if cat9.readline then
-				cat9.readline:set(
-					string.format(
-						"#%d set %s val %s",
-						job.id,
-						to_cell_address(col-1, row),
-						cell.label
-					)
+				query_value(job, cell.value,
+					function(val)
+						flood_set(job, row, col, {"val", val})
+					end
 				)
 			end
 		else
@@ -518,11 +663,10 @@ local function item_click(job, btn, ofs, yofs, mods)
 			string.format("%s%d = %s", col_to_az(col-1), row, cell.label)
 			)
 		end
-
-		cat9.flag_dirty(job)
 	end
 
 	job.last_click = {row, col, cat9.time}
+	cat9.flag_dirty(job)
 	return true
 end
 
@@ -574,7 +718,8 @@ function builtins.new(...)
 		cell_cursor = {1, 1},
 		last_click = {0, 0, 0},
 		show_line_number = false,
-		spreadsheet = true
+		spreadsheet = true,
+		key_input = key_input
 	}
 
 	if set[1] and set[1] == "csv" then
@@ -675,55 +820,6 @@ function(job, cell)
 	end
 end
 
-local function flood_set(job, row, col, args)
-	local row = job.cells[row]
-
-	for i=1,col do
-		if not row[i] then
-			row[i] = new_cell(job)
-			row.cells = row.cells + 1
-		end
-	end
-
-	local domain = table.remove(args, 1)
-
-	if domain ~= "val" then
--- format, name, ...
-		return
-	end
-
-	local cmd = table.concat(args, " ")
-	local prefix = string.sub(cmd, 1, 1)
-
-	if prefix == "=" then
-		row[col].expression = string.sub(cmd, 2)
-		parse_expression(job, row[col])
--- expression
-	elseif prefix == "!" then
-		cmd = string.sub(cmd, 2)
-
-		row[col].handler =
-		function()
-			local _, out, _, pid = root:popen("/bin/sh -c \"" .. cmd .. "\"", "r", {})
-			cat9.add_background_job(out, pid, {lf_strip = true},
-				function(job, code)
-					if code == 0 then
-						row[col]:update(table.concat(job.data, ""), row[col].label)
-					else
-						row[col]:update("#ERROR", row[col].label)
-					end
-					cat9.flag_dirty(job)
-				end
-			)
-		end
-		row[col].handler()
-	else
-		row[col]:update(cmd, cmd)
-	end
-
-	cat9.flag_dirty(job)
-end
-
 function builtins.remove(...)
 	local dst, set = cat9.expand_arg_dst("remove", ...)
 	if not dst then
@@ -822,11 +918,6 @@ local function run_insert(replace, ...)
 							fun(dst, row_ofs, col_ofs, set)
 						end
 
-						if not replace then
-							ensure_insert_row(dst, row_ofs, col_ofs, set)
-						else
-							ensure_insert_row(dst, row_ofs, col_ofs, set)
-						end
 						cat9.flag_dirty(dst)
 					end
 				)
@@ -889,7 +980,7 @@ function builtins.set(...)
 		expand_addr(addr,
 			function(col, row)
 				if not dst.cells[row] then
-					dst.cells[row] = {cells = 0}
+					dst.cells[row] = {}
 				end
 
 				flood_set(dst, row, col, args)
