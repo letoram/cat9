@@ -23,6 +23,7 @@ return
 		file_selected = {bc = tui.colors.alert, fc = tui.colors.text, border_down = true},
 		register = {fc = tui.colors.ref_green, bc = tui.colors.text},
 		register_value = {fc = tui.colors.ref_red, bc = tui.colors.text},
+		variable = {bc = tui.colors.text, fc = tui.colors.text},
 
 		reggroups = {
 -- x84_64 right now, complete with more as needed

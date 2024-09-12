@@ -5,7 +5,7 @@ local errors = {
 	breakpoint_id = "change or remove on breakpoint without valid id",
 	breakpoint_missing = "unknown breakpoint %d",
 	set_breakpoint = "breakpoint request failed",
-	set_variable, "set %s failed: %s",
+	set_variable = "set %s failed: %s",
 	no_frame = "missing requested frame %d",
 	popen = "couldn't execute the debug adapter",
 }
@@ -65,6 +65,8 @@ function(frame, parent, var)
 				frame.thread.dbg, parent.variablesReference, var, val)
 			synch_frame(frame.thread)
 		end
+
+	var.parent = parent
 
 	var.fetch =
 		function(var, cb)
@@ -447,15 +449,6 @@ local function handle_breakpoint_event(dbg, msg)
 end
 
 local function handle_stopped_event(dbg, msg)
--- reason:
---  step, breakpoint, exception, pause, entry, goto,
---  function breakpoint, data breakpoint, instruction breakpoint
--- description?
--- threadId?
--- preserveFocusHint?
--- text?
--- allThreadsStopped?
--- hitBreakpointIds?
 	local b = msg.body
 	dbg.clock = dbg.clock + 1
 
@@ -840,8 +833,11 @@ function Debugger:pause(id)
 	)
 end
 
-function Debugger:reset()
--- should restart / run the target again, perhaps not useful for attach
+function Debugger:restart()
+-- this is yet another of those 'capability' messes, according to spec
+-- we should :terminate and :launch with the same parameters again as
+-- an option, for attached we should just detach.
+	send_request(self, "restart", {}, function() end)
 end
 
 function Debugger:terminate(hard)

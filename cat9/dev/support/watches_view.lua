@@ -92,41 +92,48 @@ local function dec_pending(pending, wnd)
 	return pending - 1
 end
 
+local function get_member_path(v, scope, closure)
+	local path = cat9.table_copy_shallow(v.members)
+
+	local found = false
+	v.thread:locals(
+		v.frame,
+		function(vars)
+			if not vars[scope] or not vars[scope].variables then
+				closure(false)
+				return
+			end
+
+			for _,w in ipairs(vars[scope].variables) do
+-- here we need to remove one from path and repeat the call
+-- instead of triggering the closure immediately
+				if w.name == v.name then
+					v.value = w.value
+					closure(true)
+					break
+				end
+			end
+		end
+	)
+end
+
 local function synch_vals(wnd)
 	local pending = 0
 
--- since these can all be on different threads etc. simply sweep each, count
--- pending and flag dirty when done (or if there is a spreadsheet attach, send
--- the update values as we go).
 	for k,v in ipairs(wnd.registers) do
-		pending = pending + 1
-		local th = v.thread:locals(v.frame,
-			function(vars)
-				if vars.registers then
-					for _,w in ipairs(vars.registers.variables) do
-						if w.name == v.name then
-							v.value = w.value
-							break
-						end
-					end
-				end
+		get_member_path(v, "registers",
+			function()
 				pending = dec_pending(pending, wnd)
 			end
 		)
 	end
 
+-- variables and globals are more tricky as we need to walk the
+-- tree and find the path if the #members count is > 0
 	for k,v in ipairs(wnd.variables) do
-			pending = pending + 1
-			local th = v.thread:locals(v.frame,
-			function(vars)
-				if vars.variables then
-					for _,w in ipairs(vars.locals.variables) do
-						if w.name == v.name then
-							v.value = w.value
-							break
-						end
-					end
-				end
+		pending = pending + 1
+		get_member_path(v, "locals",
+			function()
 				pending = dec_pending(pending, wnd)
 			end
 		)
@@ -134,16 +141,8 @@ local function synch_vals(wnd)
 
 	for k,v in ipairs(wnd.globals) do
 		pending = pending + 1
-		local th = v.thread:locals(v.frame,
-			function(vars)
-				if vars.variables then
-					for _,w in ipairs(vars.globals.variables) do
-						if w.name == v.name then
-							v.value = w.value
-							break
-						end
-					end
-				end
+		get_member_path(v, "globals",
+			function()
 				pending = dec_pending(pending, wnd)
 			end
 		)
@@ -163,8 +162,17 @@ end
 wnd.watch = true
 
 wnd.add_watch =
-function(wnd, domain, name, thread, frame)
-	local dt = {thread = thread or th, frame = frame or frameid, name = name, val = 0}
+function(wnd, domain, name, thread, frame, ...)
+	local members = {...}
+	local dt =
+		{
+			thread = thread or th,
+			frame = frame or frameid,
+			name = name,
+			val = 0,
+			members = members
+		}
+
 	local dd
 
 	if domain == "register" then

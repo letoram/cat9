@@ -130,7 +130,6 @@ views.source = attach_window("source", view_factories.source)
 views.disassembly = attach_window("disassembly", view_factories.disassembly)
 views.registers = attach_window("registers", view_factories.registers)
 views.variables = attach_window("variables", view_factories.variables)
-views.arguments = attach_window("arguments", view_factories.arguments)
 views.files = attach_window("files", view_factories.files)
 views.maps = attach_window("maps", view_factories.maps)
 views.watches = attach_window("watches", view_factories.watches)
@@ -331,7 +330,7 @@ function cmds.thread(job, ...)
 				end
 				wnd:invalidated()
 			else
-				wnd:add_watch(base[1], base[2], th, frame)
+				wnd:add_watch(base[1], base[2], th, frame, unpack(base, 3))
 				wnd:invalidated()
 			end
 		end,
@@ -579,7 +578,10 @@ function cmds.launch(...)
 		short = string.format("Debug:launch(%s)", outargs[1]),
 		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, outargs),
 		windows = {},
-		check_status = cat9.always_active
+		check_status = cat9.always_active,
+		["repeat"] = function(self)
+			self.debugger:restart()
+		end
 	}
 
 	job.data = job.debugger.output

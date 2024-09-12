@@ -114,6 +114,13 @@ local function view_threads(job, x, y, cols, rows, probe)
 		table.insert(data.threads, newth)
 
 		if th.state == "stopped" then
+			if th.stack and th.stack[1] then
+				local pos = string.format("(%s:%s) ",
+					th.stack[1].name or "",
+					tostring(th.stack[1].line) or "?"
+				)
+				table.insert(newth, pos)
+			end
 			table.insert(newth, "Step(")
 			table.insert(newth, "next")
 			newth.click[#newth] = function()

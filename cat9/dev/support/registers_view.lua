@@ -210,6 +210,7 @@ local wnd =
 	wnd.expanded = false
 	wnd.show_line_number = false
 	wnd.write_override = write_regs
+	wnd.row_offset_relative = false
 	wnd:set_view(view_regs, nil, {}, "registers")
 
 return wnd
