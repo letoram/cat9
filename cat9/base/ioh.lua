@@ -12,14 +12,14 @@ local function drag_for_mouse(job, x, y, mods)
 -- is it also a drag action with a modifier held or drag on job-bar
 -- announce what corresponds to copy(#csel, :pick)
 	if not cat9.in_pending_dnd then
-		if (0 == y - job.mouse[2] or mods > 0) then
-			cat9.in_pending_dnd = {job, y - job.mouse[2] == 0, job.mouse[1]}
+		if (0 == job.region[2] - y or mods > 0) then
+			cat9.in_pending_dnd = {job, y - job.mouse[2] == 0, job.mouse[1], cat9.time}
 		end
 		return
 	end
 
 -- on_drag items here, just deal with jobbar delta detach now
-	if cat9.in_pending_dnd[2] and y - job.region[2] == 0 then
+	if cat9.in_pending_dnd[2] and y - job.region[2] ~= 0 then
 		local job = cat9.in_pending_dnd[1]
 		cat9.in_pending_dnd = nil
 		mstate[1] = false
@@ -404,15 +404,12 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		return
 	end
 
-	if cat9.in_pending_dnd then
-		cat9.in_pending_dnd = nil
-		return
-	end
-
 -- ghost release
 	if not mstate[index] then
 		return
 	end
+
+	mstate[index] = nil
 
 -- motion will update current selection so no need to do the lookup twice
 	if not cat9.selectedjob then
@@ -420,8 +417,13 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 	end
 
 -- completed click? (trigger on falling edge and no delta in x, y)
-	mstate[index] = nil
 	local cols, _ = root:dimensions()
+
+	if cat9.in_pending_dnd then
+		drag_for_mouse(cat9.selectedjob, x, y, mods)
+		cat9.in_pending_dnd = nil
+		return
+	end
 
 	local try =
 	function(...)
