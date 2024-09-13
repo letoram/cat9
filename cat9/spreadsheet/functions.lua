@@ -27,6 +27,38 @@ return
 		type_helper = {}
 	},
 
+	sum =
+	{
+		handler =
+		function(...)
+			local arg = {...}
+			local cur = 0
+			for i=1,#arg do
+				cur = cur + arg[i]
+			end
+			return cur
+		end,
+		args = {types.NUMBER, types.NUMBER, types.VARARG},
+		argc = 1,
+		help = "Calculate the sum of the suppiled arguments",
+	},
+
+	avg =
+	{
+		handler =
+		function(...)
+			local arg = {...}
+			local cur = 0
+			for i=1,#arg do
+				cur = cur + arg[i]
+			end
+			return cur / #arg
+		end,
+		args = {types.NUMBER, types.NUMBER, types.VARARG},
+		argc = 1,
+		help = "Calculate the average value of the supplied arguments",
+	},
+
 	max =
 	{
 		handler =

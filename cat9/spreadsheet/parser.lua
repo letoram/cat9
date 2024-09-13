@@ -136,6 +136,95 @@ local function get_argtype(tbl, index)
 	return stype, index
 end
 
+local az = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+local azc = #az
+
+local function col_to_az(x)
+	local ci = x % azc
+	local cq = math.floor(x / azc)
+	local ch = string.sub(az, ci+1, ci+1)
+
+	if cq >= 1 then
+		return col_to_az(cq - 1) .. ch
+	end
+
+	return ch
+end
+
+local function expand_argtoken(dst, sym, pos, alt)
+	local set = string.split(sym, ":")
+	if #set ~= 2 then
+		return false, "Invalid ':' specifier: " .. sym
+	end
+
+	local expand_addr =
+	function(addr)
+		local col, row = string.match(addr, "(%a+)(%d+)")
+		row = tonumber(row)
+
+		if not row then
+			return false, "Missing row specifier"
+		end
+
+		local cv = 0
+		local aval = string.byte("A") - 1
+		col = string.upper(col)
+
+		for ind=1,#col do
+			cv = cv + (string.byte(col, ind) - aval) * math.pow(#az, ind - 1)
+		end
+
+		return cv, row
+	end
+
+	local to_cell_address =
+	function(col, row)
+		local pref = col_to_az(col)
+		return pref .. tostring(row)
+	end
+
+	local start_col, start_row = expand_addr(set[1])
+	local stop_col, stop_row = expand_addr(set[2])
+
+	if not start_col then
+		return false, start_row
+	end
+
+	if not stop_col then
+		return false, stop_col
+	end
+
+	if stop_col < start_col then
+		local tmp = start_col
+		start_col = stop_col
+		stop_col = tmp
+	end
+
+	if stop_col < start_col then
+		local tmp = start_col
+		start_col = stop_col
+		stop_col = tmp
+	end
+
+	local di = 1
+	for i=start_row,stop_row do
+		for j=start_col,stop_col do
+			local addr = to_cell_address(j-1, i)
+			table.insert(dst, di, {types.SYMBOL, addr, pos, alt})
+			di = di + 1
+			if j ~= stop_col then
+				table.insert(dst, di, {types.OPERATOR, types.OP_SEP, pos, alt})
+				di = di + 1
+			end
+		end
+		if i ~= stop_row then
+			table.insert(dst, di, {types.OPERATOR, types.OP_SEP, pos, alt})
+			di = di + 1
+		end
+	end
+	return true
+end
+
 local function check_argtype(arg, tbl, index, exttype)
 	local stype
 	stype, index = get_argtype(tbl, index)
@@ -219,18 +308,27 @@ local function parse_fcall(fctx, fn, tokens, depth)
 				return {types.ERROR, "expected , or ) got " .. tokdata, tokpos, #args}
 			end
 
+-- special-case expander tokens (e.g A1:A3 -> A1, A2, A3), this can get complex
+-- e.g. A1:BB2 -> A1, B1, C1, D1, E1, F1, ... AB1
+			if string.find(tokdata, ":") then
+				local ok, msg = expand_argtoken(tokens, tokdata, tokpos, tokalt)
+				if not ok then
+					return {types.ERROR, msg, tokpos, #args}
+				end
+			else
 -- resolve symbol against typetbl, remember the result but don't advance the
 -- argument index, that is done on the operator
-			local stype
-			stype, _ = get_argtype(typetbl, arg_index)
-			local sym, symtype = fcall_arg_symbol(fctx, tokdata, stype, tokpos, tokalt)
-			if not sym then
-				return symtype
-			end
+				local stype
+				stype, _ = get_argtype(typetbl, arg_index)
+				local sym, symtype = fcall_arg_symbol(fctx, tokdata, stype, tokpos, tokalt)
+				if not sym then
+					return symtype
+				end
 
-			lastarg = {symtype, sym, tokpos}
-			nfun_return = nil
-			in_sep = false
+				lastarg = {symtype, sym, tokpos}
+				nfun_return = nil
+				in_sep = false
+			end
 
 -- simple literal types don't take much work
 		elseif is_primitive_type(toktype, true) then

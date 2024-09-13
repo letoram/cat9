@@ -1,15 +1,3 @@
---
--- draw
---
--- keyboard navigation
--- command navigation
--- mouse navigation
--- set / edit sell
---
--- expression via parser
--- basic functions (string, number)
--- export to dot
---
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
@@ -48,10 +36,22 @@ builtins.hint["set"] = "Provide a value or expression for a specific cell"
 local function new_cell(job, val)
 	local tmpl = {
 		label = "",
-		update = -- accessor to add into history buffer
+		listeners = {},
+
+-- value history tracking would go here to make this a 3D grid
+		update =
 		function(cell, val)
 			cell.label = tostring(val)
 			cell.value = val
+
+-- any dependent expressions need to be recalculated
+			if #cell.listeners > 0 then
+				local oldli = cell.listeners
+				cell.listeners = {}
+				for k,v in ipairs(oldli) do
+					parse_expression(job, v)
+				end
+			end
 		end
 	}
 
@@ -118,6 +118,8 @@ local function view_spread(job, x, y, cols, rows, probe)
 
 	local cy = y
 	local yi = 1 + job.row_ofs
+	job.max_rows = rows
+	job.max_cols = cols
 
 	local rowfmt = builtin_cfg.col_1
 	local colfmt = builtin_cfg.col_2
@@ -192,6 +194,7 @@ local function view_spread(job, x, y, cols, rows, probe)
 			end
 
 			cx = cx + (job.column_sizes[cc] or cw)
+
 			if cx > x + cols then
 				break
 			end
@@ -336,7 +339,7 @@ local function slice_spread(job, lines)
 		linecount = 0
 	}
 
-	local format = "csv"
+	local format = "csv" -- raw would preserve = in expressions
 	local elemsep = ","
 	local rowsep = "\n"
 	local compact = false
@@ -356,8 +359,10 @@ local function slice_spread(job, lines)
 					table.insert(set, "")
 				end
 			end
-			table.insert(res, table.concat(set, elemsep))
-			res.bytecount = res.bytecount + #res[#res]
+			if #set > 0 or not compact then
+				table.insert(res, table.concat(set, elemsep))
+				res.bytecount = res.bytecount + #res[#res]
+			end
 		end
 	end
 
@@ -484,7 +489,7 @@ end
 
 local function refresh_spread(job)
 	for _, v in pairs(job.cells) do
-		local nc = v.cells
+		local nc = #v
 		local i = 1
 
 -- this is a fair place to track history of values
@@ -507,7 +512,7 @@ local function refresh_spread(job)
 	end
 end
 
-local function query_value(job, value, closure)
+local function query_value(job, label, value, closure)
 	local oprompt = cat9.get_prompt
 	local got_readline = cat9.readline
 
@@ -529,7 +534,26 @@ local function query_value(job, value, closure)
 
 -- this is where we can latch in our expression specific helper that
 -- provides type and completion hints for the related function space
--- just like done in pipeworld
+-- just like done in pipeworld.
+--
+-- basically suggest would:
+--  local tokens = {}
+--  parse(
+-- 	string_up_to_caret,
+--  cell_lookup,
+--  func_lookup,
+--  error_handler: fail = ofs, fail_ind = nargs, fail_fun = sfun
+--  tokens
+--  )
+--
+-- and after parse:
+-- local lt = tokens[#tokens]
+-- local ind = fail_fun or (lt and (lt[1] == types.FCALL or lt[1] == types.SYMBOL) and lt[2])
+--
+-- func_table[ind] -> convert function definition to arguments for suggest
+--
+-- if there's no error, then just suggest from the list of known functions
+--
 			cancellable = true,
 			forward_meta = false,
 			forward_paste = false,
@@ -542,26 +566,87 @@ local function query_value(job, value, closure)
 	cat9.readline:set(value)
 
 	cat9.get_prompt = function()
-		return {string.format("(XY = %s) ", value)}
+		return {string.format("(XY = %s) ", label)}
 	end
 end
 
-local function key_input(job, sub, sym, code, mods)
-
-	if sym == tui.keys.UP then
-		if job.cell_cursor[2] > 1 then
-			job.cell_cursor[2] = job.cell_cursor[2] - 1
+local function key_write(job, u8)
+	query_value(job, "", u8,
+		function(val)
+			flood_set(job, job.cell_cursor[2], job.cell_cursor[1], {"val", val})
 		end
+	)
+end
+
+local function fit_cursor(job)
+	local yi = 1 + job.row_ofs
+	local ci = 1 + job.col_ofs
+	local row = job.cell_cursor[2]
+	local col = job.cell_cursor[1]
+
+	if row <= yi or row > yi + job.max_rows - 2 then
+		job.row_ofs = math.clamp(0, row - job.max_rows + 1)
+	end
+
+-- cols is more involved as we need to match the different column widths
+	local cx = 1
+	local ci = 1
+	local cofs = 0
+	local cw = builtin_cfg.min_col_width
+
+	while ci ~= col do
+		cx = cx +	(job.column_sizes[ci] or cw)
+		ci = ci + 1
+
+		if cx + (job.column_sizes[ci] or cw) >= job.max_cols then
+			cofs = cofs + 1
+		end
+	end
+
+	job.col_ofs = cofs
+end
+
+local function key_input(job, sub, sym, code, mods)
+	local row = job.cell_cursor[2]
+	local col = job.cell_cursor[1]
+-- with modifier present we search for the first cell with non-empty contents
+	if sym == tui.keys.UP then
+
+		if row > 1 then
+			row = row - 1
+			if bit.band(mods, tui.modifiers.SHIFT) > 0 then
+				while row > 1 do
+					local no_value =
+						not job.cells[row] or not job.cells[row][col] or
+						not job.cells[row][col].value or #job.cells[row][col].value == 0
+					if not no_value then
+						break
+					end
+					row = row - 1
+				end
+			end
+		end
+
+		job.cell_cursor[2] = row
+		fit_cursor(job)
+
 	elseif sym == tui.keys.DOWN then
-		job.cell_cursor[2] = job.cell_cursor[2] + 1
+		job.cell_cursor[2] = row + 1
+		fit_cursor(job)
+
 	elseif sym == tui.keys.LEFT then
 		if job.cell_cursor[1] > 1 then
 			job.cell_cursor[1] = job.cell_cursor[1] - 1
 		end
+		fit_cursor(job)
+
 	elseif sym == tui.keys.RIGHT then
 		job.cell_cursor[1] = job.cell_cursor[1] + 1
+		fit_cursor(job)
+
 	elseif sym == tui.keys.BACKSPACE then
 		flood_set(job, job.cell_cursor[2], job.cell_cursor[1], {"val", ""})
+
 	elseif sym == tui.keys.ENTER or sym == tui.keys.RETURN then
 		query_value(job, "",
 			function(val)
@@ -642,7 +727,7 @@ local function item_click(job, btn, ofs, yofs, mods)
 -- new insertion?
 	if not cell then
 		if cat9.readline then
-			query_value(job, "",
+			query_value(job, "", "",
 				function(val)
 					flood_set(job, row, col, {"val", val})
 				end
@@ -652,7 +737,7 @@ local function item_click(job, btn, ofs, yofs, mods)
 	else
 		if job.last_click[1] == row and job.last_click[2] == col then
 			if cat9.readline then
-				query_value(job, cell.value,
+				query_value(job, cell.value, cell.value,
 					function(val)
 						flood_set(job, row, col, {"val", val})
 					end
@@ -660,7 +745,12 @@ local function item_click(job, btn, ofs, yofs, mods)
 			end
 		else
 			cat9.add_message(
-			string.format("%s%d = %s", col_to_az(col-1), row, cell.label)
+			string.format("%s%d%s = %s",
+				col_to_az(col-1),
+				row,
+				cell.expression and string.format("(%s)", cell.expression) or "",
+				cell.error or cell.label
+			)
 			)
 		end
 	end
@@ -719,6 +809,7 @@ function builtins.new(...)
 		last_click = {0, 0, 0},
 		show_line_number = false,
 		spreadsheet = true,
+		write = key_write,
 		key_input = key_input
 	}
 
@@ -772,20 +863,24 @@ function(job, cell)
 	local ret, res = pcall(
 		parse_expr,
 		cell.expression,
-		function(name, name_type)
-			local rv, rt = nil, types.STRING
-
+		function(name, dtype)
+			local rv, rt = false, types.STRING
 			local ok, msg = expand_addr(
 				name,
 				function(col, row)
+
+-- a possible space-time trade-off here is to track this bidirectionally
+-- so that when our expression is updated, we first remove ourselves from
+-- all the cells we previously listened to
 					if job.cells[row] and job.cells[row][col] then
-						rv = job.cells[row][col].label
+						table.insert(job.cells[row][col].listeners, cell)
+						rv = job.cells[row][col].value
 					end
 				end
 			)
 
-			if name_type and name_type == types.NUMBER then
-				return tonumber(rv)
+			if dtype and dtype == types.NUMBER then
+				return tonumber(rv), dtype
 			end
 
 			return rv, rt

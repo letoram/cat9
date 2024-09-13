@@ -116,6 +116,16 @@ function cat9.compact_path(str, lastcap)
 	return table.concat(compact, "/")
 end
 
+function math.clamp(num, low, high)
+	if low and num < low then
+		return low
+	elseif high and num > high then
+		return high
+	else
+		return num
+	end
+end
+
 function cat9.modifier_string(mod)
 	local str = ""
 	if bit.band(mod, tui.modifiers.SHIFT) > 0 then
