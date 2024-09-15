@@ -200,10 +200,10 @@ local function expand_argtoken(dst, sym, pos, alt)
 		stop_col = tmp
 	end
 
-	if stop_col < start_col then
-		local tmp = start_col
-		start_col = stop_col
-		stop_col = tmp
+	if stop_row < start_row then
+		local tmp = start_row
+		start_start_row = stop_row
+		stop_row = tmp
 	end
 
 	local di = 1

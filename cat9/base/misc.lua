@@ -206,7 +206,7 @@ function cat9.build_tmpjob_files(args, dispatch, fail)
 
 	for _,v in ipairs(args) do
 		if type(v) == "table" and v.slice then
-			local tpath, file = root:mktemp()
+			local tpath, file = root:tempfile()
 			if file then
 				table.insert(files, file)
 				table.insert(names, tpath)

@@ -369,7 +369,7 @@ function(dbg, req, args, handler)
 	local jsonMsg = cat9.json.encode(request)
 	local msg = string.format("Content-Length: %d\r\n\r\n%s", #jsonMsg, jsonMsg)
 	if dbg.log_out then
-		dbg.log_out:write(msg)
+		dbg.log_out(msg)
 	end
 	dbg.job.inf:write(msg)
 end
@@ -588,8 +588,7 @@ function Debugger:input_line(line)
 
 -- quick troubleshooting, uncomment the log = root:fopen part further down
 	if self.log then
-		self.log:write(line)
-		self.log:flush()
+		self.log(line)
 	end
 
 	self.parser:feed(line)
@@ -597,7 +596,7 @@ function Debugger:input_line(line)
 		if not protomsg then
 			local errstr = self.parser.error or "Unknown DAP parser error"
 			if self.log then
-				self.log:write(errstr)
+				self.log(errstr)
 			end
 			self.errors:add_line(self, errstr)
 			break
@@ -838,6 +837,9 @@ function Debugger:restart()
 -- we should :terminate and :launch with the same parameters again as
 -- an option, for attached we should just detach.
 	send_request(self, "restart", {}, function() end)
+end
+
+function Debugger:set_log()
 end
 
 function Debugger:terminate(hard)

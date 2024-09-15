@@ -8,14 +8,14 @@ lash.types = types
 local expr_funcs =
 	loadfile(string.format("%s/cat9/spreadsheet/functions.lua", lash.scriptdir))()
 
+local plot_templates =
+	loadfile(string.format("%s/cat9/spreadsheet/plot.lua", lash.scriptdir))()
+
 local history = {}
 
 local expand_addr
 local parse_expression
 
--- each function:
---  handler = function(...)
---  args = {types.TYPE}
 local functions = {}
 
 local errors =
@@ -27,6 +27,8 @@ local errors =
 	insert_job = "insert >job< : job is not a spreadsheet",
 	replace_job = "replace >job< : job is not a spreadsheet",
 	set_job = "set >job< : job missing or not a spreadsheet",
+	plot_job = "plot >job< : job missing or not a spreadsheet",
+	malformed_range = "range specifier cell1:cell2 invalid",
 	set_args = "set >...< : expected set [addr] \"value\" or \"=expression\" or \"=!command"
 }
 
@@ -254,11 +256,11 @@ local function flood_set(job, row, col, args)
 		end
 	end
 
-	local domain = table.remove(args, 1)
+	local domain = "val"
 
-	if domain ~= "val" then
 -- format, name, ...
-		return
+	if args[1] == "val" then
+		table.remove(args, 1)
 	end
 
 	local cmd = table.concat(args, " ")
@@ -345,24 +347,74 @@ local function slice_spread(job, lines)
 	local compact = false
 
 	if lines then
--- need to grab options (format, elemsep, rowsep, compact) and
--- then resolve line ranges and ordering into a set then work through
--- that set.
-	else
-		for i=1,#job.cells do
-			local row = job.cells[i]
-			local set = {}
-			for i=1,#row do
-				if row[i].value then
-					table.insert(set, tostring(row[i].value))
-				elseif not compact then
-					table.insert(set, "")
-				end
+		local cells = {}
+		local maxrow = 1
+
+		for i,v in ipairs(lines) do
+			if v == "compact" then
+				compact = true
+			else
+				expand_addr(v,
+					function(col, row)
+-- extract the value
+						local val = job.cells[row] and job.cells[row][col]
+						if not val then
+							if compact then
+								return
+							end
+							val = ""
+						else
+							if not val.value or #val.value == 0 then
+								if compact then
+									return
+								end
+								val = ""
+							else
+								val = val.value
+							end
+						end
+
+-- allocate (with holes) into cells (we will walk and emit later)
+						if maxrow > row then
+							maxrow = row
+						end
+
+						if not cells[row] then
+							cells[row] = {}
+							cells[row].cells = col
+						elseif cells[row].cells < col then
+							cells[row].cells = col
+						end
+						cells[row][col] = val
+					end
+				)
 			end
-			if #set > 0 or not compact then
-				table.insert(res, table.concat(set, elemsep))
-				res.bytecount = res.bytecount + #res[#res]
+
+-- cells is populated, time to build into dataset
+		end
+
+		for i=1,maxrow do
+			if cells[i] then
+				table.insert(res, "")
 			end
+		end
+
+		return res
+	end
+
+	for i=1,#job.cells do
+		local row = job.cells[i]
+		local set = {}
+		for i=1,#row do
+			if row[i].value then
+				table.insert(set, tostring(row[i].value))
+			elseif not compact then
+				table.insert(set, "")
+			end
+		end
+		if #set > 0 or not compact then
+			table.insert(res, table.concat(set, elemsep))
+			res.bytecount = res.bytecount + #res[#res]
 		end
 	end
 
@@ -777,16 +829,6 @@ local function item_motion(job, rel, x, y, mods)
 	cat9.flag_dirty(job)
 end
 
-function builtins.plot(...)
--- gnuplot and graphviz into svg into afsrv_decode into embed.
---
--- set terminal svg dynamic enhanced background rgb 'white'
--- set datafile separator ","
--- plot "/dev/stdin" using col:1 with lines
--- \eof to separate passes?
---
-end
-
 function builtins.new(...)
 	local set = {...}
 	local base = {}
@@ -841,21 +883,71 @@ expand_addr =
 function(addr, cb)
 -- missing: handle ranges A1:B2 -> A1, A2, B1:B2 ..
 --	local set = string.split(addr, ":")
-	local col, row = string.match(addr, "(%a+)(%d+)")
-	row = tonumber(row)
-	if not row then
-		return false, errors.missing_row
+
+	local addr_to_col_row =
+	function(addr)
+		local col, row = string.match(addr, "(%a+)(%d+)")
+		row = tonumber(row)
+		if not row then
+			return false, errors.missing_row
+		end
+
+		local cv = 0
+		local aval = string.byte("A") - 1
+		col = string.upper(col)
+
+		for ind=1,#col do
+			cv = cv + (string.byte(col, ind) - aval) * math.pow(#az, ind - 1)
+		end
+
+		return cv, row
 	end
 
-	local cv = 0
-	local aval = string.byte("A") - 1
-	col = string.upper(col)
+	if string.find(addr, ":") then
+		local set = string.split(addr, ":")
+		if #set ~= 2 then
+			return false, errors.malformed_range
+		end
 
-	for ind=1,#col do
-		cv = cv + (string.byte(col, ind) - aval) * math.pow(#az, ind - 1)
+		local start_col, start_row = addr_to_col_row(set[1])
+		local stop_col, stop_row = addr_to_col_row(set[2])
+
+		if not start_col then
+			return false, start_row
+		end
+
+		if not stop_col then
+			return false, stop_col
+		end
+
+-- swap, might be better to actually enumerate high to low instead
+		if stop_col < start_col then
+			local tmp = start_col
+			start_col = stop_col
+			stop_col = tmp
+		end
+
+		if stop_row < start_row then
+			local tmp = start_row
+			start_row = stop_row
+			stop_row = tmp
+		end
+
+-- same logic as in parser.lua (synch any fixes manually) but yield instead
+-- of manipulating the token stack
+		local di = 1
+		for i=start_row,stop_row do
+			for j=start_col,stop_col do
+				cb(j, i)
+			end
+		end
+	else
+		local col, row = addr_to_col_row(addr)
+		if not col then
+			return col, row
+		end
+		cb(col, row)
 	end
-
-	cb(cv, row)
 end
 
 parse_expression =
@@ -983,6 +1075,7 @@ local function run_insert(replace, ...)
 			end
 			col_ptn = table.remove(set, 1)
 		elseif set[1] == "split" then
+			table.remove(set, 1)
 			if not set[1] then
 				return false, errors.missing_split
 			end
@@ -1034,6 +1127,60 @@ local function run_insert(replace, ...)
 	end
 end
 
+function builtins.plot(...)
+-- resolve range as copy slice would
+-- copy slice into set, stream set with template into dot or gplot
+-- for dot we want to first resolve all statics,
+-- then pick expressions based on listeners
+-- popen the target application, take out and map as in into
+-- afsrv_decode with protocol=image and file on stdin
+	local dst, args = cat9.expand_arg_dst("set", ...)
+	if not dst then
+		return false, args
+	end
+
+	if not dst.spreadsheet then
+		return false, errors.set_job
+	end
+
+	local set = slice_spread(dst, {"csv", "compact"})
+
+-- if the first row isn't a number, assume it is the title and
+-- add that as the plot paramters
+
+-- generate the plotting config file and write to a tmpfile
+	local file, tpath = root:tempfile("/tmp/plotXXXXXX")
+	file:write(plot_templates.gnuplot.points({xmin = -5, xmax = 5, ymin = -5, ymax = 5}))
+	file:flush()
+	local fin, fout, _, pid = root:popen("gnuplot -c " .. tpath, "rw", {}, "gnuplot", {})
+
+	cat9.new_window(root, "handover",
+		function(par, wnd)
+			if not wnd then
+				cat9.add_message("window request rejected")
+-- kill gnuplot pid
+				file:close()
+				return
+			end
+
+-- Connect gnuplot to our temp config, then write into it.
+-- this is not yet streamable as _decode doesn't handle streaming svg
+-- and we have no way to route bchunk or other events to afsrv_decode
+-- (yet)
+			fin:write(table.concat(set, "\n"))
+			fin:write("\ne\n")
+			fin:close()
+
+			local stdin, _, _, pid =
+				par:phandover(cat9.config.plumber, "w",
+				{"afsrv_decode"}, {ARCAN_ARG = "proto=image:fdin=0"})
+
+-- setup a copy thread that will map from gnuplot to afsrv_decode
+				root:bgcopy(fout, stdin, "")
+		end, "split-l"
+	)
+end
+
 function builtins.insert(...)
 	run_insert(false, ...)
 end
@@ -1060,13 +1207,12 @@ function builtins.set(...)
 -- or just stick to 'baby' mode.
 	local addr
 
-	if #args >= 3 then
+	if #args >= 2 then
 		addr = table.remove(args, 1)
 
 -- priority should be 'selected set -> active cursor'
-	elseif #args == 2 then
-		addr = to_cell_address(dst.cell_cursor[1], dst.cell_cursor[2])
-
+	elseif #args == 1 then
+		flood_set(dst, dst.cell_cursor[2], dst.cell_cursor[1], args)
 	else
 		return false, errors.set_args
 	end
