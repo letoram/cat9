@@ -839,7 +839,9 @@ function Debugger:restart()
 	send_request(self, "restart", {}, function() end)
 end
 
-function Debugger:set_log()
+function Debugger:set_log(login, logout)
+	self.log = login
+	self.log_out = logout
 end
 
 function Debugger:terminate(hard)
@@ -955,8 +957,6 @@ local debug = setmetatable(
 
 	job = job,
 -- (uncomment to see data before parse)
-	log = lash.root:fopen("/tmp/dbglog.in", "w"),
-	log_out = lash.root:fopen("/tmp/dbglog.out", "w"),
 	parser = parser(cat9),
 	dap_seq = 1
 }, {__index = Debugger})

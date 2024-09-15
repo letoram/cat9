@@ -584,6 +584,25 @@ function cmds.launch(...)
 		end
 	}
 
+	local dbgin, dbgout
+	if builtin_cfg.debug_in then
+		local fin = root:fopen(builtin_cfg.debug_in, "w")
+		dbgin = function(msg)
+			fin:write(msg)
+			fin:flush()
+		end
+	end
+
+	if builtin_cfg.debug_out then
+		local fout = root:fopen(builtin_cfg.debug_out, "r")
+		dbgout = function(msg)
+			fout:write(msg)
+			fout:flush()
+		end
+	end
+
+	job.debugger:set_log(dbgin, dbgout)
+
 	job.data = job.debugger.output
 	cat9.import_job(job)
 	spawn_views(job)
