@@ -22,7 +22,9 @@ local hintbl = {
 	autoclear_empty = "Automatically forget #jobid for completed silent jobs",
 	show_line_number = "Set view linenumber for new jobs",
 	autokill_quiet_bad = "Timeout for silent jobs that failed with EXIT_FAILURE",
-	plumber = "Binary used for external open",
+	plumber = "Binary used for open on media",
+	term_plumber = "Binary used for open on generic files",
+	shell_plumber = "Binary used for spawning subshells",
 	main_column_width = "Number of columns for main jobs",
 	min_column_width = "Number of columns for side jobs",
 	open_spawn_default = "Suggested open mode (embed, split, join-r, tab, swallow)",
@@ -57,6 +59,7 @@ return
 
 	term_plumber = "/usr/bin/nvim",
 	plumber = "/usr/bin/afsrv_decode",
+	shell_plumber = "/usr/bin/afsrv_terminal",
 
 	default_job_view = "crop",
 

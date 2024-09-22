@@ -499,7 +499,7 @@ function cat9.term_handover(cmode, ...)
 
 	env["ARCAN_ARG"] = "keep_alive"
 
-	term_handover(cmode, env, "/usr/bin/afsrv_terminal", ...)
+	term_handover(cmode, env, config.shell_plumber, ...)
 end
 
 function cat9.shmif_handover(cmode, omode, bin, env, argv)
