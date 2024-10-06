@@ -496,7 +496,7 @@ function cat9.reader_factory(io, tick, cb)
 end
 
 function cat9.add_job_suggestions(set, allow_hidden, filter)
-	local filter = filter or function() return true end
+	local filter = filter or function(job) return true, job.short end
 	if not set.hint then
 		set.hint = {}
 	end

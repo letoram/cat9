@@ -1186,6 +1186,9 @@ function cat9.import_job(v, noinsert)
 		end
 
 		cat9.latestjob = v
+		if not cat9.selectedjob or config.single_job then
+			cat9.selectedjob = v
+		end
 
 		if config.autoexpand_latest then
 			cat9.latestjob.expanded = true

@@ -13,7 +13,7 @@ local cat9 =  -- vtable for local support functions
 	builtins = { hint = {}},
 	suggest = {},
 	handlers = {},
-	views = {},
+	views = {hint = {}},
 	jobmeta = {},
 	promptmeta = {},
 	aliases = {},
@@ -95,7 +95,7 @@ local function load_builtins(base, flush)
 	if flush then
 		cat9.builtins = {hint = {}}
 		cat9.suggest = {}
-		cat9.views = {}
+		cat9.views = {hint = {}}
 	else
 		cat9.builtins["_default"] = nil
 	end

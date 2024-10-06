@@ -10,7 +10,9 @@ local errors =
 }
 
 builtins.hint["view"] = "Change job data view mode"
-local viewlut = {}
+local viewlut = {hint = {}}
+
+viewlut.hint.out = "Set STDOUT as view stream"
 function viewlut.out(set, i, job)
 	job.view = cat9.view_raw
 	job.row_offset = 0
@@ -75,6 +77,7 @@ local function detach(job, mode)
 		end, "split")
 end
 
+viewlut.hint.select = "Toggle a line in the view as selected"
 function viewlut.select(set, i, job)
 	local ind = set[i+1]
 	if type(ind) == "number" then
@@ -84,6 +87,7 @@ function viewlut.select(set, i, job)
 	return i + 2
 end
 
+viewlut.hint.err = "Set STDERR as view stream"
 function viewlut.err(set, i, job)
 	job.view = cat9.view_err
 	job.row_offset = 0
@@ -91,16 +95,19 @@ function viewlut.err(set, i, job)
 	return i + 1
 end
 
+viewlut.hint.expand = "Set view output as expanded"
 function viewlut.expand(set, i, job)
 	job.expanded = true
 	return i + 1
 end
 
+viewlut.hint.toggle = "Toggle view output between expanded and compact"
 function viewlut.toggle(set, i, job)
 	job.expanded = not job.expanded
 	return i + 1
 end
 
+viewlut.hint.linenumber = "Toggle showing line number column"
 function viewlut.linenumber(set, i, job)
 	if set[2] then
 		if set[2] == "on" then
@@ -119,10 +126,12 @@ function viewlut.linenumber(set, i, job)
 	end
 end
 
+viewlut.hint.collapse = "Set view output as compact"
 function viewlut.collapse(set, i, job)
 	job.expanded = false
 end
 
+viewlut.hint.scroll = "Change view output starting offset"
 function viewlut.scroll(set, i, job)
 -- treat +n and -n
 	local function is_rel(str)
@@ -282,7 +291,7 @@ function builtins.view(job, ...)
 		return
 	end
 
-	if type(job) ~= "table" then
+	if type(job) ~= "table" or job.parg then
 		cat9:add_message("view >jobid< - invalid job reference")
 		return
 	end
@@ -299,6 +308,11 @@ function builtins.view(job, ...)
 		detach(job, arg[2])
 		cat9.flag_dirty(job)
 		return
+	end
+
+	if type(arg[1]) == "string" and arg[1] == "select" then
+		cat9.selectedjob = job
+		cat9.flag_dirty(job)
 	end
 
 	cat9.run_lut("view #job", job, viewlut, arg)
@@ -340,13 +354,24 @@ function suggest.view(args, raw)
 	end
 
 -- view #0 command [...]
-	local set = {"detach"}
+	local set = {"detach", "focus"}
+	set.hint = {
+		"Bind the job to its own window",
+		"Mark the job as being the layout focus"
+	}
+
 	for k,v in pairs(cat9.views) do
-		table.insert(set, k)
+		if k ~= "hint" then
+			table.insert(set, k)
+			table.insert(set.hint, cat9.views.hint[k] or "")
+		end
 	end
 
 	for k, _ in pairs(viewlut) do
-		table.insert(set, k)
+		if k ~= "hint" then
+			table.insert(set, k)
+			table.insert(set.hint, viewlut.hint[k] or "")
+		end
 	end
 
 	cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")

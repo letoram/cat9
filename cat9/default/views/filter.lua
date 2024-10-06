@@ -233,6 +233,7 @@ local function set_interactive(job)
 	cat9:flag_dirty()
 end
 
+views.hint.filter = "Define a pattern to filter the view output"
 function views.filter(job, suggest, args)
 	if not suggest then
 		if not args[2] then

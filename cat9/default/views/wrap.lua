@@ -283,6 +283,7 @@ end
 -- very similar to base/jobctl.lua:raw_view with the main difference being that
 -- the set is mapped through the break_line call and out:ed when the linecount
 -- cap is exceeded.
+views.hint.wrap = "Wrap overflowing lines"
 function views.wrap(job, suggest, args, raw)
 	if not suggest then
 		local state = {stream = "data"}

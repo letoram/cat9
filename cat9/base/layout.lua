@@ -457,6 +457,36 @@ layout_column(set, x, maxy, cols, rows, cc)
 end
 
 local draw_cookie = 0
+function cat9.get_visible_jobs(step, all)
+-- always put the active first
+	local activejobs = cat9.activejobs
+	local lst = {}
+	for i=#activejobs,1,-1 do
+		if not activejobs[i].hidden and activejobs[i].view then
+			table.insert(lst, activejobs[i])
+			if step then
+				activejobs[i].cookie = draw_cookie
+			end
+		end
+	end
+
+	for i=#cat9.jobs,1,-1 do
+		local job = cat9.jobs[i]
+		if not job.hidden and job.cookie ~= draw_cookie and job.view then
+			table.insert(lst, job)
+		end
+	end
+
+-- or ignore everything and always just present the single prioritised job
+	if not all and config.single_job then
+		lst = {cat9.selectedjob or lst[1]}
+		if lst[1] then
+			lst.expanded = true
+		end
+	end
+	return lst
+end
+
 function cat9.redraw()
 	local cols, rows = root:dimensions()
 	draw_cookie = draw_cookie + 1
@@ -495,10 +525,6 @@ function cat9.redraw()
 		maincol_w = cols
 	end
 
--- walk active jobs and then jobs (not covered this frame) to figure
--- out how many we fit at a maximum and add them to this lst
-	local lst = {}
-
 -- reserved ui area for command-line and other messages
 	local message = cat9.get_message(false)
 	local reserved = message and 1 or 0
@@ -506,21 +532,9 @@ function cat9.redraw()
 		reserved = reserved + 1
 	end
 
--- always put the active first
-	local activejobs = cat9.activejobs
-	for i=#activejobs,1,-1 do
-		if not activejobs[i].hidden and activejobs[i].view then
-			table.insert(lst, activejobs[i])
-			activejobs[i].cookie = draw_cookie
-		end
-	end
-
-	for i=#cat9.jobs,1,-1 do
-		local job = cat9.jobs[i]
-		if not job.hidden and job.cookie ~= draw_cookie and job.view then
-			table.insert(lst, job)
-		end
-	end
+-- walk active jobs and then jobs (not covered this frame) to figure
+-- out how many we fit at a maximum and add them to this lst
+	local lst = cat9.get_visible_jobs(true)
 
 -- quick pre-pass, do we not have enough jobs to even fill a single column?
 -- might be a point in caching this and just re-evaluating on expand-toggle

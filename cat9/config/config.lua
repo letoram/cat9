@@ -34,6 +34,7 @@ local hintbl = {
 	open_embed_collapsed_rows = "Number of rows for downscaled contract open embed",
 	["=reload"] = "Re-parse and apply config.lua",
 	accessibility = "Probe display server for accessibility needs at startup",
+	single_job = "Only show a single job at any time",
 	mouse_mode = string.format(
 		"(Advanced) override mouse mode flag (%d, %d)", tui.flags.mouse, tui.flags.mouse_full),
 }
@@ -68,6 +69,7 @@ return
 	main_column_width = 80,
 	min_column_width = 40,
 	multicolumn = false,
+	single_job = false,
 
 	open_spawn_default = "swallow",
 	open_embed_collapsed_rows = 4,

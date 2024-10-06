@@ -33,6 +33,9 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 	end
 
 	local job = cat9.xy_to_job(self, x, y)
+	if config.single_job then
+		job = cat9.selectedjob
+	end
 
 	if not job then
 		cat9.selectedjob = nil
@@ -172,13 +175,43 @@ function handlers.key(self, sub, keysym, code, mods)
 -- if the readline is hidden, also block the other keybindings
 -- to avoid them clashing
 		if not cat9.readline then
-			if keysym == tui.keys.ESCAPE then
+			if keysym == bnd.readline_toggle then
 				cat9.block_readline(root, false)
 				cat9.setup_readline(root)
 				if cat9.selectedjob then
 					cat9.selectedjob.selected = false
 				end
+
+			elseif keysym == bnd.window_next then
+				local set = cat9.get_visible_jobs(false, true)
+				for i,v in ipairs(set) do
+					if v == cat9.selectedjob then
+						if i < #set then
+							cat9.selectedjob = set[i+1]
+						else
+							cat9.selectedjob = set[1]
+						end
+						break
+					end
+					cat9.flag_dirty(cat9.selectedjob)
+				end
+
+			elseif keysym == bnd.window_prev then
+				local set = cat9.get_visible_jobs(false, true)
+				for i,v in ipairs(set) do
+					if v == cat9.selectedjob then
+						if i > 1 then
+							cat9.selectedjob = set[i-1]
+						else
+							cat9.selectedjob = set[#set]
+						end
+						break
+					end
+					cat9.flag_dirty(cat9.selectedjob)
+				end
+				cat9.flag_dirty(cat9.selectedjob)
 			end
+
 			return
 		end
 
@@ -206,7 +239,7 @@ function handlers.key(self, sub, keysym, code, mods)
 			return
 
 -- hard-coded defaults, these should also move into bindings
-		elseif keysym == tui.keys.ESCAPE then
+		elseif keysym == bnd.readline_toggle then
 
 -- to disable readline there should be >= 1 valid jobs, and then
 -- we move selection with CTRL+ARROW|CTRL+HJLK
