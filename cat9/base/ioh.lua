@@ -178,6 +178,8 @@ function handlers.key(self, sub, keysym, code, mods)
 			if keysym == bnd.readline_toggle then
 				cat9.block_readline(root, false)
 				cat9.setup_readline(root)
+				self:update_identity(self:chdir())
+
 				if cat9.selectedjob then
 					cat9.selectedjob.selected = false
 				end
@@ -248,7 +250,12 @@ function handlers.key(self, sub, keysym, code, mods)
 			elseif not cat9.selectedjob then
 				return
 			end
-			cat9.selectedjob.selected = true
+			local sj = cat9.selectedjob
+
+			root:update_identity(
+				string.format("#%d : %s %s", sj.id, sj.short,
+					sj.exit and (sj.exit == 0 and "ok" or "fail") or "running"))
+			sj.selected = true
 			cat9.hide_readline(root)
 			return
 

@@ -131,6 +131,8 @@ function builtins.forget(...)
 					job.id, job.id)
 			)
 		else
+			cat9.a11y_buffer(string.format("forget job #%d", job.id))
+
 			if job.pid then
 				root:psignal(job.pid, sig)
 				job:hide()

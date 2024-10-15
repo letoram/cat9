@@ -305,6 +305,11 @@ function cat9.background_chain(commands, cmdopt, arg, closure)
 	run_command(table.remove(commands))
 end
 
+local function shell_key_input(job, sub, sym, code, mods)
+-- should scroll and highlight current cursor item,
+-- as well as support searching
+end
+
 function cat9.process_jobs()
 	local upd = false
 
@@ -338,12 +343,12 @@ function cat9.process_jobs()
 					run_hook(job, "on_fail")
 				end
 
--- the '10' here should really be balanced against time and not a set amount of
+-- the '100' here should really be balanced against time and not a set amount of
 -- reads / lines but the actual buffer sizes are up for question to balance
 -- responsiveness of the shell vs throughput. If it is visible and in focus we
 -- should perhaps allow more.
 			elseif job.out or job.err then
-				upd = flush_job(job, false, 10) or upd
+				upd = flush_job(job, false, config.process_lines) or upd
 			end
 		end
 	end
@@ -378,6 +383,7 @@ function
 	job.err_buffer = {}
 	job.inp_buffer = {}
 	job.short = args[2]
+	job.key_input = shell_key_input
 
 	if not job.dir then
 		job.dir = root:chdir()
@@ -436,6 +442,23 @@ function
 	end
 
 	cat9.import_job(job)
+
+	table.insert(job.hooks.on_finish,
+		function()
+			cat9.a11y_buffer(
+				string.format("job %d %s ok, %d lines", job.id, job.short, job.data.linecount)
+			)
+-- if we compact shell jobs, now is the time to switch to the actual data view
+		end
+	)
+
+	table.insert(job.hooks.on_fail,
+		function()
+			cat9.a11y_buffer(
+				string.format("job %d failed", job.id)
+			)
+		end
+	)
 
 -- enable vt100
 	if mode == "pty" and cat9.views["wrap"] then

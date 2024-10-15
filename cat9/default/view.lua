@@ -312,6 +312,9 @@ function builtins.view(job, ...)
 
 	if type(arg[1]) == "string" and arg[1] == "select" then
 		cat9.selectedjob = job
+		if not cat9.readline then
+			job.root:update_identity(string.format("#%d : %s", job.id, job.short))
+		end
 		cat9.flag_dirty(job)
 	end
 

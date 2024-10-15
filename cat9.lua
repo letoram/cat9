@@ -37,6 +37,10 @@ local cat9 =  -- vtable for local support functions
 	time = 0 -- monotonic tick
 }
 
+function cat9.a11y_buffer(msg)
+-- default no handling of a11y messages
+end
+
 if not cat9.config then
 	table.insert(lash.messages, "cat9: error loading/parsing config/default.lua")
 	return false
@@ -202,6 +206,7 @@ local function load_builtins(base, flush)
 			cat9.suggest = safe_suggest
 			cat9.views = safe_views
 		end
+		cat9.a11y_buffer("builtin " .. cat9.builtin_name)
 	end
 
 -- build the indexed table, sort and resolve-overlay the hints
@@ -291,6 +296,8 @@ for _, v in ipairs(old) do
 end
 
 local root = lash.root
+root:update_identity(root:chdir())
+
 while root:process() do
 	if (cat9.process_jobs()) then
 -- updating the current prompt will also cause the contents to redraw

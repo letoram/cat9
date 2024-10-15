@@ -35,6 +35,8 @@ local hintbl = {
 	["=reload"] = "Re-parse and apply config.lua",
 	accessibility = "Probe display server for accessibility needs at startup",
 	single_job = "Only show a single job at any time",
+	a11y_limit = "Number of 25Hz ticks between queued messages",
+	process_lines = "Number of lines to process in each update",
 	mouse_mode = string.format(
 		"(Advanced) override mouse mode flag (%d, %d)", tui.flags.mouse, tui.flags.mouse_full),
 }
@@ -65,6 +67,7 @@ return
 -- probe for accessibility segment at startup, adds 10-50ms time so disable if
 -- you don't need or want to test for it
 	accessibility = true,
+	a11y_limit = 20,
 
 	main_column_width = 80,
 	min_column_width = 40,
@@ -75,6 +78,7 @@ return
 	open_embed_collapsed_rows = 4,
 --	open_external = "/usr/bin/nvim", -- set to skip the internal viewer
 
+	process_lines = 100,
 	clipboard_job = true,
 	mouse_mode = tui.flags.mouse,
 	allow_state = true,

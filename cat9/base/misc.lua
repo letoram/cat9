@@ -261,6 +261,9 @@ function cat9.add_message(msg)
 		print("add_message(" .. type(msg) .. ")" .. debug.traceback())
 	else
 		lastmsg = msg
+		if #lastmsg > 0 then
+			cat9.a11y_buffer(msg)
+		end
 	end
 end
 

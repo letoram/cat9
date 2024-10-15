@@ -440,6 +440,7 @@ function cat9.lock_readline(name, msg, prompt, verify)
 			forward_paste = false,
 			forward_mouse = false,
 			verify = verify,
+			item = config.readline.item
 		}), msg)
 	cat9.get_prompt = prompt
 	cat9.flag_dirty()
