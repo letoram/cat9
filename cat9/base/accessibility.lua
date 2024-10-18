@@ -39,6 +39,9 @@ function a11y_handlers.recolor(wnd)
 	wnd:refresh()
 end
 
+-- this is not a good solution as it will truncate numbers and words (also
+-- doesn't respect UTF8 boundaries), the proper option is to do this server-
+-- side with seek_relative handler.
 local function scroll(wnd)
 	local cols, _ = wnd:dimensions()
 	local msg = string.sub(a11y_scrolling, 1, cols)
@@ -119,6 +122,10 @@ if config.accessibility then
 
 			new:hint({max_cols = 80, max_rows = 1})
 			new:set_handlers(a11y_handlers)
+
+			for k,v in pairs(config.accessibility_overrides) do
+				config[k] = v
+			end
 		end
 	)
 end

@@ -67,6 +67,13 @@ return
 -- probe for accessibility segment at startup, adds 10-50ms time so disable if
 -- you don't need or want to test for it
 	accessibility = true,
+
+-- replace these options if an accessibility window appears
+	accessibility_overrides = {
+		single_job = true,
+		autosuggest = false
+	},
+
 	a11y_limit = 20,
 
 	main_column_width = 80,

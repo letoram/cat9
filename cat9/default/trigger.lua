@@ -105,7 +105,9 @@ function builtins.trigger(job, action, ...)
 		job.hooks[action] = {}
 
 	elseif cmd == "alert" then
-		table.insert(job.hooks[action], function()
+		table.insert(job.hooks[action],
+		function()
+			local wnd = cat9.a11y or root
 			if action == "on_finish" then
 				root:alert(opts[1] and opts[1] or job.raw)
 			else

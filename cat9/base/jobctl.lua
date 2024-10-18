@@ -305,7 +305,44 @@ function cat9.background_chain(commands, cmdopt, arg, closure)
 	run_command(table.remove(commands))
 end
 
+--
+-- missing:
+--
+--  stepping active job / drawing the selected if it's not in the set,
+--  move cursor to last cursor position (need to take scrolling into account)
+--
+--
 local function shell_key_input(job, sub, sym, code, mods)
+	local data = job.data
+
+	if sym == tui.keys.UP or sym == tui.keys.K then
+		if job.cursor[2] == 0 then
+			cat9.parse_string(nil, string.format("view #%d scroll -1", job.id))
+	else
+			job.cursor[2] = job.cursor[2] - 1
+		end
+
+		local ofs = job.view_base + job.cursor[2]
+		cat9.a11y_buffer(data[ofs])
+
+-- in search: step to previous
+	elseif sym == tui.keys.DOWN or sym == tui.keys.J then
+		if job.cursor[2] + job.view_base >= job.region[4] - job.region[2] then
+			cat9.parse_string(nil, string.format("view #%d scroll +1", job.id))
+		else
+			job.cursor[2] = job.cursor[2] + 1
+		end
+
+		local ofs = job.view_base + job.cursor[2]
+		cat9.a11y_buffer(data[ofs])
+
+-- in search: step to next
+	elseif sym == tui.keys.SLASH then
+-- set readline query for pattern
+	elseif sym == tui.keys.ESCAPE then
+-- disable search
+	end
+
 -- should scroll and highlight current cursor item,
 -- as well as support searching
 end
