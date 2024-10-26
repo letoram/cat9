@@ -99,7 +99,6 @@ function(cat9, cfg, job, source, sref)
 	wnd:source(source, 1)
 	wnd.attr_lookup = attr_lookup
 	wnd.expanded = false
-	wnd.row_offset_relative = false
 	wnd.handlers.mouse_button = click
 
 return wnd

@@ -267,7 +267,11 @@ local function get_attr(job, set, i, pos, highlight, str, width)
 		return {{lcfg.file, str}}
 	end
 
+-- files filtered can ~= match data while still being processed
 	local m = job.data.files_filtered[i]
+	if not m then
+		return lcfg
+	end
 
 	if highlight then
 		fattr = cat9.config.styles.data_highlight
@@ -363,10 +367,9 @@ local function on_redraw(job, over, selected)
 	end
 
 	if not job.mouse then
-		job.cursor_item = job.data.files_filtered[job.view_base + job.cursor[2]]
+		job.cursor_item = job.data.files_filtered[job.row_offset + job.cursor[2]]
 	end
 
--- we are in control over the cursor, move it to the view_base+cursor
 	if over and selected and (job.hidden and not cat9.readline) then
 		job.root:cursor_to(0, job.region[2] + job.cursor[2] + 1)
 	end
@@ -444,7 +447,7 @@ local function item_click(job, btn, ofs, yofs, mods)
 end
 
 local function list_text_input(job, ch)
-	local start = job.view_base + job.cursor[2] + 1
+	local start = job.row_offset + job.cursor[2] + 1
 	local found
 
 	for i=start,job.data.files_filtered.linecount do
@@ -475,7 +478,7 @@ local function list_text_input(job, ch)
 	local rh = job.region[4] - job.region[2]
 
 	if job.cursor[2] + nitems > rh + job.cursor[2] then
-		cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll " .. found)
+		cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll relative" .. found)
 		cat9.redraw()
 
 		return list_text_input(job, ch)
@@ -522,7 +525,7 @@ local function list_input(job, sub, keysym, code, mods)
 		if job.cursor[2] >= rh-3 then
 
 -- but only if we aren't at the end
-			if job.view_base + job.cursor[2] + 1 < job.data.files_filtered.linecount then
+			if job.row_offset + job.cursor[2] + 1 < job.data.files_filtered.linecount then
 				cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll +1")
 				job.cursor[2] = job.cursor[2] - 1
 
@@ -532,8 +535,8 @@ local function list_input(job, sub, keysym, code, mods)
 
 -- otherwise clamp if list is larger than region, only happens on detached
 		else
-			if job.view_base + job.cursor[2] > job.data.files_filtered.linecount then
-				job.cursor[2] = job.data.files_filtered.linecount - job.view_base
+			if job.row_offset + job.cursor[2] > job.data.files_filtered.linecount then
+				job.cursor[2] = job.data.files_filtered.linecount - job.row_offset
 			end
 		end
 
@@ -702,7 +705,6 @@ function(src, path, ref)
 			src.last_view = nil
 			src:set_view(view_files, slice_files, {}, "list")
 			src.cursor = {0, 0}
-			src.row_offset = -#src.data.files
 			cat9.flag_dirty(src)
 		else
 -- filter unwanted / hidden

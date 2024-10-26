@@ -323,6 +323,14 @@ while root:process() do
 		end
 	end
 
+	if not cat9.readline and cat9.selectedjob then
+		local sj = cat9.selectedjob
+		sj.root:cursor_to(
+			sj.region[1] + sj.cursor[1],
+			sj.region[2] + sj.cursor[2] + 1
+		)
+	end
+
 	root:refresh()
 end
 

@@ -15,7 +15,7 @@ local viewlut = {hint = {}}
 viewlut.hint.out = "Set STDOUT as view stream"
 function viewlut.out(set, i, job)
 	job.view = cat9.view_raw
-	job.row_offset = 0
+	job.row_offset = 1
 	job.col_offset = 0
 	return i + 1
 end
@@ -90,7 +90,7 @@ end
 viewlut.hint.err = "Set STDERR as view stream"
 function viewlut.err(set, i, job)
 	job.view = cat9.view_err
-	job.row_offset = 0
+	job.row_offset = 1
 	job.col_offset = 0
 	return i + 1
 end
@@ -133,45 +133,65 @@ end
 
 viewlut.hint.scroll = "Change view output starting offset"
 function viewlut.scroll(set, i, job)
--- treat +n and -n
-	local function is_rel(str)
-		if not str then
-			return false
-		end
-		local prefix = string.sub(str, 1, 1)
-		return prefix == "+" or prefix == "-"
-	end
-
 	local page_bound = 1
+	local ignore_filter = false
+	local row, col
 
 	if set[2] == "page" then
 		table.remove(set, 2)
 		page_bound = job.region[4] - job.region[2] - 2
 		page_bound = page_bound < 1 and 1 or page_bound
+		ignore_filter = true
+		row = cat9.opt_number(set, 2, 1) * page_bound
 
 	elseif set[2] == "relative" then
 		table.remove(set, 2)
-		job.row_offset_relative = true
-		job.row_offset = 0
+		row = cat9.opt_number(set, 2, 1)
 
 	elseif set[2] == "absolute" then
 		table.remove(set, 2)
-		job.row_offset_relative = false
+		job.row_offset = cat9.opt_number(set, 2, 1)
+
+	elseif string.sub(set[2], 1, 1) == "+" or string.sub(set[2], 1, 1) == "-" then
+		row = tonumber(set[2])
+	else
+		return false, "bad scroll argument"
 	end
 
-	local row = cat9.opt_number(set, 2, 0) * page_bound
-	local col = cat9.opt_number(set, 3, 0)
+	if not row then
+		return false, "bad scroll row"
+	end
 
-	sind = sind and sind or 0
-	job.row_offset = job.row_offset + row
-	job.col_offset = job.col_offset + col
+	col = cat9.opt_number(set, 3, 0)
+
+-- if we have a search filter set, sweep from row_offset in dataset,
+-- continue until next match
+	if job.highlight_filter and not ignore_filter then
+		if row > 0 then
+			local count = 0
+			while count < row and job.row_offset < job.data.linecount do
+				job.row_offset = job.row_offset + 1
+				if job.highlight_filter(job.data[job.row_offset]) then
+					count = count + 1
+				end
+			end
+		elseif row < 0 then
+			local count = 0
+			while count < -row and job.row_offset > 1 do
+				job.row_offset = job.row_offset - 1
+				if job.highlight_filter(job.data[job.row_offset]) then
+					count = count + 1
+				end
+			end
+		end
+	else
+		job.row_offset = job.row_offset + row
+		job.col_offset = job.col_offset + col
+	end
 
 -- clamp relative so we don't go outside actual data range
-	if job.row_offset_relative and job.row_offset > 0 then
-		job.row_offset = 0
-
-	elseif not job.row_offset_relative and job.row_offset < 0 then
-		job.row_offset = 0
+	if job.row_offset < 1 then
+		job.row_offset = 1
 	end
 
 	cat9.flag_dirty(job)

@@ -37,6 +37,8 @@ local hintbl = {
 	single_job = "Only show a single job at any time",
 	a11y_limit = "Number of 25Hz ticks between queued messages",
 	process_lines = "Number of lines to process in each update",
+	shell_job_deferred = "Defer showing job data until exited",
+	shell_job_linecount = 10000, "Maximum number of lines to process per pass",
 	mouse_mode = string.format(
 		"(Advanced) override mouse mode flag (%d, %d)", tui.flags.mouse, tui.flags.mouse_full),
 }
@@ -63,6 +65,8 @@ return
 	plumber = "/usr/bin/afsrv_decode",
 
 	default_job_view = "crop",
+	shell_job_deferred = true,
+	shell_job_linecount = 10000,
 
 -- probe for accessibility segment at startup, adds 10-50ms time so disable if
 -- you don't need or want to test for it

@@ -1,56 +1,11 @@
 --
--- create a reduced dataset based on pattern
+-- similar to 'filter' but instead of creating a new dataset it
+-- scrolls and searches based on an interactive pattern instead
 --
 return
 function(cat9, root, builtins, suggest, views)
 
-local function show_ptn(job, ...)
--- substitute in our reduced data
-	local dset = job.data
-	local filterfn = job.view_state.filter
-	local state = job.view_state
-
--- apply pattern to new data, some kind of processing queue here
--- that limits the amount of lines processed and defer the rest to
--- renderloop downtime (or actually thread .. )
-	if job.view_state.data_linecount < dset.linecount then
-		for i=state.linecount+1,dset.linecount do
-			local ok, res = filterfn(dset[i])
-			if ok then
-				table.insert(job.view_state, res)
-				job.view_state.linecount = job.view_state.linecount + 1
-			end
-		end
-		job.view_state.data_linecount = dset.linecount
-	end
-
-	job.data = job.view_state
-	local rc = cat9.view_raw(job, ...)
-	job.data = dset
-	return rc
-end
-
-local function slice_ptn(job, lines, set)
-	local res =
-	{
-		bytecount = 0,
-		linecount = 0
-	}
-
-	return cat9.resolve_lines(
-		job, res, lines,
-		function(i)
-			if not i then
-				return job.view_state
-			end
-			local line = job.view_state[i]
-			if line then
-				return line, #line, 1
-			else
-				return nil, 0, 0
-			end
-		end
-	)
+local function scroll(job, start, dir)
 end
 
 local opmap = {}
@@ -169,13 +124,6 @@ local function set_interactive(job)
 		root:revert()
 	end
 
-	if job.view_state and job.view_state.filter then
-		job:set_view(cat9.view_raw, nil, nil, "crop")
-		return
-	end
-
-	cat9.add_message("view(match): empty pattern/string, setting interactive")
-
 -- This repeats basically what parse_string does, without the execution or
 -- suggestion set. Instead, the suggestion is treated as the full command
 -- applied as the new filter.
@@ -192,21 +140,13 @@ local function set_interactive(job)
 			return ofs
 		end
 
--- run set through regular filter and update view
-		last_set = set
-		local state =
-			{
-				data_linecount = 0,
-				linecount = 0,
-				bytecount = 0,
-				filter = build_chain(job, last_set[1])
-			}
-		local name = "filter(" .. msg .. ")"
-		if job.set_filter then
-			job:set_filter(state.filter)
-		else
-			job:set_view(show_ptn, slice_ptn, state, name)
-		end
+		job.row_offset = 1
+		job.highlight_filter = build_chain(job, set)
+		cat9.parse_string(string.format(
+			"#%d view #%d scroll +1",
+			job.id, job.id
+			)
+		)
 	end
 
 -- just re-use the verification result
@@ -227,7 +167,7 @@ local function set_interactive(job)
 				forward_mouse = false,
 -- same as the normal parse /verify
 				verify = verify
-			}), "view:filter"
+			}), "view:search"
 	)
 
 	cat9.block_readline(root, true, true)
@@ -235,42 +175,27 @@ local function set_interactive(job)
 	cat9.readline:suggest({})
 	cat9.get_prompt =
 	function()
-		return {"(filter)"}
+		return {"(search)"}
 	end
 	cat9:flag_dirty()
 end
 
-views.hint.filter = "Define a pattern to filter the view output"
-function views.filter(job, suggest, args)
+views.hint.search = "Define a pattern to use for stepping"
+function views.search(job, suggest, args)
 	if not suggest then
 		if not args[2] then
+			cat9.add_message("view(match): empty pattern/string, setting interactive")
 			set_interactive(job)
 			return
 		end
 
 		table.remove(args, 1)
-
-		local state =
-			{
-				data_linecount = 0,
-				linecount = 0,
-				bytecount = 0,
-				filter = build_chain(job, args)
-			}
-		local name = "filter(" .. table.concat(args, "") .. ")"
-
--- custom drawn jobs needs to reduce themselves
-		if job.set_filter then
-			job:set_filter(state.filter)
-		else
-			job:set_view(show_ptn, slice_ptn, state, name)
-		end
-
+		job.highlight_filter = build_chain(job, args)
 		return
 	end
 
 	cat9.add_message(
-		"filter [substring | operator (match, find, not) substring] | a or b or c ... ",
+		"search [substring | operator (match, find, not) substring] | a or b or c ... ",
 		cat9.MESSAGE_HELP
 	)
 end

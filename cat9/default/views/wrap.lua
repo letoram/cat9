@@ -141,11 +141,7 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 
 -- wrap, add to set and reduce lc with the number
 	for i=1,lc do
-		if job.row_offset_relative then
-			ind = set.linecount - lc + i + ofs
-		else
-			ind = ofs
-		end
+		ind = ofs
 
 		if ind <= 0 then
 			ind = i
@@ -217,7 +213,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 
 	local ofs = job.row_offset
 	if lc >= set.linecount then
-		ofs = 0
+		ofs = 1
 	end
 
 	if state.cap and state.cap < cols and state.cap > 0 then

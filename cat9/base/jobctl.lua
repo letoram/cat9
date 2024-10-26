@@ -185,7 +185,7 @@ local function flush_job(job, finish, limit)
 		end
 	end
 
-	return upd
+	return upd, falive
 end
 
 local function run_hook(job, a, ...)
@@ -316,35 +316,40 @@ local function shell_key_input(job, sub, sym, code, mods)
 	local data = job.data
 
 	if sym == tui.keys.UP or sym == tui.keys.K then
-		if job.cursor[2] == 0 then
+		if job.cursor[2] == 0 or job.highlight_filter then
 			cat9.parse_string(nil, string.format("view #%d scroll -1", job.id))
 	else
 			job.cursor[2] = job.cursor[2] - 1
 		end
 
-		local ofs = job.view_base + job.cursor[2]
+		local ofs = job.row_offset + job.cursor[2]
 		cat9.a11y_buffer(data[ofs])
 
--- in search: step to previous
 	elseif sym == tui.keys.DOWN or sym == tui.keys.J then
-		if job.cursor[2] + job.view_base >= job.region[4] - job.region[2] then
+		if job.highlight_filter or
+			job.cursor[2] + job.row_offset >= job.region[4] - job.region[2] then
 			cat9.parse_string(nil, string.format("view #%d scroll +1", job.id))
 		else
 			job.cursor[2] = job.cursor[2] + 1
 		end
 
-		local ofs = job.view_base + job.cursor[2]
+		local ofs = job.row_offset + job.cursor[2]
 		cat9.a11y_buffer(data[ofs])
+		cat9.flag_dirty(job)
+
+-- should also pan in the case of scroll, also support home/end/pgup/pgdn
 
 -- in search: step to next
 	elseif sym == tui.keys.SLASH then
--- set readline query for pattern
-	elseif sym == tui.keys.ESCAPE then
--- disable search
-	end
+		if not job.highlight_filter then
+-- dispatch as view #job search
+		end
 
--- should scroll and highlight current cursor item,
--- as well as support searching
+	elseif sym == tui.keys.ESCAPE then
+		if job.highlight_filter then
+			job.highlight_filter = nil
+		end
+	end
 end
 
 function cat9.process_jobs()
@@ -385,7 +390,7 @@ function cat9.process_jobs()
 -- responsiveness of the shell vs throughput. If it is visible and in focus we
 -- should perhaps allow more.
 			elseif job.out or job.err then
-				upd = flush_job(job, false, config.process_lines) or upd
+				upd = (flush_job(job, false, config.process_lines) and not job.deferred) or upd
 			end
 		end
 	end
@@ -421,6 +426,8 @@ function
 	job.inp_buffer = {}
 	job.short = args[2]
 	job.key_input = shell_key_input
+	job.deferred = config.shell_job_deferred or opts.deferred
+	job.start_ts = os.time()
 
 	if not job.dir then
 		job.dir = root:chdir()
@@ -433,7 +440,7 @@ function
 	if opts.close then
 		close =
 		function()
-			job.inp:flush(100)
+			job.inp:flush(config.shell_job_linecount)
 			job.inp:close()
 			job.inp = nil
 		end
@@ -500,6 +507,15 @@ function
 -- enable vt100
 	if mode == "pty" and cat9.views["wrap"] then
 		cat9.views["wrap"](job, false, {"cat9", "vt100"}, "")
+	end
+
+	if job.deferred then
+		job.out:data_handler(
+			function()
+				local _, alive = flush_job(job, false, config.shell_job_linecount)
+				return alive
+			end
+		)
 	end
 
 	return job
@@ -672,7 +688,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	local ofs = job.row_offset
 	lc = lc > rows and rows or lc
 	if lc >= set.linecount then
-		ofs = 0
+		ofs = 1
 	end
 
 	if job.mouse then
@@ -682,27 +698,17 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 	local base = ofs
 
-	if job.row_offset_relative then
-		base = set.linecount - lc + ofs
-		if base <= 0 then
-			job.row_offset = job.row_offset - base
-			base = 1
-		end
-	end
-
 -- clamp and adjust row_offset so we stay in data range
 	if base <= 0 then
 		base = 1
 	end
 
-	job.view_base = base
-
 	if job.redraw then
 		job:redraw(false, cat9.selectedjob == job)
 	end
 
-	for i=1,lc do
-		local ind = base + i - 1
+	for i=0,lc-1 do
+		local ind = base + i
 
 -- bad .data early out
 		local row = set[ind]
@@ -710,7 +716,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			break
 		end
 
--- apply column offset
+-- apply column offset (utf8 warning)
 		if job.col_offset > 0 and job.col_offset < #row then
 			row = string.sub(row, job.col_offset + 1)
 		end
@@ -720,7 +726,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 -- updated on motion
 		local on_row = false
-		if job.mouse and job.mouse[2] == y+i-1 then
+		if job.mouse and job.mouse[2] == y+i then
 			on_row = true
 			job.mouse.on_row = ind
 		end
@@ -744,7 +750,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 				end
 			end
 
-			root:write_to(cx, y+i-1, num, lineattr)
+			root:write_to(cx, y+i, num, lineattr)
 			root:write(": ", lineattr)
 			cx = cx + 2 + digits
 			ccols = cols - digits - 4
@@ -754,23 +760,29 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			end
 		end
 
--- expanding tabs should go here, be configured per job and allow
--- shenanigans like tabstobs or other markers e.g. -->
---		row:gsub("\t", "  ")
+-- expanding tabs should go here:
+--  be configured per job and allow shenanigans like tabstobs or other
+--  markers e.g. --> row:gsub("\t", "  ")
+		local ranges = (job.highlight_filter and job.highlight_filter(row)) or nil
 
-		if #row > ccols then
+		if #row > ccols and not job.write_override then
 			row = string.sub(row, 1, ccols)
 		end
 
-	-- some jobs override this to have different formatting for different
-	-- offsets and not just 'per line attributes'
+-- some jobs override this to have different formatting for different
+-- offsets and not just 'per line attributes'
 		if job.write_override then
 			job:write_override(cx,
-				y+i-1, row, set, ind, 0, job.selections[ind], ccols)
-		else
+				y+i, row, set, ind, 0, job.selections[ind], ccols)
 
+-- it is possible to set a generic highlight filter through view search
+-- which also works as a stepper filter for scroll
+		elseif ranges then
+			root:write_to(cx, y+i, row, config.styles.data_highlight)
+
+		else
 -- finally print it, hightlight any manually selected lines
-			root:write_to(cx, y+i-1, row,
+			root:write_to(cx, y+i, row,
 				            job:attr_lookup(set, ind, 0, job.selections[ind]))
 		end
 	end
@@ -783,7 +795,19 @@ function cat9.view_fmt_job(job, set, ...)
 end
 
 function cat9.view_raw(job, ...)
-	return raw_view(job, job.data, ...)
+	if not job.deferred or (job.deferred and not job.pid) then
+		return raw_view(job, job.data, ...)
+	else
+		local data = {
+			bytecount = job.data.bytecount,
+			linecount = 2
+		}
+		data[1] = string.format("Reading: %d lines", job.data.linecount)
+		local ts = os.time() - job.start_ts
+		data[2] = string.format("Elapsed: %s seconds", ts >= 0 and tostring(ts) or "?")
+
+		return raw_view(job, data, ...)
+	end
 end
 
 function cat9.view_err(job, ...)
@@ -1079,7 +1103,7 @@ local function view_set(job, view, slice, state, name)
 		job.slice = cat9.default_slice
 	end
 
-	job.row_offset = 0
+	job.row_offset = 1
 	job.col_offset = 0
 	cat9.flag_dirty()
 end
@@ -1088,6 +1112,7 @@ local function add_line(job, line)
 	table.insert(job.data, line)
 	job.data.linecount = job.data.linecount + 1
 	job.data.bytecount = job.data.bytecount + #line
+	job.row_offset = job.row_offset + (job.scroll_lock and 0 or 1)
 end
 
 local counter = 0
@@ -1107,8 +1132,7 @@ function cat9.import_job(v, noinsert)
 	end
 
 	v.bar_color = tui.colors.ui
-	v.row_offset = 0
-	v.row_offset_relative = true
+	v.row_offset = 1
 	v.col_offset = 0
 	v.job = true
 	v.hide = hide_job
@@ -1178,10 +1202,8 @@ function cat9.import_job(v, noinsert)
 		v.wrap = true
 		v.exit = nil
 		v.lineno_offset = 0
-		v.row_offset = 0
+		v.row_offset = 1
 		v.col_offset = 0
-		v.view_base = 0
-		v.row_offset_relative = true
 		v.bar_color = tui.colors.ui
 		v.view = cat9.view_raw
 		v.selections = {}
