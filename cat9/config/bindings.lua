@@ -3,10 +3,22 @@ function(cat9, root, config)
 	local bnd = cat9.bindings
 	bnd.modifier = tui.modifiers.CTRL -- default, shared with readline, bitmap so only tui.modifiers.[symbol]
 
--- used to give input focus to a specific job and to step between them
+-- used to give input focus to a specific job
 	bnd.readline_toggle = tui.keys.ESCAPE
 	bnd.window_next = tui.keys.H
 	bnd.window_prev = tui.keys.L
+
+-- generic specific window navigation controls doesn't take modifier
+	bnd.window = {
+		[tui.keys.PAGEUP] = "view #csel scroll page -1",
+		[tui.keys.PAGEDOWN] = "view #csel scroll page +1",
+		[tui.keys.HOME] = "view #csel scroll absolute 0",
+		[tui.keys.END] = "view #csel scroll absolute -1",
+		[tui.keys.UP] = "view #csel scroll relative -1",
+		[tui.keys.DOWN] = "view #csel scroll relative +1",
+		[tui.keys.ESCAPE] = "view #csel search \"\"",
+		[tui.keys.SLASH] = "view #csel search",
+	}
 
 	bnd[tui.keys.D] = "forget #last"
 	bnd[tui.keys.Q] = "repeat #last edit flush"

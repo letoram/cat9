@@ -57,6 +57,11 @@ local function build_chain(job, args)
 
 -- "and" is implied for each chain
 	for _,v in ipairs(args) do
+		if type(v) ~= "string" then
+			cat9.add_message("view #job search >...< invalid type")
+			return
+		end
+
 		if in_op then
 			table.insert(chain, in_op(v))
 			in_op = false
@@ -140,10 +145,18 @@ local function set_interactive(job)
 			return ofs
 		end
 
+		if #msg == 0 then
+			job.highlight_filter = nil
+			cat9.flag_dirty(job)
+			return
+		end
+
+		last_set = set
+
 		job.row_offset = 1
-		job.highlight_filter = build_chain(job, set)
+		job.highlight_filter = build_chain(job, last_set[1])
 		cat9.parse_string(string.format(
-			"#%d view #%d scroll +1",
+			"#%d view #%d scroll relative +1",
 			job.id, job.id
 			)
 		)

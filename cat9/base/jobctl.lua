@@ -315,40 +315,8 @@ end
 local function shell_key_input(job, sub, sym, code, mods)
 	local data = job.data
 
-	if sym == tui.keys.UP or sym == tui.keys.K then
-		if job.cursor[2] == 0 or job.highlight_filter then
-			cat9.parse_string(nil, string.format("view #%d scroll -1", job.id))
-	else
-			job.cursor[2] = job.cursor[2] - 1
-		end
-
-		local ofs = job.row_offset + job.cursor[2]
-		cat9.a11y_buffer(data[ofs])
-
-	elseif sym == tui.keys.DOWN or sym == tui.keys.J then
-		if job.highlight_filter or
-			job.cursor[2] + job.row_offset >= job.region[4] - job.region[2] then
-			cat9.parse_string(nil, string.format("view #%d scroll +1", job.id))
-		else
-			job.cursor[2] = job.cursor[2] + 1
-		end
-
-		local ofs = job.row_offset + job.cursor[2]
-		cat9.a11y_buffer(data[ofs])
-		cat9.flag_dirty(job)
-
--- should also pan in the case of scroll, also support home/end/pgup/pgdn
-
--- in search: step to next
-	elseif sym == tui.keys.SLASH then
-		if not job.highlight_filter then
--- dispatch as view #job search
-		end
-
-	elseif sym == tui.keys.ESCAPE then
-		if job.highlight_filter then
-			job.highlight_filter = nil
-		end
+	if cat9.bindings.window and cat9.bindings.window[sym] then
+		cat9.parse_string(nil, cat9.bindings.window[sym])
 	end
 end
 
@@ -472,6 +440,7 @@ function
 		if job.pid then
 			return
 		end
+		job.start_ts = os.time()
 		job.exit = nil
 		job.inp, job.out, job.err, job.pid = root:popen(job.args, job.mode, job.env)
 		if job.pid then
@@ -482,6 +451,15 @@ function
 		end
 		if job.inp and repeat_input and #job.inp_buffer > 0 then
 			job.inp:write(job.inp_buffer, close and close or nil)
+		end
+
+		if job.deferred then
+			job.out:data_handler(
+				function()
+					local _, alive = flush_job(job, false, config.shell_job_linecount)
+					return alive
+				end
+			)
 		end
 	end
 
@@ -798,12 +776,13 @@ function cat9.view_raw(job, ...)
 	if not job.deferred or (job.deferred and not job.pid) then
 		return raw_view(job, job.data, ...)
 	else
+		local ts = os.time() - job.start_ts
+
 		local data = {
 			bytecount = job.data.bytecount,
 			linecount = 2
 		}
 		data[1] = string.format("Reading: %d lines", job.data.linecount)
-		local ts = os.time() - job.start_ts
 		data[2] = string.format("Elapsed: %s seconds", ts >= 0 and tostring(ts) or "?")
 
 		return raw_view(job, data, ...)

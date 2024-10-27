@@ -131,12 +131,34 @@ function viewlut.collapse(set, i, job)
 	job.expanded = false
 end
 
+local function align_offset_window(job)
+
+-- on neagitve index just wrap around
+	if job.row_offset < 0 then
+		job.row_offset = job.data.linecount + job.row_offset
+	end
+
+-- then make sure we use the entire window
+	local page_size = job.region[4] - job.region[2] - 2
+	if job.row_offset + page_size > job.data.linecount then
+		job.row_offset = job.data.linecount - page_size
+	end
+
+-- can still underflow again on linecount < page_size
+	if job.row_offset <= 0 then
+		job.row_offset = 1
+	end
+
+	cat9.flag_dirty(job)
+end
+
 viewlut.hint.scroll = "Change view output starting offset"
 function viewlut.scroll(set, i, job)
 	local page_bound = 1
 	local ignore_filter = false
 	local row, col
 
+-- page is always row relative
 	if set[2] == "page" then
 		table.remove(set, 2)
 		page_bound = job.region[4] - job.region[2] - 2
@@ -148,9 +170,12 @@ function viewlut.scroll(set, i, job)
 		table.remove(set, 2)
 		row = cat9.opt_number(set, 2, 1)
 
+-- absolute also ignores highligh / search filter
 	elseif set[2] == "absolute" then
 		table.remove(set, 2)
 		job.row_offset = cat9.opt_number(set, 2, 1)
+		align_offset_window(job)
+		return
 
 	elseif string.sub(set[2], 1, 1) == "+" or string.sub(set[2], 1, 1) == "-" then
 		row = tonumber(set[2])
@@ -189,12 +214,7 @@ function viewlut.scroll(set, i, job)
 		job.col_offset = job.col_offset + col
 	end
 
--- clamp relative so we don't go outside actual data range
-	if job.row_offset < 1 then
-		job.row_offset = 1
-	end
-
-	cat9.flag_dirty(job)
+	align_offset_window(job)
 end
 
 local function view_monitor()
