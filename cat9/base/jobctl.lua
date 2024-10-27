@@ -464,6 +464,9 @@ function
 	end
 
 	cat9.import_job(job)
+	if job.out then
+		job.out:lf_strip(true, "\n")
+	end
 
 	table.insert(job.hooks.on_finish,
 		function()
