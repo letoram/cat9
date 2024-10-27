@@ -165,7 +165,7 @@ local function open_string(file, spawn, context)
 -- turn modifies dstenv to match file and then queues the new window and runs
 -- 'trigger'.
 	fname_to_decode(
-	cat9, root, dstenv, wdir, file,
+	cat9, root, dstenv, wdir, string.trim(file),
 		function()
 			spawn_trigger(cat9, root, "handover", spawn, trigger)
 		end
@@ -188,7 +188,7 @@ local function open_internal(mode, context, viewm)
 		if type(slice) == "table" then
 			buf = table.concat(context:slice(), "\n")
 		else
-			buf = slice
+			buf = string.trim(slice)
 		end
 
 		if mode then
