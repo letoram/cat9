@@ -155,7 +155,7 @@ local function set_interactive(job)
 
 		job.row_offset = 1
 		job.highlight_filter = build_chain(job, last_set[1])
-		cat9.parse_string(string.format(
+		cat9.parse_string(nil, string.format(
 			"#%d view #%d scroll relative +1",
 			job.id, job.id
 			)
@@ -165,6 +165,10 @@ local function set_interactive(job)
 -- just re-use the verification result
 	local rlover =
 	function(self, line)
+		if #line == 0 then
+			job.highlight_filter = nil
+		end
+
 		cat9.get_prompt = oprompt
 		cat9.block_readline(root, false, false)
 		cat9.reset()
