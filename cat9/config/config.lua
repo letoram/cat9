@@ -29,6 +29,7 @@ local hintbl = {
 	open_spawn_default = "Suggested open mode (embed, split, join-r, tab, swallow)",
 	clipboard_job = "Create a new job that absorbs all pasted input",
 	sh_runner = "Program to invoke for subshell commands",
+	sh_user_prefix = "Prefix to run shell commands as a different user",
 	default_job_view = "Default view action for new jobs",
 	detach_keep = "Set to reattach detached job on window destruction",
 	open_embed_collapsed_rows = "Number of rows for downscaled contract open embed",
@@ -98,6 +99,7 @@ return
 -- this means that we can have a privileged root default, but default to run
 -- as a targetted user.
 	sh_runner = "/bin/sh sh -c",
+	sh_user_prefix = "/bin/doas -u",
 
 -- subtables are ignored for the config builtin
 --

@@ -371,6 +371,16 @@ function
 	local inf, outf, errf, pid
 	opts = opts and opts or {}
 
+	if cat9.sh_runner_user then
+		table.remove(args, 1)
+		local cmds = string.split(config.sh_user_prefix, " ")
+		for i,v in ipairs(cmds) do
+			table.insert(args, i, v)
+		end
+		table.insert(args, #cmds + 1, cat9.sh_runner_user)
+		table.insert(args, 1, cmds[1])
+	end
+
 	if not opts.passive then
 		inf, outf, errf, pid = root:popen(args, mode, env)
 		if not pid then
@@ -979,8 +989,8 @@ function(intbl)
 
 	local dir = root:chdir(tbl.dir)
 	local job2 = cat9.setup_shell_job(
-		tbl.args, tbl.mode, tbl.env, tbl.raw, {job = tbl,
-		passive = tbl.factory_mode == "manual"}
+		tbl.args, tbl.mode, tbl.env, tbl.raw,
+		{job = tbl, passive = tbl.factory_mode == "manual"}
 	)
 
 	root:chdir(dir)

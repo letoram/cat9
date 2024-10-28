@@ -21,3 +21,7 @@
 * added 'contain' builtin for merging jobs into one
 * multiple layouting / mouse picking fixes
 * jobs can be protected from forget through config #job protect true | false
+* shell jobs can now be deferred and only show content when exited
+* shell job windows now have input controls for navigation
+* view can be used to add search and highlight patterns
+* system builtin can now take user prefix (going through sudo or doas) through builtin system user

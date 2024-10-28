@@ -27,6 +27,7 @@ local function shc_helper(mode, ...)
 	end
 
 	argv[4] = table.concat(set, " ")
+
 	local job = cat9.setup_shell_job(argv, mode, env, nil, opts)
 	if job then
 		job.short = string.sub(argv[4], 1, 10)

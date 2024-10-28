@@ -184,17 +184,26 @@ local function load_builtins(base, flush)
 -- won't actually break the previous one.
 		local ok, msg
 		local flush = false
+		cat9.sh_runner_user = nil
+
 		if opt then
 			if opt ~= "nodef" then
-				cat9.add_message("builtin [set] [nodef]: unknown option argument")
-				return
+				if a == "system" then
+					cat9.add_message("builtin system: user set to " .. opt)
+					cat9.sh_runner_user = opt
+				else
+					cat9.add_message("builtin [set] [nodef]: unknown option argument")
+					return
+				end
 			end
-			flush = true
-		else
-			if a ~= "default" then
-				load_builtins("default", true)
-			end
+	-- currently don't permit arguments to the builtin set
 		end
+
+-- always append default builtins
+		if a ~= "default" then
+			load_builtins("default", true)
+		end
+
 		ok, msg = load_builtins(a, flush)
 
 		if not ok then
