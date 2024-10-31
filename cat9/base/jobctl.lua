@@ -497,6 +497,7 @@ function
 
 -- enable vt100
 	if mode == "pty" and cat9.views["wrap"] then
+		job.deferred = false
 		cat9.views["wrap"](job, false, {"cat9", "vt100"}, "")
 	end
 
