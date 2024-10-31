@@ -207,7 +207,12 @@ function state_c0c1(state, dst, ch, val)
 end
 
 local function state_any(state, dst, ch, val)
-	table.insert(dst, ch)
+	if string.byte(ch) == 0x08 or string.byte(ch) == 0x7f then
+		table.remove(dst, #dst)
+	else
+		table.insert(dst, ch)
+	end
+
 	return state_any
 end
 
@@ -258,7 +263,6 @@ function parse_vt100(state, data)
 			end
 
 			if newstate and newstate ~= statefn then
---				print("state transition", newstate, ch, val)
 				statefn = newstate
 			end
 
