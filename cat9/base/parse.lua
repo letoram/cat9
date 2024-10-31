@@ -631,6 +631,11 @@ function cat9.parse_string(rl, line)
 	local res
 	local cmd = commands[1]
 
+-- tokenization of ! would cause it to split though it should be merged
+	if #cmd == 1 and commands[2] == "!" then
+		cmd = cmd .. table.remove(commands, 2)
+	end
+
 	if string.sub(cmd, 1, 1) ~= "_" and cat9.builtins[cmd] then
 		cat9.stdin = inp
 		local ok, msg = cat9.builtins[cmd](unpack(commands, 2))
