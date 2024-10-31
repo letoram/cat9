@@ -140,12 +140,8 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 	table.insert(res, dataattr)
 
 -- wrap, add to set and reduce lc with the number
-	for i=1,lc do
-		ind = ofs
-
-		if ind <= 0 then
-			ind = i
-		end
+	for i=0,lc-1 do
+		ind = ofs + i
 
 		local row = job.data[ind]
 		if not row then
@@ -163,11 +159,12 @@ local function reduce_fmt(job, set, lc, ofs, cols, raw)
 				row = cached
 				attr = state.fmt_cache[ind]
 			else
--- if another data filter has been attached ..
+-- if another data filter has been attached, ensure there is linefeeds even
+-- if they might have been stripped at the source
 				if state.vt100.consume then
 					row, attr = state.vt100:consume(row)
-					state.row_cache[i] = row
-					state.fmt_cache[i] = attr
+					state.row_cache[i+1] = row
+					state.fmt_cache[i+1] = attr
 				end
 			end
 		end
@@ -257,7 +254,7 @@ function job_wrap(job, x, y, cols, rows, probe, hidden)
 	local cy = y
 	job.root:cursor_to(cx, cy)
 
-	for _,v in ipairs(reduced) do
+	for i,v in ipairs(reduced) do
 		if type(v) == "table" then
 			attr = v
 		elseif v == "\n" then
