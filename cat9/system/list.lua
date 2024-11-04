@@ -227,6 +227,7 @@ end
 local function slice_files(job, lines)
 	if not job.data.files_filtered then
 		job.data.files_filtered = filter_job(job, job.data.files)
+		job.data.linecount = job.data.files_filtered.linecount
 	end
 
 	local res = {}
@@ -364,6 +365,7 @@ end
 local function on_redraw(job, over, selected)
 	if not job.data.files_filtered then
 		job.data.files_filtered = filter_job(job, job.data.files)
+		job.data.linecount = job.data.files_filtered.linecount
 	end
 
 	if not job.mouse then
@@ -387,6 +389,7 @@ end
 local function view_files(job, x, y, cols, rows, probe)
 	if not job.data.files_filtered then
 		job.data.files_filtered = filter_job(job, job.data.files)
+		job.data.linecount = job.data.files_filtered.linecount
 	end
 
 -- since view is called on each dirty, we want to cache any possibly
@@ -452,7 +455,7 @@ local function list_text_input(job, ch)
 
 	for i=start,job.data.files_filtered.linecount do
 		local item = job.data.files_filtered[i]
-		if string.sub(item.name, 1, #ch) == ch then
+		if item and item.name and string.sub(item.name, 1, #ch) == ch then
 			found = i
 			break
 		end
@@ -478,10 +481,8 @@ local function list_text_input(job, ch)
 	local rh = job.region[4] - job.region[2]
 
 	if job.cursor[2] + nitems > rh + job.cursor[2] then
-		cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll relative" .. found)
-		cat9.redraw()
-
-		return list_text_input(job, ch)
+		local count = job.data.linecount
+		cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. " scroll absolute " .. found)
 	else
 		job.cursor[2] = job.cursor[2] + nitems
 	end
@@ -494,6 +495,7 @@ end
 local function list_filter(job, fn)
 	job.list_filter_fn = fn
 	job.data.files_filtered = filter_job(job, job.data.files)
+	job.data.linecount = job.data.files_filtered.linecount
 	cat9.flag_dirty(job)
 end
 
@@ -506,7 +508,7 @@ local function list_input(job, sub, keysym, code, mods)
 
 	if keysym == builtin_cfg.list.bindings.up then
 		if job.cursor[2] == 0 then
-			cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll -1")
+			cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll relative -1")
 		else
 			job.cursor[2] = job.cursor[2] - 1
 		end
@@ -522,11 +524,13 @@ local function list_input(job, sub, keysym, code, mods)
 		job.cursor[2] = job.cursor[2] + 1
 
 -- should we scroll down?
-		if job.cursor[2] >= rh-3 then
+		if job.cursor[2] >= rh-2 then
+			local cap = job.row_offset + job.cursor[2] + 1
 
--- but only if we aren't at the end
+-- but only if we aren't at the end, view scroll will cap to data.linecount but we don't
+-- want that to match our files_filtered elsewhere so fake it
 			if job.row_offset + job.cursor[2] + 1 < job.data.files_filtered.linecount then
-				cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. "scroll +1")
+				cat9.parse_string(cat9.readline, "view #" .. tostring(job.id) .. " scroll relative 1")
 				job.cursor[2] = job.cursor[2] - 1
 
 			else
