@@ -9,6 +9,7 @@ return
 	'repeat.lua',
 	'trigger.lua',
 	'input.lua',
+	'explain.lua',
 	'contain.lua',
 	'views/wrap.lua',
 	'views/crop.lua',
