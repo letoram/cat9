@@ -1101,11 +1101,22 @@ local function view_set(job, view, slice, state, name)
 	cat9.flag_dirty()
 end
 
-local function add_line(job, line)
-	table.insert(job.data, line)
-	job.data.linecount = job.data.linecount + 1
-	job.data.bytecount = job.data.bytecount + #line
+local function add_line(job, line, tag)
+	local data = job.data
+	table.insert(data, line)
+
+	data.linecount = data.linecount + 1
+	data.bytecount = data.bytecount + #line
 	job.row_offset = job.row_offset + (job.scroll_lock and 0 or 1)
+
+-- an optional cursor_handler that takes care of mutating the line when the
+-- cursor is over it
+	if tag then
+		if not data.tags then
+			data.tags = {}
+		end
+		data.tags[data.linecount] = tag
+	end
 end
 
 local counter = 0

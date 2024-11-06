@@ -1,21 +1,16 @@
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
--- other useful extensions: 'github' tool
 -- fossil should show timeline, chat, issues to inject into commit message, ...
 --
--- for the 'chat' we need to figure out the database and have sqlite3
---     .find fslckout -> grab 'repository' from vvar;
---     SELECT fmime FROM chat WHERE msgid=%d
---     SELECT file FROM chat WHERE msgid=%d
---     SELECT xfrom FROM chat WHERE msgid=%d
---     SELECT julianday('now')/mtime FROM chat ORDER BY msgid LIMIT 1
---     SELECT msgid FROM chat ORDER BY msgid DESC LIMIT 1 OFFSET %d
---     PRAGMA secure_delete=ON
---     SELECT msgid, datetime(mtime), xfrom, xmsg, octet_length(file), fname, fmime, %s, lmtime FROM chat
---     SELECT msgid FROM chat WHERE mdel IS NOT true ORDER BY msgid DESC LIMIT 1 OFFSET %d (-msgid)
+-- fossil monitor should have an optional timer that:
+--        runs update -n, checks changes
+--                        and if desired / no conflict: updates
+--                        with triggers on issues
 --
--- a viewer for .pikchr is also useful, can do that via export to SVG then media embed
+--        runs curl (with credentials) into chaturl (if config:ed) into chat endpoint
+--
+-- issues command (initial probe + cache and on-update trigger)
 --
 
 local in_monitor
@@ -48,45 +43,76 @@ end
 -- this is where we add per-line handlers as well
 local prompt_kvt =
 {
-	ADDED = "A:", CHANGED = "C:", EXTRA = "E:", MISSING = "M:", DELETED = "D:"
+	ADDED = "A:", EDITED = "Ed:", MERGED = "M:", EXTRA = "Ex:", MISSING = "M:", DELETED = "D:"
 }
+
+local monitor_groups =
+{
+	Edited = "Edited", Merged = "Merged",
+	Added = "Added", Extra = "Extra",
+	Missing = "Missing", Deleted = "Deleted"
+}
+
+local function append_fossil_data(dst)
+	local f = dst.fossil
+	local promptstr
+	local prompttbl = {}
+
+	for k,v in pairs(prompt_kvt) do
+		if f[k] and #f[k] > 0 then
+			table.insert(prompttbl, v .. tostring(#f[k]))
+		end
+	end
+
+	promptstr = string.format("Fossil(%s)", table.concat(prompttbl, " "))
+	if not dst.add_line then
+		return promptstr
+	end
+
+	if not f.expanded then
+		dst:add_line("Fossil:")
+		dst:add_line(string.format(
+			"\tEdited: %d, Merged: %d, Added: %d, Extra: %d, Removed: %d, Missing: %d",
+			f.EDITED and #f.EDITED or 0,
+			f.MERGED and #f.MERGED or 0,
+			f.ADDED and #f.ADDED or 0,
+			f.EXTRA and #f.EXTRA or 0,
+			f.MISSING and #f.MISSING or 0,
+			f.DELETED and #f.DELETED or 0
+		),
+			function()
+				f.expanded = not f.expanded
+			end
+		)
+		return promptstr
+	end
+
+-- add each as a data-line and then mark the data-lines as having a mouse / cursor
+-- handler with the options of [view, stage, diff (for changed / merged), revert]
+	for k,v in pairs(monitor_groups) do
+	local group = string.upper(k)
+		if f[k] and #f[k] > 0 then
+			dst:add_line(string.format("%s:", k))
+			for i,j in ipairs(f[k]) do
+				dst:add_line(string.format("\t%s", j))
+			end
+		end
+	end
+end
 
 local function build_data()
 	in_monitor.data = {linecount = 0, bytecount = 0}
 	local promptstr = ""
 
 	if in_monitor.fossil then
-		local f = in_monitor.fossil
-		local prompttbl = {}
-
-		for k,v in pairs(prompt_kvt) do
-			if f[k] and #f[k] > 0 then
-				table.insert(prompttbl, v .. tostring(#f[k]))
-			end
+		promptstr = append_fossil_data(in_monitor)
+		if in_monitor.prompt then
+			in_monitor.prompt = promptstr
 		end
-		promptstr = string.format("Fossil(%s)", table.concat(prompttbl, " "))
-
-		if not f.expanded then
-			if in_monitor.add_line then
-				in_monitor:add_line(string.format(
-					"Fossil: Changed: %d, Added: %d, Extra: %d, Removed: %d, Missing: %d",
-					f.CHANGED and #f.CHANGED or 0,
-					f.ADDED and #f.ADDED or 0,
-					f.EXTRA and #f.EXTRA or 0,
-					f.MISSING and #f.MISSING or 0,
-					f.DELETED and #f.DELETED or 0
-				))
-			end
-		else
-
-		end
+		return
 	end
 
 	if in_monitor.git then
-	end
-
-	if in_monitor.prompt then
-		in_monitor.prompt = promptstr
 	end
 end
 
@@ -97,7 +123,8 @@ local function scan_fossil_output()
 	local commands =
 	{
 		{"fossil", "changes", "--differ", handler = parse_fossil_changes},
-		{"fossil", "stash", "list", handler = parse_fossil_stash}
+		{"fossil", "stash", "list", handler = parse_fossil_stash},
+--	{"fossil", "timeline"},
 -- check stash
 -- check extras
 	}
@@ -149,12 +176,13 @@ local function refresh_monitor()
 		table.remove(set, #set)
 	end
 
--- it is possible to have both SCMs active at once so need to scan
--- separately then join together into data and flag dirty accordingly
+-- it is possible to have both SCMs active (say a fossil repository with
+-- subdirectories populated by git) so need to scan separately then join
+-- together into data and flag dirty accordingly
 	job.got_fossil = got_fossil
 	if got_fossil then
 		if job.add_line then
-			job:add_line("Fossil:")
+			job:add_line("Fossil: (scanning)")
 		end
 		scan_fossil_output()
 	end
@@ -171,6 +199,7 @@ local function refresh_monitor()
 		if job.add_line then
 			job:add_line("No source control active")
 		end
+
 		if job.prompt then
 			job.prompt = "dev.scm:none"
 		end
@@ -253,6 +282,7 @@ local function cmd_monitor(arg)
 		short = string.format("dev:scm monitor(%s)", cdir),
 		raw = "dev:scm monitor",
 		dir = cdir,
+		scroll_lock = true,
 		check_status = function() return true; end,
 		prompt = prompt
 	}
@@ -275,7 +305,6 @@ local function cmd_monitor(arg)
 			if in_monitor.imported then -- unless it already is
 				return
 			end
-
 			job = in_monitor
 		end
 
