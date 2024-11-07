@@ -1,5 +1,8 @@
 return
 {
+	scm =
+	{
+	},
 	debug =
 	{
 		dap_default = {"gdb", "gdb", "-i", "dap", "-q"},

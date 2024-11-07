@@ -3,6 +3,9 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 
 -- fossil should show timeline, chat, issues to inject into commit message, ...
 --
+-- mouse over should have:
+--       tag: [attr, handler, action verbs (offset + trigger)]
+--
 -- fossil monitor should have an optional timer that:
 --        runs update -n, checks changes
 --                        and if desired / no conflict: updates
@@ -16,6 +19,56 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 local in_monitor
 local config = cat9.config
 local update_prompt
+local build_data
+
+local function write_monitor(job, x, y, row, set, ind, _, selected)
+	local mouse = job.mouse
+	local attr = cat9.config.styles.data
+
+-- expand action verbs when on a row with items
+	if mouse and mouse.on_row and mouse.on_row == ind then
+		local tag = set.tags[ind]
+		mouse.click_handler = nil
+
+		if tag then
+			attr = tag.attr
+
+			if tag.action_words then
+				_, x, y = job.root:write_to(x, y, row, attr)
+				for i,v in ipairs(tag.action_words) do
+					local attr = v[2]
+					_, x, y = job.root:write_to(x, y, " ")
+
+					if mouse[1] >= x and mouse[1] <= x + #v[1] then
+						attr = cat9.table_copy_shallow(attr)
+						mouse.click_handler = v[3]
+						attr.border_down = true
+					end
+
+					_, x, y = job.root:write_to(x, y, v[1], attr)
+				end
+			else
+				job.root:write_to(x, y, row, attr)
+			end
+			return
+		end
+	end
+
+	job.root:write_to(x, y, row, attr)
+end
+
+local function monitor_click(job, btn, ofs, yofs, mods)
+	local fn = job.data.tags and job.data.tags[yofs]
+
+-- figure out the action word at which offset
+	if fn and fn.click then
+		fn.click()
+	elseif job.mouse and job.mouse.click_handler then
+		job.mouse.click_handler()
+	end
+
+	return yofs > 0
+end
 
 local function parse_fossil_changes(scan, mon, code)
 	if mon ~= in_monitor then
@@ -69,8 +122,20 @@ local function append_fossil_data(dst)
 		return promptstr
 	end
 
+	local toggle_expand =
+	function()
+		f.expanded = not f.expanded
+		build_data(dst)
+		cat9.flag_dirty(dst)
+	end
+
 	if not f.expanded then
-		dst:add_line("Fossil:")
+		dst:add_line("Fossil (status):",
+			{click = toggle_expand,
+			 attr = cat9.config.styles.data_highlight
+			}
+		)
+
 		dst:add_line(string.format(
 			"\tEdited: %d, Merged: %d, Added: %d, Extra: %d, Removed: %d, Missing: %d",
 			f.EDITED and #f.EDITED or 0,
@@ -79,28 +144,60 @@ local function append_fossil_data(dst)
 			f.EXTRA and #f.EXTRA or 0,
 			f.MISSING and #f.MISSING or 0,
 			f.DELETED and #f.DELETED or 0
-		),
-			function()
-				f.expanded = not f.expanded
-			end
-		)
+		))
 		return promptstr
 	end
 
--- add each as a data-line and then mark the data-lines as having a mouse / cursor
--- handler with the options of [view, stage, diff (for changed / merged), revert]
+-- we re-use the existing view with overwrites in order to not have to provide
+-- all the scroll/view/slice/... overrides that would be necessary.
+	dst:add_line("Fossil (expanded):",
+		{click = toggle_expand,
+		attr = cat9.config.styles.data_highlight
+		}
+	)
+
 	for k,v in pairs(monitor_groups) do
-	local group = string.upper(k)
-		if f[k] and #f[k] > 0 then
-			dst:add_line(string.format("%s:", k))
-			for i,j in ipairs(f[k]) do
-				dst:add_line(string.format("\t%s", j))
+		local group = string.upper(k)
+
+		if f[group] and #f[group] > 0 then
+			dst:add_line(string.format("\t%s:", k), {attr = cat9.config.styles.data})
+
+			for i,j in ipairs(f[group]) do
+				local action_words = {}
+
+				if group ~= "MISSING" then
+					table.insert(
+						action_words, {"Stage",
+						cat9.config.styles.data,
+						function()
+						end
+					})
+
+					table.insert(
+						action_words, {"Revert",
+						cat9.config.styles.error_line,
+						function()
+						end
+					})
+
+					if group ~= "ADDED" and group ~= "DELETED" then
+						table.insert(action_words, {"Open",
+						cat9.config.styles.data,
+						function()
+						end
+						})
+					end
+				end
+
+-- group specfiic actions:
+				dst:add_line(string.format("\t\t%s", j), {action_words = action_words})
 			end
 		end
 	end
 end
 
-local function build_data()
+build_data =
+function()
 	in_monitor.data = {linecount = 0, bytecount = 0}
 	local promptstr = ""
 
@@ -310,6 +407,8 @@ local function cmd_monitor(arg)
 
 		cat9.import_job(job)
 		job.imported = true
+		job.show_line_number = false
+
 		table.insert(
 			job.hooks.on_destroy,
 			function()
@@ -322,6 +421,9 @@ local function cmd_monitor(arg)
 			end
 		)
 	end
+
+	job.write_override = write_monitor
+	job.handlers.mouse_button = monitor_click
 
 -- attach to directory changes and use it to trigger rescan
 	cat9.dir_monitor[job] =
