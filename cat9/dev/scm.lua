@@ -21,8 +21,14 @@ local config = cat9.config
 local update_prompt
 local build_data
 
-local function write_monitor(job, x, y, row, set, ind, _, selected)
+local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 	local mouse = job.mouse
+
+-- show most significant characters
+	if #row > cols then
+		row = "..." .. string.sub(row, #row - cols * 0.5)
+	end
+
 	local attr = cat9.config.styles.data
 
 -- expand action verbs when on a row with items
@@ -35,6 +41,20 @@ local function write_monitor(job, x, y, row, set, ind, _, selected)
 
 			if tag.action_words then
 				_, x, y = job.root:write_to(x, y, row, attr)
+
+-- prioritize action_words on overflow
+				local count = 0
+				for i,v in ipairs(tag.action_words) do
+					count = count + #v[1] + 1
+				end
+
+				if x + count > cols then
+					x = cols - count
+					if x < 0 then
+						x = 0
+					end
+				end
+
 				for i,v in ipairs(tag.action_words) do
 					local attr = v[2]
 					_, x, y = job.root:write_to(x, y, " ")
@@ -279,7 +299,7 @@ local function refresh_monitor()
 	job.got_fossil = got_fossil
 	if got_fossil then
 		if job.add_line then
-			job:add_line("Fossil: (scanning)")
+			job:add_line("Fossil: (scanning)", {})
 		end
 		scan_fossil_output()
 	end
@@ -287,14 +307,14 @@ local function refresh_monitor()
 	job.got_git = got_git
 	if got_git then
 		if job.add_line then
-			job:add_line("Git:")
+			job:add_line("Git:", {})
 		end
 		scan_git_output()
 	end
 
 	if not got_fossil and not got_git then
 		if job.add_line then
-			job:add_line("No source control active")
+			job:add_line("No source control active", {})
 		end
 
 		if job.prompt then
