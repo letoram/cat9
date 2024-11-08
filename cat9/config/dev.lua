@@ -2,6 +2,7 @@ return
 {
 	scm =
 	{
+		open_plumber = true,
 	},
 	debug =
 	{

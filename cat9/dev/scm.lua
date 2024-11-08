@@ -20,6 +20,7 @@ local in_monitor
 local config = cat9.config
 local update_prompt
 local build_data
+local scan_fossil_output
 
 local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 	local mouse = job.mouse
@@ -57,6 +58,10 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 
 				for i,v in ipairs(tag.action_words) do
 					local attr = v[2]
+					if not attr then
+						print("no attr for", v[1])
+						attr = {}
+					end
 					_, x, y = job.root:write_to(x, y, " ")
 
 					if mouse[1] >= x and mouse[1] <= x + #v[1] then
@@ -126,6 +131,51 @@ local monitor_groups =
 	Missing = "Missing", Deleted = "Deleted"
 }
 
+local function append_staging(f, dir, ent, new)
+-- create staging area if it doesn't exist
+	if not f.staging then
+		f.staging = {
+			dir = dir,
+			short = "dev:scm fossil:staging",
+			raw = "dev:scm fossil:staging",
+		}
+		cat9.import_job(f.staging)
+		f.staging.write_override = write_monitor
+		f.staging.handlers.mouse_button = monitor_click
+
+		f.staging:add_line("Staging:")
+-- should probably add the 'commit' part as an action word on staging which
+-- would run the fossil commit command as a shell job which would spawn the
+-- fossil configured editor. The other option would be mutating f.staging into
+-- an editor view.
+	end
+
+	local found = false
+
+-- ensure no duplicates
+	for i,v in ipairs(f.staging.data) do
+		if v == ent then
+			found = true
+			break
+		end
+	end
+
+-- add it
+	if not found then
+		local aw = {action_words = {}}
+		table.insert(aw.action_words,
+			{"Unstage", cat9.config.styles.data,
+				function()
+					cat9.remove_match(f.staging.data, ent)
+					f.staging.linecount = #f.staging.data
+					cat9.flag_dirty(f.staging)
+				end
+			})
+
+		f.staging:add_line(ent, aw)
+	end
+end
+
 local function append_fossil_data(dst)
 	local f = dst.fossil
 	local promptstr
@@ -171,8 +221,9 @@ local function append_fossil_data(dst)
 -- we re-use the existing view with overwrites in order to not have to provide
 -- all the scroll/view/slice/... overrides that would be necessary.
 	dst:add_line("Fossil (expanded):",
-		{click = toggle_expand,
-		attr = cat9.config.styles.data_highlight
+		{
+			click = toggle_expand,
+			attr = cat9.config.styles.data_highlight,
 		}
 	)
 
@@ -184,27 +235,68 @@ local function append_fossil_data(dst)
 
 			for i,j in ipairs(f[group]) do
 				local action_words = {}
+				local ent = dst.dir .. "/" .. j
 
+-- can't stage what isn't there
 				if group ~= "MISSING" then
-					table.insert(
-						action_words, {"Stage",
-						cat9.config.styles.data,
-						function()
-						end
+					table.insert(action_words, {
+						"Stage", cat9.config.styles.data,
+							function()
+								append_staging(f, dst.cdir, ent, group == "EXTRA")
+							end
 					})
 
-					table.insert(
-						action_words, {"Revert",
-						cat9.config.styles.error_line,
-						function()
-						end
-					})
+-- can't revert what isn't in the set
+					if group ~= "EXTRA" then
+						table.insert(
+							action_words, {"Revert",
+							cat9.config.styles.error_line,
+							function()
+								cat9.background_chain({
+									{"fossil", "fossil", "revert", ent}}, {},
+									function()
+										scan_fossil_output()
+									end
+								)
+							end
+						})
+					else
+-- might not belong at all
+						table.insert(
+							action_words, {"Delete",
+							cat9.config.styles.error_line,
+							function()
+								lash.root:funlink(ent)
+								scan_fossil_output()
+							end
+						})
+					end
 
+-- if it already is in the set, we can view it like that
 					if group ~= "ADDED" and group ~= "DELETED" then
-						table.insert(action_words, {"Open",
-						cat9.config.styles.data,
-						function()
-						end
+						table.insert(action_words,
+							{"Open",
+								cat9.config.styles.data,
+								function()
+									cat9.term_handover(
+										cat9.config.open_spawn_default,
+										cat9.config.term_plumber,
+										ent
+									)
+								end
+							}
+						)
+					end
+
+-- and if it has changed we want to see what has changed
+					if group == "EDITED" or group == "MERGED" then
+						table.insert(action_words, {"Diff",
+							cat9.config.styles.data,
+							function()
+								cat9.setup_shell_job(
+									{"fossil", "fossil", "diff", dst.dir .. "/" .. j}
+								)
+							end
 						})
 					end
 				end
@@ -236,7 +328,8 @@ end
 -- set of fossil external binary commands and their parsers that
 -- is used to process the tracking table that is used to generate
 -- the active view
-local function scan_fossil_output()
+scan_fossil_output =
+function()
 	local commands =
 	{
 		{"fossil", "changes", "--differ", handler = parse_fossil_changes},
@@ -246,7 +339,12 @@ local function scan_fossil_output()
 -- check extras
 	}
 
-	in_monitor.fossil = {}
+	local expanded = false
+	if in_monitor.fossil then
+		expanded = in_monitor.fossil.expanded
+	end
+
+	in_monitor.fossil = {expanded = expanded}
 	in_monitor.pending = in_monitor.pending + 1
 	cat9.background_chain(commands, {lf_strip = true}, in_monitor,
 		function(job)
@@ -428,6 +526,7 @@ local function cmd_monitor(arg)
 		cat9.import_job(job)
 		job.imported = true
 		job.show_line_number = false
+		job["repeat"] = refresh_monitor
 
 		table.insert(
 			job.hooks.on_destroy,
