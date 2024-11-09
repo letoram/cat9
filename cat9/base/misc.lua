@@ -40,7 +40,7 @@ function cat9.remove_match(tbl, ent)
 	for i, v in ipairs(tbl) do
 		if v == ent then
 			table.remove(tbl, i)
-			return true
+			return true, i
 		end
 	end
 end
