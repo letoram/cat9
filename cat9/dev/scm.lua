@@ -77,7 +77,7 @@ local function click_monitor(job, btn, ofs, yofs, mods)
 		job.mouse.click_handler()
 	end
 
-	return yofs > 0
+	return yofs > 0 and btn == 1
 end
 
 local function build_data()
