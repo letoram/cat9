@@ -296,23 +296,27 @@ function cat9.background_chain(commands, cmdopt, arg, closure)
 		root:chdir(cwd)
 
 		if not tbl then
-			closure(arg)
+			if closure then
+				closure(arg)
+			end
 			return
 		end
 		local cmd = cat9.table_copy_shallow(tbl)
 		table.insert(cmd, 1, "/usr/bin/env")
 		table.insert(cmd, 1, "/usr/bin/env")
 		local _, out, _, pid = root:popen(cmd, "r")
-		cat9.add_background_job(out, pid, cmdopt,
+		cat9.add_background_job(out, pid, cmdopt or {},
 		function(job, code)
-			tbl.handler(job, arg, code)
-			run_command(table.remove(commands))
+			if tbl.handler then
+				tbl.handler(job, arg, code)
+			end
+			run_command(table.remove(commands, 1))
 		end)
 
 		root:chdir(olddir)
 	end
 
-	run_command(table.remove(commands))
+	run_command(table.remove(commands, 1))
 end
 
 --
