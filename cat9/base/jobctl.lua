@@ -284,9 +284,17 @@ end
 function cat9.background_chain(commands, cmdopt, arg, closure)
 	local run_command
 
--- regular chain runner, take the next command in question, setup runner
+-- Regular chain runner, take the next command in question, setup runner
+-- since these are asynch and running within the same process it is possible
+-- for the user to change directory while this happens. Before executing any
+-- command make sure the active directory is the same as during the initial call.
+	local cwd = root:chdir()
+
 	run_command =
 	function(tbl)
+		local olddir = root:chdir()
+		root:chdir(cwd)
+
 		if not tbl then
 			closure(arg)
 			return
@@ -300,6 +308,8 @@ function cat9.background_chain(commands, cmdopt, arg, closure)
 			tbl.handler(job, arg, code)
 			run_command(table.remove(commands))
 		end)
+
+		root:chdir(olddir)
 	end
 
 	run_command(table.remove(commands))
