@@ -93,6 +93,7 @@ local function refresh_monitor()
 	local job = in_monitor
 	job.data = {linecount = 0, bytecount = 0}
 	job.pending = 0
+	job.short = string.format("dev:scm monitor(%s)", root:chdir())
 
 	local got_scm = false
 	for i,v in ipairs(job.scm_handlers) do
