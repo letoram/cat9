@@ -139,14 +139,28 @@ local function append_staging(f, dir, ent, action)
 	cat9.flag_dirty(f.staging)
 end
 
--- set of fossil external binary commands and their parsers that
--- is used to process the tracking table that is used to generate
--- the active view
+local function parse_fossil_remotes(scan, mon, code)
+	mon.fossil.remotes = {}
+
+	for i,v in ipairs(scan.data) do
+		local beg = string.find(v, "%s(%a+)://")
+		if beg then
+			local name = string.trim(string.sub(v, 1, beg))
+			local url = string.sub(v, beg+1)
+			table.insert(mon.fossil.remotes, {name, url})
+		end
+	end
+end
+
+-- Set of fossil external binary commands and their parsers that is used to
+-- process the tracking table that is used to generate the active view. Better
+-- caching and masking of these is the main performance bottleneck.
 local function scan_fossil_output()
 	local commands =
 	{
 		{"fossil", "changes", "--differ", handler = parse_fossil_changes},
 		{"fossil", "stash", "list", handler = parse_fossil_stash},
+		{"fossil", "remote", "list", handler = parse_fossil_remotes},
 --	{"fossil", "timeline"},
 -- check stash
 -- check extras
@@ -219,14 +233,49 @@ local function append_fossil_data(dst)
 		{
 			click = toggle_expand,
 			attr = cat9.config.styles.data_highlight,
+			action_words = aw
 		}
 	)
+
+-- action words for remote controls
+	if f.remotes then
+		local def_remote_url
+		local def_remote_match
+		local aw = {}
+
+		for i,v in ipairs(f.remotes) do
+			if v[1] == "default" then
+				def_remote_url = v[2]
+				def_remote_match = "default"
+				break
+			end
+		end
+
+		if def_remote_match then
+			for i,v in ipairs(f.remotes) do
+				if v[1] ~= "default" then
+					if v[2] == def_remote_url then
+						def_remote_match = v[1]
+					end
+					table.insert(aw, {
+						v[1], cat9.config.styles.data, function()
+						end
+					})
+				end
+			end
+		end
+
+		dst:add_line(
+			string.format("\tRemote (%s):", def_remote_match or "off"),
+			{attr = cat9.config.styles.data, action_words = aw}
+		)
+	end
 
 	for k,v in pairs(monitor_groups) do
 		local group = string.upper(k)
 
 		if f[group] and #f[group] > 0 then
-			dst:add_line(string.format("\t%s:", k), {attr = cat9.config.styles.data})
+			dst:add_line(string.format("\t%s", k), {attr = cat9.config.styles.data})
 
 			for i,j in ipairs(f[group]) do
 				local action_words = {}
