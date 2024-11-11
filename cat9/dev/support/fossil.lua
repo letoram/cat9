@@ -77,7 +77,7 @@ local function append_staging(f, dir, ent, action)
 		table.insert(aw,
 			{
 				"Commit",
-				cat9.config.styles.error_line,
+				builtin_cfg.scm.strong_action,
 				function()
 					local commit_set = {}
 					local add_set = {}
@@ -131,7 +131,7 @@ local function append_staging(f, dir, ent, action)
 	if not found then
 		local aw = {action_words = {}, action = action}
 		table.insert(aw.action_words,
-			{"Unstage", cat9.config.styles.data, function() f.staging:unstage(ent) end})
+			{"Unstage", builtin_cfg.scm.action, function() f.staging:unstage(ent) end})
 
 		f.staging:add_line(ent, aw)
 	end
@@ -244,7 +244,7 @@ local function append_fossil_data(dst)
 	if not f.expanded then
 		dst:add_line("Fossil (status):",
 			{click = toggle_expand,
-			 attr = cat9.config.styles.data_highlight
+			 attr = builtin_cfg.scm.heading,
 			}
 		)
 
@@ -268,7 +268,7 @@ local function append_fossil_data(dst)
 	),
 		{
 			click = toggle_expand,
-			attr = cat9.config.styles.data_highlight,
+			attr = builtin_cfg.scm.heading,
 			action_words = main_aw
 		}
 	)
@@ -296,7 +296,7 @@ local function append_fossil_data(dst)
 				table.insert(
 					aw,
 					{
-						v[1], cat9.config.styles.data,
+						v[1], builtin_cfg.scm.action,
 						function()
 							fossil_set_remote(f, v[1])
 						end
@@ -309,7 +309,7 @@ local function append_fossil_data(dst)
 -- default, then save it as main before proceeding to disable remote
 		table.insert(aw, 1, {
 			"Off",
-			cat9.config.styles.error_line,
+			builtin_cfg.scm.strong_action,
 			function()
 				fossil_set_remote(f, nil, def_remote_match == "default")
 			end
@@ -317,16 +317,32 @@ local function append_fossil_data(dst)
 
 -- we have a valid remote, add the option to update from it
 		table.insert(main_aw, 1,
-			{"Update", cat9.config.styles.data_highlight,
+			{"Update", builtin_cfg.scm.action,
 			function()
 				fossil_update(f)
 			end
 			}
 		)
 
+--		table.insert(main_aw, 1,
+--			{"Timeline", builtin_cfg.scm.action,
+--			function()
+--				fossil_timeline()
+--			end
+--			}
+--		)
+
+--		table.insert(main_aw, 1,
+--			{"Tickets", builtin_cfg.scm.action,
+--			function()
+--				fossil_tickets()
+--			end
+--			}
+--		)
+
 		dst:add_line(
 			string.format("\tRemote (%s):", def_remote_match or "off"),
-			{attr = cat9.config.styles.data, action_words = aw}
+			{attr = builtin_cfg.scm.heading, action_words = aw}
 		)
 	end
 
@@ -334,7 +350,7 @@ local function append_fossil_data(dst)
 		local group = string.upper(k)
 
 		if f[group] and #f[group] > 0 then
-			dst:add_line(string.format("\t%s", k), {attr = cat9.config.styles.data})
+			dst:add_line(string.format("\t%s:", k), {attr = builtin_cfg.scm.heading})
 
 			for i,j in ipairs(f[group]) do
 				local action_words = {}
@@ -344,7 +360,7 @@ local function append_fossil_data(dst)
 				if group ~= "MISSING" then
 
 					table.insert(action_words, {
-						"Stage", cat9.config.styles.data,
+						"Stage", builtin_cfg.scm.action,
 							function()
 								append_staging(f,
 									dst.cdir, ent, group == "EXTRA" and "add" or "commit")
@@ -355,7 +371,7 @@ local function append_fossil_data(dst)
 					if group ~= "EXTRA" then
 						table.insert(
 							action_words, {"Revert",
-							cat9.config.styles.error_line,
+							builtin_cfg.scm.strong_action,
 							function()
 								cat9.background_chain({
 									{"fossil", "revert", ent}}, {}, f.staging,
@@ -369,7 +385,7 @@ local function append_fossil_data(dst)
 -- might not belong at all
 						table.insert(
 							action_words, {"Delete",
-							cat9.config.styles.error_line,
+							builtin_cfg.scm.strong_action,
 							function()
 								lash.root:funlink(ent)
 								scan_fossil_output()
@@ -381,7 +397,7 @@ local function append_fossil_data(dst)
 					if group ~= "ADDED" and group ~= "DELETED" then
 						table.insert(action_words,
 							{"Open",
-								cat9.config.styles.data,
+								builtin_cfg.scm.action,
 								function()
 									cat9.term_handover(
 										cat9.config.open_spawn_default,
@@ -396,7 +412,7 @@ local function append_fossil_data(dst)
 -- and if it has changed we want to see what has changed
 					if group == "EDITED" or group == "MERGED" then
 						table.insert(action_words, {"Diff",
-							cat9.config.styles.data,
+							builtin_cfg.scm.action,
 							function()
 								cat9.setup_shell_job(
 									{"fossil", "fossil", "diff", dst.dir .. "/" .. j}
@@ -407,7 +423,8 @@ local function append_fossil_data(dst)
 				end
 
 -- group specfiic actions:
-				dst:add_line(string.format("\t\t%s", j), {action_words = action_words})
+				dst:add_line(string.format("\t\t%s", j),
+					{attr = builtin_cfg.scm.data, action_words = action_words})
 			end
 		end
 	end

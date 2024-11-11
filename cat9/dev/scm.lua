@@ -19,7 +19,7 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 		row = "..." .. string.sub(row, #row - cols * 0.5)
 	end
 
-	local attr = cat9.config.styles.data
+	local attr = builtin_cfg.scm.data
 
 -- expand action verbs when on a row with items
 	if mouse and mouse.on_row and mouse.on_row == ind then

@@ -2,7 +2,10 @@ return
 {
 	scm =
 	{
-		open_plumber = true,
+		heading = {bc = tui.colors.text, fc= tui.colors.ref_yellow, border_down = true},
+		action = {bc = tui.colors.text, fc = tui.colors.ref_green},
+		strong_action = {bc = tui.colors.ref_red, fc = tui.colors.text},
+		data = {bc = tui.colors.text, fc = tui.colors.text},
 	},
 	debug =
 	{
