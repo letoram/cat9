@@ -141,7 +141,6 @@ end
 
 local function parse_fossil_remotes(scan, mon, code)
 	mon.fossil.remotes = {}
-
 	for i,v in ipairs(scan.data) do
 		local beg = string.find(v, "%s(%a+)://")
 		if beg then
@@ -166,24 +165,58 @@ local function scan_fossil_output()
 -- check extras
 	}
 
+-- since we reset the monitor context, we need to transfer any option local to it
 	local expanded = false
+	local message
 	if in_monitor.fossil then
+		message = in_monitor.fossil.message
 		expanded = in_monitor.fossil.expanded
 	end
 
-	in_monitor.fossil = {expanded = expanded}
+	in_monitor.fossil = {expanded = expanded, message = message}
 	in_monitor.pending = in_monitor.pending + 1
 	cat9.background_chain(commands, {lf_strip = true}, in_monitor,
 		function(job)
 			in_monitor.pending = in_monitor.pending - 1
 			if in_monitor.pending == 0 then
-				rebuild(job)
+				rebuild()
 				last_monitor = nil
 			end
 		end
 	)
 end
 
+local function fossil_update(dst)
+	local update_cmd = {"fossil", "update"}
+	update_cmd.handler =
+	function(job, arg, code)
+		if code == 0 then
+			dst.message = os.date("%Y-%m-%d %T")
+		else
+			dst.message = "update failed"
+		end
+		rebuild(root:chdir())
+	end
+	cat9.background_chain({update_cmd}, {}, dst)
+end
+
+local function fossil_set_remote(dst, name, save)
+	local create_main = true
+	local cmd = {}
+
+	if save then
+		table.insert(cmd, {"fossil", "remote", "add", "main", "default"})
+	end
+
+	if not name then
+		name = "off"
+	end
+
+	table.insert(cmd, {"fossil", "remote", name})
+	cat9.background_chain(cmd, {}, dst, function()
+		rebuild(root:chdir())
+	end)
+end
 
 local function append_fossil_data(dst)
 	local f = dst.fossil
@@ -229,11 +262,14 @@ local function append_fossil_data(dst)
 
 -- we re-use the existing view with overwrites in order to not have to provide
 -- all the scroll/view/slice/... overrides that would be necessary.
-	dst:add_line("Fossil (expanded):",
+	local main_aw = {}
+	dst:add_line(string.format(
+	"Fossil (expanded)%s:", f.message and ("(" .. f.message .. ")") or ""
+	),
 		{
 			click = toggle_expand,
 			attr = cat9.config.styles.data_highlight,
-			action_words = aw
+			action_words = main_aw
 		}
 	)
 
@@ -251,19 +287,42 @@ local function append_fossil_data(dst)
 			end
 		end
 
-		if def_remote_match then
-			for i,v in ipairs(f.remotes) do
-				if v[1] ~= "default" then
-					if v[2] == def_remote_url then
-						def_remote_match = v[1]
-					end
-					table.insert(aw, {
-						v[1], cat9.config.styles.data, function()
-						end
-					})
+-- mark the non-'default' ones
+		for i,v in ipairs(f.remotes) do
+			if v[1] ~= "default" then
+				if v[2] == def_remote_url then
+					def_remote_match = v[1]
 				end
+				table.insert(
+					aw,
+					{
+						v[1], cat9.config.styles.data,
+						function()
+							fossil_set_remote(f, v[1])
+						end
+					}
+				)
 			end
 		end
+
+-- add the 'airplane mode' from the help, if the default remote url only match
+-- default, then save it as main before proceeding to disable remote
+		table.insert(aw, 1, {
+			"Off",
+			cat9.config.styles.error_line,
+			function()
+				fossil_set_remote(f, nil, def_remote_match == "default")
+			end
+		})
+
+-- we have a valid remote, add the option to update from it
+		table.insert(main_aw, 1,
+			{"Update", cat9.config.styles.data_highlight,
+			function()
+				fossil_update(f)
+			end
+			}
+		)
 
 		dst:add_line(
 			string.format("\tRemote (%s):", def_remote_match or "off"),
@@ -299,7 +358,7 @@ local function append_fossil_data(dst)
 							cat9.config.styles.error_line,
 							function()
 								cat9.background_chain({
-									{"fossil", "fossil", "revert", ent}}, {}, f.staging,
+									{"fossil", "revert", ent}}, {}, f.staging,
 									function()
 										scan_fossil_output()
 									end

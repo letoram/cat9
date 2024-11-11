@@ -71,21 +71,22 @@ local function click_monitor(job, btn, ofs, yofs, mods)
 	local fn = job.data.tags and job.data.tags[yofs]
 
 -- figure out the action word at which offset
-	if fn and fn.click then
-		fn.click()
-	elseif job.mouse and job.mouse.click_handler then
+	if job.mouse and job.mouse.click_handler then
 		job.mouse.click_handler()
+		return true
+	elseif fn and fn.click then
+		fn.click()
+		return true
 	end
-
 	return yofs > 0 and btn == 1
 end
 
-local function build_data()
+local function build_data(path)
 	in_monitor.data = {linecount = 0, bytecount = 0}
 	local promptstr = ""
 
 	for i,v in ipairs(in_monitor.scm_handlers) do
-		v()
+		v(path)
 	end
 end
 
