@@ -160,7 +160,6 @@ local function scan_fossil_output()
 		{"fossil", "changes", "--differ", handler = parse_fossil_changes},
 		{"fossil", "stash", "list", handler = parse_fossil_stash},
 		{"fossil", "remote", "list", handler = parse_fossil_remotes},
---	{"fossil", "timeline"},
 -- check stash
 -- check extras
 	}
@@ -218,6 +217,138 @@ local function fossil_set_remote(dst, name, save)
 	end)
 end
 
+local function fossil_timeline(f, p)
+-- spawn a new window
+-- run fossil timeline -n [limit] -v -W 0
+-- then format is:
+--   === date ===
+--   h:m:s [hash] comment (user: ... tags: ...)
+--   %s+COMMAND file
+end
+
+local function tickets_to_data(dst, report_id, filter, closure)
+-- action word for switching report type (and listing them)
+-- option to convert to spreadsheet
+	cat9.background_chain(
+		{
+			{"fossil", "ticket", "show", tostring(report_id), filter,
+				handler =
+				function(job, mon, code)
+					if code == 0 then
+						if job.data.linecount == 0 then
+							dst.data = {linecount = 0, bytecount = 0}
+							dst:add_line("No ticket data found for report type")
+							return
+						end
+
+-- unpack ticket database
+						local fields = string.split(job.data[1], string.char(0x09))
+						local columns = {}
+						local set = {}
+
+						for i,v in ipairs(fields) do
+							columns[i] = v
+						end
+
+						for i=2,#job.data do
+							local ent = {}
+							local fields = string.split(job.data[i], string.char(0x09))
+
+							for i,v in ipairs(fields) do
+								ent[columns[i]] = v
+							end
+							table.insert(set, ent)
+						end
+
+						closure(set)
+					else
+						dst.data = {linecount = 0, bytecount = 0}
+						dst:add_line(string.format("Scanning failed, error: %d", code))
+					end
+				end
+			}
+		}
+	)
+end
+
+local function rebuild_ticket_view(wnd)
+	wnd.data = {bytecount = 0, linecount = 0}
+	local aw = {}
+
+--	for i,v in ipairs(builtin_cfg.scm.ticket_columns) do
+
+-- first line is overview / tickets
+	wnd:add_line(
+		string.format("Tickets(%d)", #wnd.tickets),
+		{
+				attr = builtin_cfg.scm.heading,
+				action_words = aw
+		}
+	)
+
+-- sort based on preferred key, this will process the entire ticket report, for
+-- large number of tickets the report selector in fossil itself should limit scope
+
+	for _, ticket in ipairs(wnd.tickets) do
+-- one row per field, indent based on id
+		if ticket.expanded then
+-- single row, only preferred columns
+		else
+			local linear = {}
+			local tag = {
+				columns = {}
+			}
+
+			local la = builtin_cfg.scm.ticket_heading
+			local da = builtin_cfg.scm.data
+
+			for _, column in ipairs(builtin_cfg.scm.ticket_columns) do
+				if ticket[column] then
+					table.insert(linear, ticket[column])
+
+					table.insert(
+						tag.columns,
+						{
+							label = column .. ": ", label_attr = la,
+							data  = ticket[column], data_attr = da
+						}
+					)
+				end
+			end
+
+			if #linear > 0 then
+				wnd:add_line(table.concat(linear, ";"), tag)
+			end
+		end
+	end
+
+	cat9.flag_dirty(wnd)
+end
+
+local function fossil_tickets(f, filter)
+-- spawn a new window
+	local wnd = {
+		dir = dir,
+		short = "dev:scm fossil:tickets",
+		raw = "dev:scm fossil:tickets"
+	}
+
+	cat9.import_job(wnd)
+	wnd.write_override = write_monitor
+	wnd.handlers.mouse_button = click_monitor
+	wnd:add_line("Scanning for tickets...", {})
+
+-- just convert the window to a spreadsheet
+	tickets_to_data(
+		wnd, 0, filter,
+		function(data)
+-- then reference the presentation columns
+			wnd.tickets = data
+			rebuild_ticket_view(wnd)
+		end
+	)
+end
+
 local function append_fossil_data(dst)
 	local f = dst.fossil
 	local promptstr
@@ -228,6 +359,8 @@ local function append_fossil_data(dst)
 			table.insert(prompttbl, v .. tostring(#f[k]))
 		end
 	end
+
+	local main_aw = {}
 
 	promptstr = string.format("Fossil(%s)", table.concat(prompttbl, " "))
 	if not dst.add_line then
@@ -245,6 +378,7 @@ local function append_fossil_data(dst)
 		dst:add_line("Fossil (status):",
 			{click = toggle_expand,
 			 attr = builtin_cfg.scm.heading,
+			 action_words = main_aw
 			}
 		)
 
@@ -262,7 +396,6 @@ local function append_fossil_data(dst)
 
 -- we re-use the existing view with overwrites in order to not have to provide
 -- all the scroll/view/slice/... overrides that would be necessary.
-	local main_aw = {}
 	dst:add_line(string.format(
 	"Fossil (expanded)%s:", f.message and ("(" .. f.message .. ")") or ""
 	),
@@ -272,6 +405,27 @@ local function append_fossil_data(dst)
 			action_words = main_aw
 		}
 	)
+
+	if builtin_cfg.scm.ticket_filters then
+		local tag = {
+			attr = builtin_cfg.scm.heading,
+			action_words = {}
+		}
+
+		dst:add_line("Tickets:", tag)
+
+		for k,v in pairs(builtin_cfg.scm.ticket_filters) do
+			table.insert(tag.action_words,
+				{
+					k,
+					builtin_cfg.scm.action,
+					function()
+						fossil_tickets(f, v)
+					end
+				}
+			)
+		end
+	end
 
 -- action words for remote controls
 	if f.remotes then
@@ -326,19 +480,11 @@ local function append_fossil_data(dst)
 
 --		table.insert(main_aw, 1,
 --			{"Timeline", builtin_cfg.scm.action,
---			function()
---				fossil_timeline()
---			end
+--				function()
+--					fossil_timeline(f)
+--		end
 --			}
---		)
-
---		table.insert(main_aw, 1,
---			{"Tickets", builtin_cfg.scm.action,
---			function()
---				fossil_tickets()
---			end
---			}
---		)
+--	)
 
 		dst:add_line(
 			string.format("\tRemote (%s):", def_remote_match or "off"),
