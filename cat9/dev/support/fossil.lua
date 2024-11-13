@@ -288,19 +288,62 @@ local function rebuild_ticket_view(wnd)
 
 -- sort based on preferred key, this will process the entire ticket report, for
 -- large number of tickets the report selector in fossil itself should limit scope
+	local la = builtin_cfg.scm.ticket_heading
+	local da = builtin_cfg.scm.data
 
 	for _, ticket in ipairs(wnd.tickets) do
--- one row per field, indent based on id
+-- one row per field
 		if ticket.expanded then
--- single row, only preferred columns
+			wnd:add_line(
+				string.format("%s;%s", ticket.tkt_id, ticket.title),
+				{
+					attr = la,
+					click =
+					function()
+						ticket.expanded = not ticket.expanded
+						rebuild_ticket_view(wnd)
+					end,
+				}
+			)
+
+-- action words should be based on presets for the default commands,
+-- e.g. changing to resolved etc.
+			for key, val in pairs(ticket) do
+				if key ~= "expanded" and #val > 0 then
+					wnd:add_line(
+						string.format("%s;%s", key, val),
+						{
+							attr = la,
+							columns = {
+								{
+									label = "\t" .. key .. ": ", label_attr = la,
+									data = tostring(val), data_attr = da
+								}
+							}
+						}
+					)
+				end
+			end
+
+-- single row, only preferred columns. for expanding comments:
+-- fossil ticket history uuid
+--
+-- Ticket Change by [user] on [date]:
+--        Change [field:] ... (icomment)
+--        Change mimetype
+--
+-- Attachment output doesn't let us view, so at this point it is basically better
+-- just running SQL commands via fossil sql.
+--
 		else
 			local linear = {}
 			local tag = {
-				columns = {}
+				columns = {},
+				click = function()
+					ticket.expanded = not ticket.expanded
+					rebuild_ticket_view(wnd)
+				end
 			}
-
-			local la = builtin_cfg.scm.ticket_heading
-			local da = builtin_cfg.scm.data
 
 			for _, column in ipairs(builtin_cfg.scm.ticket_columns) do
 				if ticket[column] then
@@ -310,7 +353,7 @@ local function rebuild_ticket_view(wnd)
 						tag.columns,
 						{
 							label = column .. ": ", label_attr = la,
-							data  = ticket[column], data_attr = da
+							data  = ticket[column], data_attr = da,
 						}
 					)
 				end

@@ -11,60 +11,77 @@ local in_monitor
 local config = cat9.config
 local update_prompt
 
+local function write_row_or_column(dst, x, y, cols, row, column, attr)
+	if not column then
+		_, x, y = dst:write_to(x, y, row, attr)
+		return x, y
+	end
+
+	for i,v in ipairs(column) do
+		_, x, y = dst:write_to(x, y, v.label, v.label_attr or attr)
+		_, x, y = dst:write_to(x, y, v.data, v.data_attr or attr)
+		x = x + 1
+
+		if x >= cols then
+			break
+		end
+	end
+
+	return x, y
+end
+
 local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 	local mouse = job.mouse
+	local tags = set.tags or {}
+	local tag = tags[ind]
 
 -- show most significant characters
 	if #row > cols then
 		row = "..." .. string.sub(row, #row - cols * 0.5)
 	end
 
-	local attr = builtin_cfg.scm.data
-
 -- expand action verbs when on a row with items
-	if mouse and mouse.on_row and mouse.on_row == ind then
-		local tag = set.tags[ind]
+	if mouse and mouse.on_row and mouse.on_row == ind and tag then
+		local attr = tag.attr
 		mouse.click_handler = nil
 
-		if tag then
-			attr = tag.attr
-
-			if tag.action_words then
-				_, x, y = job.root:write_to(x, y, row, attr)
+		if tag.action_words then
+			x, y = write_row_or_column(job.root, x, y, cols, row, tag.columns, attr)
 
 -- prioritize action_words on overflow
-				local count = 0
-				for i,v in ipairs(tag.action_words) do
-					count = count + #v[1] + 1
-				end
-
-				if x + count > cols then
-					x = cols - count
-					if x < 0 then
-						x = 0
-					end
-				end
-
-				for i,v in ipairs(tag.action_words) do
-					local attr = v[2]
-					_, x, y = job.root:write_to(x, y, " ")
-
-					if mouse[1] >= x and mouse[1] <= x + #v[1] then
-						attr = cat9.table_copy_shallow(attr)
-						mouse.click_handler = v[3]
-						attr.border_down = true
-					end
-
-					_, x, y = job.root:write_to(x, y, v[1], attr)
-				end
-			else
-				job.root:write_to(x, y, row, attr)
+			local count = 0
+			for i,v in ipairs(tag.action_words) do
+				count = count + #v[1] + 1
 			end
-			return
+
+			if x + count > cols then
+				x = cols - count
+				if x < 0 then
+					x = 0
+				end
+			end
+
+			for i,v in ipairs(tag.action_words) do
+				local attr = v[2]
+				_, x, y = job.root:write_to(x, y, " ")
+
+				if mouse[1] >= x and mouse[1] <= x + #v[1] then
+					attr = cat9.table_copy_shallow(attr)
+					mouse.click_handler = v[3]
+					attr.border_down = true
+				end
+
+				_, x, y = job.root:write_to(x, y, v[1], attr)
+			end
+		else
+			write_row_or_column(job.root, x, y, cols, row, tag.columns, attr)
 		end
+
+		return
 	end
 
-	job.root:write_to(x, y, row, attr)
+	local attr = builtin_cfg.scm.data
+	write_row_or_column(job.root, x, y, cols, row, tag and tag.columns, attr)
 end
 
 local function click_monitor(job, btn, ofs, yofs, mods)
@@ -74,6 +91,7 @@ local function click_monitor(job, btn, ofs, yofs, mods)
 	if job.mouse and job.mouse.click_handler then
 		job.mouse.click_handler()
 		return true
+
 	elseif fn and fn.click then
 		fn.click()
 		return true
