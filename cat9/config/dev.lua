@@ -6,6 +6,12 @@ return
 		action = {bc = tui.colors.text, fc = tui.colors.ref_green},
 		strong_action = {bc = tui.colors.ref_red, fc = tui.colors.text},
 		data = {bc = tui.colors.text, fc = tui.colors.text},
+		ticket_filters = {
+			Open = "status == 'Open'",
+			Fixed = "status == 'Fixed'"
+		},
+		ticket_columns = {"date", "title", "status", "severity", "type"},
+		ticket_heading = {bc = tui.colors.text, fc = tui.colors.ref_yellow}
 	},
 	debug =
 	{
