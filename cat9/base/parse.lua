@@ -208,7 +208,7 @@ function cat9.parse_resolve(tokens, types, suggest)
 		if not suggest then
 			cat9.add_message(msg)
 		end
-		return _, msg
+		return nil, msg
 	end
 
 -- deferred building the product table as the type mapping isn't
