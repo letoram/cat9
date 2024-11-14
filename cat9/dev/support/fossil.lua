@@ -579,7 +579,7 @@ local function append_fossil_data(dst)
 
 -- if it already is in the set, we can view it like that
 					if group ~= "ADDED" and group ~= "DELETED" then
-						table.insert(action_words,
+						table.insert(action_words, 1,
 							{"Open",
 								builtin_cfg.scm.action,
 								function()
@@ -595,7 +595,7 @@ local function append_fossil_data(dst)
 
 -- and if it has changed we want to see what has changed
 					if group == "EDITED" or group == "MERGED" then
-						table.insert(action_words, {"Diff",
+						table.insert(action_words, 1, {"Diff",
 							builtin_cfg.scm.action,
 							function()
 								cat9.setup_shell_job(
