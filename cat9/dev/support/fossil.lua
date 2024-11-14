@@ -26,7 +26,21 @@ local function parse_fossil_changes(scan, mon, code)
 			if not mon.fossil[cat] then
 				mon.fossil[cat] = {}
 			end
-			table.insert(mon.fossil[cat], path)
+
+-- filter out undesirable build artifacts etc.
+			local exclude = false
+			if builtin_cfg.scm.exclude[cat] then
+				for i,v in ipairs(builtin_cfg.scm.exclude[cat]) do
+					if string.match(path, v) then
+						exclude = true
+						break
+					end
+				end
+			end
+
+			if not exclude then
+				table.insert(mon.fossil[cat], path)
+			end
 		end
 	end
 end

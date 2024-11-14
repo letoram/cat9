@@ -10,6 +10,9 @@ return
 			Open = "status == 'Open'",
 			Fixed = "status == 'Fixed'"
 		},
+		exclude = {
+			EXTRA = {"^build"}
+		},
 		ticket_columns = {"date", "title", "status", "severity", "type"},
 		ticket_heading = {bc = tui.colors.text, fc = tui.colors.ref_yellow}
 	},
