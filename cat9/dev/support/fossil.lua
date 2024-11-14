@@ -271,6 +271,35 @@ local function tickets_to_data(dst, report_id, filter, closure)
 	)
 end
 
+local key_to_label =
+{
+	tkt_mtime = "Modified",
+	tkt_ctime = "Created",
+	tkt_uuid = "UUID",
+	tkt_id = "ID",
+	type = "Type",
+	status = "Status",
+	subsystem = "Subsystem",
+	priority = "Priority",
+	severity = "Severity",
+	foundin = "Found In",
+	private_contact = "Private Contact",
+	resolution = "Resolution",
+	title = "Title",
+	comment = "Comment"
+}
+
+local function build_ticket(ticket, closure)
+-- we need to do a lot more work to resolve out the change history for
+-- the ticket in order to properly view the contents of the ticket. We
+-- still lack a markdown (or rather, pandoc to djot and have a djot
+-- view) that can embed diagrams etc.
+--
+-- fossil sql "SELECT icomment,tkt_rid FROM ticketchng WHERE tkt_id = 2 ORDER BY tkt_mtime DESC"
+--
+	closure(ticket)
+end
+
 local function rebuild_ticket_view(wnd)
 	wnd.data = {bytecount = 0, linecount = 0}
 	cat9.flag_dirty(wnd)
@@ -283,6 +312,10 @@ local function rebuild_ticket_view(wnd)
 		string.format("Tickets(%d)", #wnd.tickets),
 		{
 				attr = builtin_cfg.scm.heading,
+				click = function()
+					wnd.ticket = nil
+					rebuild_ticket_view(wnd)
+				end,
 				action_words = aw
 		}
 	)
@@ -298,11 +331,6 @@ local function rebuild_ticket_view(wnd)
 			string.format("%s;%s", ticket.tkt_id, ticket.title),
 			{
 				attr = la,
-				click =
-				function()
-					wnd.ticket = nil
-					rebuild_ticket_view(wnd)
-				end,
 				columns = {
 					{
 						label = ticket.tkt_id .. ": ", label_attr = la,
@@ -315,6 +343,15 @@ local function rebuild_ticket_view(wnd)
 -- action words should be based on presets for the default commands,
 -- e.g. changing to resolved etc.
 		for key, val in pairs(ticket) do
+			if string.find(key, "_%atime") then
+				val = os.date("%c",
+					(tonumber(val) - 2440587.5) * 86400) -- os to epoch
+			end
+
+			if key_to_label[key] then
+				key = key_to_label[key]
+			end
+
 			if #val > 0 then
 				wnd:add_line(
 					string.format("%s;%s", key, val),
@@ -338,8 +375,12 @@ local function rebuild_ticket_view(wnd)
 		local tag = {
 			columns = {},
 			click = function()
-				wnd.ticket = ticket
-				rebuild_ticket_view(wnd)
+				build_ticket(
+					ticket, function(ticket)
+						wnd.ticket = ticket
+						rebuild_ticket_view(wnd)
+					end
+				)
 			end
 		}
 
