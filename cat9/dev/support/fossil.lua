@@ -108,10 +108,10 @@ local function append_staging(f, dir, ent, action)
 						table.insert(add_set, 1, "fossil")
 						table.insert(add_set, 2, "add")
 						cat9.background_chain({add_set}, function()
-							cat9.parse_string(nil, "!fossil commit " .. table.concat(commit_set, " "))
+							cat9.parse_string(nil, builtin_cfg.scm.commit_action .. table.concat(commit_set, " "))
 						end)
 					else
-						cat9.parse_string(nil, "!fossil commit " .. table.concat(commit_set, " "))
+						cat9.parse_string(nil, builtin_cfg.scm.commit_action .. table.concat(commit_set, " "))
 					end
 				end
 			}

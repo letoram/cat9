@@ -13,6 +13,7 @@ return
 		exclude = {
 			EXTRA = {"^build"}
 		},
+		commit_action = "s!fossil commit",
 		ticket_columns = {"date", "title", "status", "severity", "type"},
 		ticket_heading = {bc = tui.colors.text, fc = tui.colors.ref_yellow}
 	},
