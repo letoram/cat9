@@ -92,7 +92,7 @@ local function build_sort(job, method, inv, group)
 			return
 			function(a, b)
 				if not group or a.kind == b.kind then
-					return a.meta.size < b.meta.size
+					return a.meta.size_raw < b.meta.size_raw
 				else
 					return sort_group(a, b)
 				end
@@ -101,7 +101,7 @@ local function build_sort(job, method, inv, group)
 			return
 			function(a, b)
 				if not group or a.kind == b.kind then
-					return a.meta.size > b.meta.size
+					return a.meta.size_raw > b.meta.size_raw
 				else
 					return sort_group(a, b)
 				end
@@ -743,6 +743,7 @@ function(src, path, ref)
 
 -- for human-readable presentation
 				local pref, sz = cat9.sz_to_human(ext.size)
+				ext.size_raw = ext.size
 				ext.size = sz
 				ext.size_prefix = pref
 
