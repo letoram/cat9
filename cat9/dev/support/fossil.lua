@@ -1,7 +1,8 @@
 return
 function(cat9, root, builtin_cfg, write_monitor, click_monitor, rebuild, in_monitor)
 
--- fossil should show timeline, chat, issues to inject into commit message, ...
+-- fossil should show timeline, chat,
+--   issues to inject into commit message (requires custom editor) and forum
 --
 -- mouse over should have:
 --       tag: [attr, handler, action verbs (offset + trigger)]
@@ -13,9 +14,8 @@ function(cat9, root, builtin_cfg, write_monitor, click_monitor, rebuild, in_moni
 --
 --        runs curl (with credentials) into chaturl (if config:ed) into chat endpoint
 --
--- issues command (initial probe + cache and on-update trigger)
+-- issues missing adding comment, changing state,
 --
-
 local function parse_fossil_changes(scan, mon, code)
 	for i,v in ipairs(scan.data) do
 		local ma, mb = string.find(v, "%s+")
@@ -43,6 +43,12 @@ local function parse_fossil_changes(scan, mon, code)
 			end
 		end
 	end
+end
+
+local function julian_to_str(val)
+	val = val or 0
+	return os.date(
+		builtin_cfg.scm.time_format, (tonumber(val) - 2440587.5) * 86400) -- os to epoch
 end
 
 local function parse_fossil_stash(job, code)
@@ -303,15 +309,124 @@ local key_to_label =
 	comment = "Comment"
 }
 
+
+-- assume sql output is well formed and the number of values match the number of fields
+local function unpack_sql(msg, fields)
+	local i = 1
+	local res = {}
+
+	while i <= #fields do
+-- strings start and end with ' but '' escapes
+		local start = 1
+		local stop = 1
+		local in_str = false
+
+		while start <= #msg do
+			local ch = string.sub(msg, stop, stop)
+			if ch == "'" then
+				if in_str then
+					if string.sub(msg, stop+1, stop+1) == "'" then
+						stop = stop + 2
+					else
+						stop = stop + 1
+						in_str = false
+					end
+-- look one token ahead
+				else
+					in_str = true
+					stop = stop + 1
+				end
+
+-- process argument
+			elseif (not in_str and ch == ',') or stop == #msg then
+				if start ~= stop then
+					local arg = string.sub(msg, start, stop-1)
+					local prefix = string.sub(arg, 1, 1)
+					if prefix == "'" then
+						res[fields[i]] = string.gsub(string.sub(arg, 2, -2), "''", "'")
+
+-- hexenc, need to process
+					elseif prefix == 'X' then
+						print("hexdec", arg)
+
+					else
+						res[fields[i]] = arg
+					end
+				end
+
+				stop = stop + 1
+				start = stop
+				i = i + 1
+
+-- buffer more
+			else
+				stop = stop + 1
+			end
+		end
+	end
+
+	return res
+end
+
 local function build_ticket(ticket, closure)
--- we need to do a lot more work to resolve out the change history for
--- the ticket in order to properly view the contents of the ticket. We
--- still lack a markdown (or rather, pandoc to djot and have a djot
--- view) that can embed diagrams etc.
---
--- fossil sql "SELECT icomment,tkt_rid FROM ticketchng WHERE tkt_id = 2 ORDER BY tkt_mtime DESC"
---
-	closure(ticket)
+-- this does not handle newlines correctly, we need to run without lf_strip, join data
+-- together and have unpack_sql that resets each time
+	local changes =
+	{
+		"fossil", "sql",
+			string.format(
+				"SELECT tkt_rid,tkt_mtime,tkt_user,mimetype,icomment FROM " ..
+				"ticketchng WHERE tkt_id = %d ORDER BY tkt_mtime ASC",
+				ticket.tkt_id
+				),
+		handler =
+		function(job, arg, code)
+			ticket.changes = {}
+			if code ~= 0 then
+				return
+			end
+
+-- attachments is a separate table that can be queried from the ticket.uuid in the attachments
+-- table, the output will be a hex literal X' then hexenc into the final blob.
+			for i,v in ipairs(job.data) do
+				table.insert(
+					ticket.changes,
+					unpack_sql(v, {"resource_id", "time", "user", "mime", "comment"})
+				)
+			end
+		end
+	}
+
+	local attachments =
+	{
+		"fossil", "sql",
+			string.format(
+				"SELECT src, filename, comment, user FROM attachment WHERE target = '%s'",
+				ticket.tkt_uuid
+			),
+		handler =
+		function(job, arg, code)
+			ticket.attachments = {}
+			if code ~= 0 then
+				return
+			end
+			for i,v in ipairs(job.data) do
+				table.insert(
+					ticket.attachments,
+					unpack_sql(v, {"src", "filename", "comment", "user"})
+				)
+			end
+		end
+	}
+
+	cat9.background_chain(
+		{changes, attachments},
+		{},
+		nil,
+		function()
+			closure(ticket)
+		end
+	)
 end
 
 local function rebuild_ticket_view(wnd)
@@ -358,15 +473,14 @@ local function rebuild_ticket_view(wnd)
 -- e.g. changing to resolved etc.
 		for key, val in pairs(ticket) do
 			if string.find(key, "_%atime") then
-				val = os.date("%c",
-					(tonumber(val) - 2440587.5) * 86400) -- os to epoch
+				val = julian_to_str(val)
 			end
 
 			if key_to_label[key] then
 				key = key_to_label[key]
 			end
 
-			if #val > 0 then
+			if key ~= "changes" and key ~= "attachments" and #val > 0 then
 				wnd:add_line(
 					string.format("%s;%s", key, val),
 					{
@@ -381,6 +495,61 @@ local function rebuild_ticket_view(wnd)
 				)
 			end
 		end
+
+		if #ticket.attachments > 0 then
+			wnd:add_line("Attachments:")
+			for i,v in ipairs(ticket.attachments) do
+				wnd:add_line("\t" .. v.filename, {
+					attr = la,
+					action_words = {
+						"Open/" .. v.mime,
+						la,
+						function()
+							print("open")
+						end
+					}
+				})
+			end
+		end
+
+		wnd:add_line("Comments:",
+		{
+			attr = la,
+			action_words = {
+				{"Add", la,
+				function()
+					print("request comment")
+				end
+				}
+			}
+		}
+		)
+
+		for i,v in ipairs(ticket.changes) do
+			wnd:add_line(
+				string.format("\t%s %s:%.72s", julian_to_str(v.time), v.user, v.comment),
+				{
+					action_words = {
+						{
+							"Open",
+							la,
+							function()
+								print("open comment")
+							end
+						},
+						{
+							"Reply",
+							la,
+							function()
+								print("reply")
+							end
+						}
+					}
+				}
+			)
+-- action word should be to reply or open in new job
+		end
+
 		return
 	end
 
@@ -392,6 +561,7 @@ local function rebuild_ticket_view(wnd)
 				build_ticket(
 					ticket, function(ticket)
 						wnd.ticket = ticket
+						print("got ticket")
 						rebuild_ticket_view(wnd)
 					end
 				)
@@ -431,7 +601,6 @@ local function fossil_tickets(f, filter)
 	wnd.handlers.mouse_button = click_monitor
 	wnd:add_line("Scanning for tickets...", {})
 
--- just convert the window to a spreadsheet
 	tickets_to_data(
 		wnd, 0, filter,
 		function(data)
