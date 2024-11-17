@@ -42,8 +42,8 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 
 -- expand action verbs when on a row with items
 	if mouse and mouse.on_row and mouse.on_row == ind and tag then
-		local attr = tag.attr
 		mouse.click_handler = nil
+		local attr = tag.attr
 
 		if tag.action_words then
 			x, y = write_row_or_column(job.root, x, y, cols, row, tag.columns, attr)
@@ -74,7 +74,7 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 				_, x, y = job.root:write_to(x, y, v[1], attr)
 			end
 		else
-			write_row_or_column(job.root, x, y, cols, row, tag.columns, attr)
+			write_row_or_column(job.root, x, y, cols, row, tag.columns, tag and tag.attr)
 		end
 
 		return
@@ -86,6 +86,11 @@ end
 
 local function click_monitor(job, btn, ofs, yofs, mods)
 	local fn = job.data.tags and job.data.tags[yofs]
+
+-- only use lclick
+	if btn ~= 1 then
+		return false
+	end
 
 -- figure out the action word at which offset
 	if job.mouse and job.mouse.click_handler then
