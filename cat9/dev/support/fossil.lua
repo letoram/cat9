@@ -46,7 +46,7 @@ local function parse_fossil_changes(scan, mon, code)
 end
 
 local function julian_to_str(val)
-	val = val or 0
+	val = tonumber(val) or 0
 	return os.date(
 		builtin_cfg.scm.time_format, (tonumber(val) - 2440587.5) * 86400) -- os to epoch
 end
@@ -113,7 +113,7 @@ local function append_staging(f, dir, ent, action)
 					if #add_set > 0 then
 						table.insert(add_set, 1, "fossil")
 						table.insert(add_set, 2, "add")
-						cat9.background_chain({add_set}, function()
+						cat9.background_chain({add_set}, {}, nil, function()
 							cat9.parse_string(nil, builtin_cfg.scm.commit_action .. table.concat(commit_set, " "))
 						end)
 					else
@@ -309,59 +309,24 @@ local key_to_label =
 	comment = "Comment"
 }
 
-
--- assume sql output is well formed and the number of values match the number of fields
-local function unpack_sql(msg, fields)
-	local i = 1
+local function unpack_sql(msg, separator, fields)
+	local set = string.split(msg, separator)
 	local res = {}
 
-	while i <= #fields do
--- strings start and end with ' but '' escapes
-		local start = 1
-		local stop = 1
-		local in_str = false
+-- seed with empty
+	for i=1,#fields do
+		res[fields[i]] = ""
+	end
 
-		while start <= #msg do
-			local ch = string.sub(msg, stop, stop)
-			if ch == "'" then
-				if in_str then
-					if string.sub(msg, stop+1, stop+1) == "'" then
-						stop = stop + 2
-					else
-						stop = stop + 1
-						in_str = false
-					end
--- look one token ahead
-				else
-					in_str = true
-					stop = stop + 1
-				end
-
--- process argument
-			elseif (not in_str and ch == ',') or stop == #msg then
-				if start ~= stop then
-					local arg = string.sub(msg, start, stop-1)
-					local prefix = string.sub(arg, 1, 1)
-					if prefix == "'" then
-						res[fields[i]] = string.gsub(string.sub(arg, 2, -2), "''", "'")
-
--- hexenc, need to process
-					elseif prefix == 'X' then
-						print("hexdec", arg)
-
-					else
-						res[fields[i]] = arg
-					end
-				end
-
-				stop = stop + 1
-				start = stop
-				i = i + 1
-
--- buffer more
-			else
-				stop = stop + 1
-			end
+	if #set ~= #fields then
+		print("record count mismatch", #set, #fields, msg)
+		return {}
+	end
+	for i,v in ipairs(set) do
+		if string.sub(v, 1, 1) == "'" then
+			v = string.gsub(string.sub(v, 2, -2), "''", "'")
+			res[fields[i]] = v
+-- missing, X'
 		end
 	end
 
@@ -369,11 +334,11 @@ local function unpack_sql(msg, fields)
 end
 
 local function build_ticket(ticket, closure)
--- this does not handle newlines correctly, we need to run without lf_strip, join data
--- together and have unpack_sql that resets each time
+-- use element and record separator (0x1d = 029, 0x1e = 030) ascii characters for separation
+	local sepcmd = ".separator \"\\x1d\" \"\\x1e\""
 	local changes =
 	{
-		"fossil", "sql",
+		"fossil", "sql", "-cmd", sepcmd,
 			string.format(
 				"SELECT tkt_rid,tkt_mtime,tkt_user,mimetype,icomment FROM " ..
 				"ticketchng WHERE tkt_id = %d ORDER BY tkt_mtime ASC",
@@ -391,7 +356,7 @@ local function build_ticket(ticket, closure)
 			for i,v in ipairs(job.data) do
 				table.insert(
 					ticket.changes,
-					unpack_sql(v, {"resource_id", "time", "user", "mime", "comment"})
+					unpack_sql(v, "\029", {"resource_id", "time", "user", "mime", "comment"})
 				)
 			end
 		end
@@ -399,9 +364,9 @@ local function build_ticket(ticket, closure)
 
 	local attachments =
 	{
-		"fossil", "sql",
+		"fossil", "sql", "-cmd", sepcmd,
 			string.format(
-				"SELECT src, filename, comment, user FROM attachment WHERE target = '%s'",
+				"SELECT src, filename, comment, user FROM attachment WHERE target = '%s' AND isLatest = 1",
 				ticket.tkt_uuid
 			),
 		handler =
@@ -413,7 +378,7 @@ local function build_ticket(ticket, closure)
 			for i,v in ipairs(job.data) do
 				table.insert(
 					ticket.attachments,
-					unpack_sql(v, {"src", "filename", "comment", "user"})
+					unpack_sql(v, "\029", {"src", "filename", "comment", "user"})
 				)
 			end
 		end
@@ -421,12 +386,16 @@ local function build_ticket(ticket, closure)
 
 	cat9.background_chain(
 		{changes, attachments},
-		{},
+		{lf_strip = "\030"},
 		nil,
 		function()
 			closure(ticket)
 		end
 	)
+end
+
+local function change_ticket(ticket, key, value)
+	print("update ticket", key, value)
 end
 
 local function rebuild_ticket_view(wnd)
@@ -453,6 +422,8 @@ local function rebuild_ticket_view(wnd)
 -- large number of tickets the report selector in fossil itself should limit scope
 	local la = builtin_cfg.scm.ticket_heading
 	local da = builtin_cfg.scm.data
+	local ha = builtin_cfg.scm.strong_action
+
 	local ticket = wnd.ticket
 
 	if ticket then
@@ -476,6 +447,22 @@ local function rebuild_ticket_view(wnd)
 				val = julian_to_str(val)
 			end
 
+			local aw = {}
+			local cfg_group = "ticket_" .. key
+
+			if builtin_cfg.scm[cfg_group] then
+				for _,v in ipairs(builtin_cfg.scm[cfg_group]) do
+					table.insert(aw, {
+						v,
+						ha,
+						function()
+							change_ticket(ticket, key, v)
+						end
+					}
+				)
+				end
+			end
+
 			if key_to_label[key] then
 				key = key_to_label[key]
 			end
@@ -488,25 +475,28 @@ local function rebuild_ticket_view(wnd)
 						columns = {
 							{
 								label = "\t" .. key .. ": ", label_attr = la,
-								data = tostring(val), data_attr = da
+								data = tostring(val), data_attr = da,
 							}
-						}
+						},
+						action_words = aw
 					}
 				)
 			end
 		end
 
 		if #ticket.attachments > 0 then
-			wnd:add_line("Attachments:")
+			wnd:add_line("Attachments:", {attr = la})
 			for i,v in ipairs(ticket.attachments) do
 				wnd:add_line("\t" .. v.filename, {
 					attr = la,
 					action_words = {
-						"Open/" .. v.mime,
-						la,
-						function()
-							print("open")
-						end
+						{
+							"Open",
+							la,
+							function()
+								print("open")
+							end
+						}
 					}
 				})
 			end
@@ -561,7 +551,6 @@ local function rebuild_ticket_view(wnd)
 				build_ticket(
 					ticket, function(ticket)
 						wnd.ticket = ticket
-						print("got ticket")
 						rebuild_ticket_view(wnd)
 					end
 				)
