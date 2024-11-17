@@ -555,10 +555,13 @@ local function term_handover(mode, env, bin, ...)
 	local list = table.concat(argv, " ")
 
 	env["ARCAN_TERMINAL_EXEC"] = list
+	env["ARCAN_ARG"] = ""
+	if not string.find(open_mode, "!") then
+		env["ARCAN_ARG"] = "keep_alive"
+	end
 
 	if string.find(open_mode, "e") then
-			env["ARCAN_ARG"] =
-				env["ARCAN_ARG"] and (env["ARCAN_ARG"] .. ":keep_stderr") or "keep_stderr"
+			env["ARCAN_ARG"] = env["ARCAN_ARG"] .. ":keep_stderr"
 		end
 
 	cat9.shmif_handover(cmode, open_mode, bin, env, {})
@@ -578,9 +581,6 @@ function cat9.term_handover(cmode, ...)
 -- now we can toggle some afsrv_terminal args of our own, since this all
 -- goes by quite quickly, keep_alive is useful so one can see that the
 -- command/handover stage works
-
-	env["ARCAN_ARG"] = "keep_alive"
-
 	term_handover(cmode, env, "/usr/bin/afsrv_terminal", ...)
 end
 

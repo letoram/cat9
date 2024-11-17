@@ -899,6 +899,8 @@ function cat9.misc_resolve_mode(arg, cmode)
 	for _,v in ipairs(t) do
 		if v == "err" then
 			open_mode = "e"
+		elseif v == "nokeep" then
+			open_mode = open_mode .. "!"
 		elseif v == "embed" then
 			cmode = "embed"
 		elseif v == "v" then
