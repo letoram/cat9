@@ -1075,7 +1075,11 @@ function cat9.add_background_job(out, pid, opts, closure)
 
 -- import will reset this
 	if opts.lf_strip then
-		out:lf_strip(opts.lf_strip)
+		if type(opts.lf_strip) == "string" then
+			out:lf_strip(true, opts.lf_strip)
+		else
+			out:lf_strip(opts.lf_strip)
+		end
 	end
 
 	table.insert(job.closure, closure)
