@@ -9,13 +9,33 @@ return
 		time_format = "%y-%m-%d %H:%M",
 		ticket_filters = {
 			Open = "status == 'Open'",
-			Fixed = "status == 'Fixed'"
+			Fixed = "status == 'Fixed'",
+			Closed = "status == 'Closed'"
+		},
+-- lifted from fossil ui
+		ticket_status = {
+			"Open", "Verify", "Review", "Deferred", "Fixed", "Tested", "Closed"
+		},
+		ticket_type = {
+			"Code_Defect", "Build_Problem", "Documentation", "Feature_Request", "Incident"
+		},
+		ticket_priority = {
+			"Immediate", "High", "Medium", "Low", "Zero"
+		},
+		ticket_severity = {
+			"Critical", "Severe", "Important", "Minor", "Cosmetic"
+		},
+		ticket_resolution = {
+			"Open", "Fixed", "Rejected", "Workaround", "Unable_To_Reproduce",
+			"Works_As_Designed", "External_Bug", "Not_A_Bug", "Duplicate",
+			"Overcome_By_Events", "Drive_By_Patch", "Misconfiguration"
 		},
 		exclude = {
 			EXTRA = {"^build"}
 		},
-		commit_action = "s!fossil commit",
-		ticket_columns = {"date", "title", "status", "severity", "type"},
+		edit_action = "s!(nokeep) vim",
+		commit_action = "s!(nokeep) fossil commit",
+		ticket_columns = {"date", "title", "severity", "type"},
 		ticket_heading = {bc = tui.colors.text, fc = tui.colors.ref_yellow}
 	},
 	debug =
