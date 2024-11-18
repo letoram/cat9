@@ -14,8 +14,6 @@ function(cat9, root, builtin_cfg, write_monitor, click_monitor, rebuild, in_moni
 --
 --        runs curl (with credentials) into chaturl (if config:ed) into chat endpoint
 --
--- issues missing adding comment, changing state,
---
 local function parse_fossil_changes(scan, mon, code)
 	for i,v in ipairs(scan.data) do
 		local ma, mb = string.find(v, "%s+")
@@ -113,6 +111,14 @@ local function append_staging(f, dir, ent, action)
 					if #add_set > 0 then
 						table.insert(add_set, 1, "fossil")
 						table.insert(add_set, 2, "add")
+
+	-- problem with this approach is that we don't get a return status for the chain of
+	-- terminal -> fossil -> vim so we don't know if there was something wrong with the
+	-- staged commit or not.
+	--
+	-- possibly that ARCAN_TERMINAL_EXEC can return the exit status and that would go
+	-- into the window/job bound to the commit_action, in that case we'd need to first
+	-- catch the created job/window, add an on_destroy and grab the code from there.
 						cat9.background_chain({add_set}, {}, nil, function()
 							cat9.parse_string(nil, builtin_cfg.scm.commit_action .. table.concat(commit_set, " "))
 						end)
@@ -398,6 +404,46 @@ local function change_ticket(ticket, key, value)
 	print("update ticket", key, value)
 end
 
+local function add_ticket(ticket)
+-- create tempfile with the fields we want
+	fio, path = root:tempfile()
+-- MISSING: add ticket template
+
+	local oj
+	oj =
+		cat9.hook_import_job(
+			function(job)
+-- the spawn command will first create a new tracking job, then the real one
+				if not job.wnd then
+					return
+				end
+				cat9.hook_import_job(oj)
+				table.insert(
+					job.hooks.on_destroy,
+					function()
+						root:funlink(path)
+
+-- read the results back
+						fio:seek(0)
+						local lines = {read_cap = 0}
+						fio:read(lines)
+						fio:close()
+						if #lines > 0 then
+							cat9.add_message("fossil: rejecting empty ticket")
+						end
+
+	-- now we can seek fio back and re-read, verify that we have the right
+	-- fields and forward to fossil ticket add
+					end
+				)
+			end
+		)
+
+-- write template into fio, ensure it's synched then run edit_action which
+-- should trigger the import_job hook above.
+	cat9.parse_string(nil, builtin_cfg.scm.edit_action .. " " .. path)
+end
+
 local function rebuild_ticket_view(wnd)
 	wnd.data = {bytecount = 0, linecount = 0}
 	cat9.flag_dirty(wnd)
@@ -423,7 +469,6 @@ local function rebuild_ticket_view(wnd)
 	local la = builtin_cfg.scm.ticket_heading
 	local da = builtin_cfg.scm.data
 	local ha = builtin_cfg.scm.strong_action
-
 	local ticket = wnd.ticket
 
 	if ticket then
@@ -662,6 +707,16 @@ local function append_fossil_data(dst)
 			attr = builtin_cfg.scm.heading,
 			action_words = {}
 		}
+
+		table.insert(tag.action_words,
+			{
+				"Create",
+				builtin_cfg.scm.strong_action,
+				function()
+					add_ticket(ticket, ha)
+				end
+			}
+		)
 
 		dst:add_line("Tickets:", tag)
 
