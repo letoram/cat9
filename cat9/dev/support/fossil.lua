@@ -13,7 +13,9 @@ function(cat9, root, builtin_cfg, write_monitor, click_monitor, rebuild, in_moni
 --                        with triggers on issues
 --
 --        runs curl (with credentials) into chaturl (if config:ed) into chat endpoint
---
+
+local rebuild_ticket_view
+
 local function parse_fossil_changes(scan, mon, code)
 	for i,v in ipairs(scan.data) do
 		local ma, mb = string.find(v, "%s+")
@@ -400,8 +402,16 @@ local function build_ticket(ticket, closure)
 	)
 end
 
-local function change_ticket(ticket, key, value)
-	print("update ticket", key, value)
+local function change_ticket(wnd, ticket, key, value)
+-- if the command returns 0, we assume it went through and just update the
+-- internal cached without causing a full rebuild of the ticket view itself
+	cat9.background_chain({
+		{"fossil", "ticket", "change", ticket.tkt_uuid, key, value}}, {}, nil,
+		function()
+			ticket[key] = value
+			rebuild_ticket_view(wnd)
+		end
+	)
 end
 
 local function add_ticket(ticket)
@@ -444,7 +454,8 @@ local function add_ticket(ticket)
 	cat9.parse_string(nil, builtin_cfg.scm.edit_action .. " " .. path)
 end
 
-local function rebuild_ticket_view(wnd)
+rebuild_ticket_view =
+function(wnd)
 	wnd.data = {bytecount = 0, linecount = 0}
 	cat9.flag_dirty(wnd)
 	local aw = {}
@@ -501,15 +512,16 @@ local function rebuild_ticket_view(wnd)
 						v,
 						ha,
 						function()
-							change_ticket(ticket, key, v)
+							change_ticket(wnd, ticket, key, v)
 						end
 					}
 				)
 				end
 			end
 
+			local keylbl = key
 			if key_to_label[key] then
-				key = key_to_label[key]
+				keylbl = key_to_label[key]
 			end
 
 			if key ~= "changes" and key ~= "attachments" and #val > 0 then
@@ -519,7 +531,7 @@ local function rebuild_ticket_view(wnd)
 						attr = la,
 						columns = {
 							{
-								label = "\t" .. key .. ": ", label_attr = la,
+								label = "\t" .. keylbl .. ": ", label_attr = la,
 								data = tostring(val), data_attr = da,
 							}
 						},
