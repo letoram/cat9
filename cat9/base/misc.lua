@@ -882,6 +882,41 @@ function cat9.setup_readline(root)
 	rl:suggest(config.autosuggest)
 end
 
+-- this is part of a refactoring to deal with the many times this is being
+-- repeated across builtins, and that they currently uniformely bug out on
+-- input locking and attach to the wrong window when detached
+function cat9.custom_readline(wnd, prompt, initial, handler)
+	local oprompt = cat9.get_prompt
+	local got_readline = cat9.readline
+	cat9.block_readline(wnd.root, false, false)
+	cat9.reset()
+	cat9.set_readline(
+		wnd.root:readline(
+			function(self, line)
+				cat9.get_prompt = oprompt
+				cat9.block_readline(wnd.root, false, false)
+				cat9.reset()
+				wnd.in_query = false
+
+			if not got_readline then
+				cat9.hide_readline(wnd.root)
+			end
+			handler(line)
+		end,
+		{
+			cancellable = true,
+			forward_meta = false,
+			forward_paste = false,
+			forward_mouse = true,
+		}), identity
+	)
+
+	wnd.in_query = true
+	cat9.block_readline(lash.root, true, true)
+	cat9.readline:set(initial)
+	cat9.get_prompt = prompt
+end
+
 -- use the same parg setup everywhere for extracting parameters on embed,
 -- tab, ... like properties. this is used by term/shmif like handovers.
 function cat9.misc_resolve_mode(arg, cmode)
