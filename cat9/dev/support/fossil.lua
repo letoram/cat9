@@ -70,6 +70,7 @@ local monitor_groups =
 
 local function append_staging(f, dir, ent, action)
 -- create staging area if it doesn't exist
+
 	if not f.staging then
 		local staging = {
 			dir = dir,
@@ -179,6 +180,19 @@ local function parse_fossil_remotes(scan, mon, code)
 	end
 end
 
+local function parse_fossil_describe(scan, mon, code)
+	mon.fossil.version = scan.data[1]
+end
+
+local function parse_fossil_fields(scan, mon, code)
+	local fmap = {}
+	for i,v in ipairs(scan.data) do
+		fmap[string.trim(v)] = true
+	end
+
+	mon.fossil.ticket_fields = fmap
+end
+
 -- Set of fossil external binary commands and their parsers that is used to
 -- process the tracking table that is used to generate the active view. Better
 -- caching and masking of these is the main performance bottleneck.
@@ -188,6 +202,8 @@ local function scan_fossil_output()
 		{"fossil", "changes", "--differ", handler = parse_fossil_changes},
 		{"fossil", "stash", "list", handler = parse_fossil_stash},
 		{"fossil", "remote", "list", handler = parse_fossil_remotes},
+		{"fossil", "describe", handler = parse_fossil_describe},
+		{"fossil", "ticket", "list", "fields", handler = parse_fossil_fields}
 -- check stash
 -- check extras
 	}
@@ -200,7 +216,7 @@ local function scan_fossil_output()
 		expanded = in_monitor.fossil.expanded
 	end
 
-	in_monitor.fossil = {expanded = expanded, message = message}
+	in_monitor.fossil = {expanded = expanded, message = message, ticket_fields = {}}
 	in_monitor.pending = in_monitor.pending + 1
 	cat9.background_chain(commands, {lf_strip = true}, in_monitor,
 		function(job)
@@ -414,44 +430,210 @@ local function change_ticket(wnd, ticket, key, value)
 	)
 end
 
-local function add_ticket(ticket)
--- create tempfile with the fields we want
-	fio, path = root:tempfile()
--- MISSING: add ticket template
+local function build_pending(wnd, f)
+	wnd.data = {linecount = 0, bytecount = 0}
+	local pending = wnd.pending_ticket
+	local fields = {}
 
-	local oj
-	oj =
-		cat9.hook_import_job(
-			function(job)
--- the spawn command will first create a new tracking job, then the real one
-				if not job.wnd then
-					return
-				end
-				cat9.hook_import_job(oj)
-				table.insert(
-					job.hooks.on_destroy,
+-- Make a copy then remove each as we process, then generate generic setters
+-- for each. The point of this is that we populate first from ticket_new_fields
+-- in config, then filter that against what is actually defined in the repository.
+-- Fossil allows admin to define arbitrary ticket fields, so we should reflect
+-- that.
+	for k,v in pairs(pending) do
+		fields[k] = true
+	end
+
+-- mandatory
+	fields.title = nil
+	wnd:add_line("Title: " .. pending.title,
+		{
+			attr = builtin_cfg.scm.heading,
+			click = function()
+				cat9.custom_readline(wnd,
 					function()
-						root:funlink(path)
-
--- read the results back
-						fio:seek(0)
-						local lines = {read_cap = 0}
-						fio:read(lines)
-						fio:close()
-						if #lines > 0 then
-							cat9.add_message("fossil: rejecting empty ticket")
-						end
-
-	-- now we can seek fio back and re-read, verify that we have the right
-	-- fields and forward to fossil ticket add
+						return {"(Title) "}
+					end,
+					pending.title ~= "Click to set title" and pending.title or "",
+					function(line)
+						pending.title = line or "Click to set title"
+						build_pending(wnd, f)
 					end
 				)
 			end
+		}
+	)
+
+-- version can be prefilled but also not always present
+	if fields.version and f.ticket_fields.version then
+		fields.version = nil
+		wnd:add_line("Version: " .. pending.version,
+			{
+				attr = builtin_cfg.scm.heading,
+				click = function()
+					cat9.custom_readline(wnd,
+						function()
+							return {"(Version) "}
+						end,
+						pending.version,
+						function(version)
+							if version and #version > 0 then
+								pending.version = version
+							end
+							build_pending(wnd, f)
+						end
+					)
+				end,
+			}
+		)
+	end
+
+	if fields.type and f.ticket_fields.type then
+		fields.type = nil
+
+		wnd:add_line(
+			"Type: " .. pending.type,
+			{
+				attr = builtin_cfg.scm.heading,
+				action_words = {}
+			}
 		)
 
--- write template into fio, ensure it's synched then run edit_action which
--- should trigger the import_job hook above.
-	cat9.parse_string(nil, builtin_cfg.scm.edit_action .. " " .. path)
+		for i,v in ipairs(builtin_cfg.scm.ticket_type) do
+			table.insert(wnd.data.tags[#wnd.data].action_words,
+				{
+					v,
+					builtin_cfg.scm.data,
+					function()
+						pending.type = v
+						build_pending(wnd, f)
+					end
+				}
+			)
+		end
+	end
+
+	if fields.severity and f.ticket_fields.severity then
+		fields.severity = nil
+
+		wnd:add_line(
+			"Severity: " .. pending.severity,
+			{
+				attr = builtin_cfg.scm.heading,
+				action_words = {},
+			}
+		)
+
+		for i,v in ipairs(builtin_cfg.scm.ticket_severity) do
+			table.insert(wnd.data.tags[#wnd.data].action_words,
+			{
+				v,
+				builtin_cfg.scm.data,
+				function()
+					pending.severity = v
+					build_pending(wnd, f)
+				end
+			})
+		end
+	end
+
+	for k,v in pairs(fields) do
+		if f.ticket_fields[k] then
+			local lbl = string.upper(string.sub(k, 1, 1)) .. string.sub(k, 2)
+			wnd:add_line(lbl .. ": " .. pending[k],
+			{
+				attr = builtin_cfg.scm.heading,
+				click =
+				function()
+					cat9.custom_readline(wnd,
+						function()
+							return {"(" .. lbl .. ") "}
+						end,
+						pending[k],
+						function(val)
+							if val and #val > 0 then
+								pending[k] = val
+							end
+							build_pending(wnd, f)
+						end
+				)
+			end
+			})
+		end
+	end
+
+	cat9.flag_dirty(wnd)
+end
+
+local function fossil_submit_ticket(pending, fields, closure)
+	local args = {"fossil", "ticket", "add"}
+
+	for k,v in pairs(pending) do
+		if fields[k] then
+			table.insert(args, k)
+			table.insert(args, v)
+		end
+	end
+
+	args.handler =
+	function(job, arg, code)
+		closure(code, job.data[1] or job.err_buffer[1])
+	end
+
+	cat9.background_chain({args})
+end
+
+local function add_ticket(f, ticket)
+-- spawn a new window
+	local wnd = {
+		dir = dir,
+		short = "dev:scm fossil:tickets",
+		raw = "dev:scm fossil:tickets"
+	}
+
+	cat9.import_job(wnd)
+
+	wnd.write_override = write_monitor
+	wnd.handlers.mouse_button = click_monitor
+	wnd.pending_ticket = {}
+
+	for i,v in ipairs(builtin_cfg.scm.ticket_new_fields) do
+		wnd.pending_ticket[v] = ""
+	end
+
+	wnd.pending_ticket.comment = "Click to change comment"
+	wnd.pending_ticket.severity = "Important"
+	wnd.pending_ticket.type = "Feature_request"
+	wnd.pending_ticket.status = "Open"
+
+	wnd.selected_bar =
+	{
+		{
+			"Submit"
+		},
+		m1 =
+		{
+			function()
+				fossil_submit_ticket(
+					wnd.pending_ticket,
+					f.ticket_fields,
+					function(code, msg)
+						if code == 0 then
+							cat9.remove_job(wnd)
+						else
+							cat9.add_message(
+								string.format(
+									"Fossil rejected ticket: %s",
+									msg or ""
+								)
+							)
+						end
+					end
+				)
+			end
+		}
+	}
+	build_pending(wnd, f)
 end
 
 rebuild_ticket_view =
@@ -725,7 +907,7 @@ local function append_fossil_data(dst)
 				"Create",
 				builtin_cfg.scm.strong_action,
 				function()
-					add_ticket(ticket, ha)
+					add_ticket(f, ticket, ha)
 				end
 			}
 		)

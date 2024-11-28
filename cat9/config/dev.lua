@@ -30,6 +30,15 @@ return
 			"Works_As_Designed", "External_Bug", "Not_A_Bug", "Duplicate",
 			"Overcome_By_Events", "Drive_By_Patch", "Misconfiguration"
 		},
+-- these are filtered further by the fields scanned from fossil itself
+		ticket_new_fields = {
+			"version",
+			"title",
+			"type",
+			"subsystem",
+			"comment",
+			"severity",
+		},
 		exclude = {
 			EXTRA = {"^build"}
 		},
