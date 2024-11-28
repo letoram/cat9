@@ -283,6 +283,7 @@ end
 -- which is called last.
 function cat9.background_chain(commands, cmdopt, arg, closure)
 	local run_command
+	cmdopt = cmdopt or {}
 
 -- Regular chain runner, take the next command in question, setup runner
 -- since these are asynch and running within the same process it is possible
@@ -304,8 +305,10 @@ function cat9.background_chain(commands, cmdopt, arg, closure)
 		local cmd = cat9.table_copy_shallow(tbl)
 		table.insert(cmd, 1, "/usr/bin/env")
 		table.insert(cmd, 1, "/usr/bin/env")
-		local _, out, _, pid = root:popen(cmd, "r")
-		cat9.add_background_job(out, pid, cmdopt or {},
+		local _, out, err, pid = root:popen(cmd, "re")
+		cmdopt.err = err
+
+		cat9.add_background_job(out, pid, cmdopt,
 		function(job, code)
 			if tbl.handler then
 				tbl.handler(job, arg, code)
@@ -1068,6 +1071,7 @@ function cat9.add_background_job(out, pid, opts, closure)
 	{
 		out = out,
 		pid = pid,
+		err = opts.err,
 		hidden = true
 	}
 
