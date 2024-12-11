@@ -144,7 +144,7 @@ function cat9.modifier_string(mod)
 end
 
 function cat9.system_path(ns)
-	local base = lash.scriptdir .. "/cat9/config"
+	local base = lash.scriptdir .. "/state"
 	if cat9.env["XDG_STATE_HOME"] then
 		base = cat9.env["XDG_STATE_HOME"]
 	end

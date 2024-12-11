@@ -261,13 +261,234 @@ local function fossil_set_remote(dst, name, save)
 	end)
 end
 
-local function fossil_timeline(f, p)
--- spawn a new window
--- run fossil timeline -n [limit] -v -W 0
--- then format is:
---   === date ===
---   h:m:s [hash] comment (user: ... tags: ...)
---   %s+COMMAND file
+local function action_to_symbol(action)
+	return prompt_kvt[action] or action
+end
+
+local function add_timeline_item(wnd, item)
+	local lines = string.split(item.msg, "\n")
+	lines[1] = string.gsub(lines[1], "^%*CURRENT%*", "> ")
+-- contract *CURRENT* into >
+
+	local aw = {
+		{
+			item.expanded and "Contract" or "Expand",
+			builtin_cfg.scm.action,
+			function()
+				item.expanded = not item.expanded
+				wnd:draw_timeline()
+			end
+		}
+	}
+
+	wnd:add_line(
+		item.time,
+		{
+			attr = builtin_cfg.scm.data,
+			columns = {
+				{
+					label = "Short: ",
+					data = lines[1]
+				},
+			},
+			action_words = aw
+		}
+	)
+
+	if item.expanded then
+		wnd:add_line("", {
+			attr = builtin_cfg.scm.data,
+			columns = {
+				{
+					label = "ID: ",
+					data = item.hash
+				},
+				{
+					label = "Author: ",
+					data = item.author
+				}
+			}
+		})
+
+		for i,v in ipairs(lines) do
+			wnd:add_line(v, {attr = builtin_cfg.scm.data})
+		end
+
+		for i, v in ipairs(item.set) do
+			wnd:add_line(
+				string.format("\t%s: %s", action_to_symbol(v[1]), v[2]),
+			{
+				attr = builtin_cfg.scm.data,
+				action_words =
+				{
+					{
+						"Open", builtin_cfg.scm.action,
+						function()
+						end
+					}
+				}
+			}
+			)
+		end
+	end
+end
+
+local function draw_timeline(wnd)
+	wnd.data = {linecount = 0, bytecount = 0}
+	local aw = {}
+	local set
+
+	if wnd.compact then
+		wnd:add_line(
+		string.format("Timeline: (%d / %d)", wnd.item_index, #wnd.dates),
+		{
+			attr = builtin_cfg.scm.heading,
+			action_words = aw
+		}
+		)
+		table.insert(aw,
+		{
+			"Full",
+			builtin_cfg.scm.action,
+			function()
+				wnd.compact = false
+				draw_timeline(wnd)
+			end
+		})
+		table.insert(aw,
+		{
+			"Previous",
+			builtin_cfg.scm.action,
+			function()
+				wnd.item_index = wnd.item_index == 1 and #wnd.dates or (wnd.item_index - 1)
+				draw_timeline(wnd)
+			end
+		})
+		table.insert(aw,
+		{
+			"Next",
+			builtin_cfg.scm.action,
+			function()
+				wnd.item_index = wnd.item_index == #wnd.dates and 1 or (wnd.item_index + 1)
+				draw_timeline(wnd)
+			end
+		})
+		set = {wnd.dates[wnd.item_index]}
+	else
+		table.insert(aw,
+		{
+			"By Date",
+			builtin_cfg.scm.action,
+			function()
+				wnd.compact = true
+				draw_timeline(wnd)
+			end
+		}
+		)
+		set = wnd.dates
+	end
+
+	for _,date in ipairs(set) do
+		wnd:add_line(date .. ":", {attr = builtin_cfg.scm.heading})
+		for i,v in ipairs(wnd.entries[date]) do
+			add_timeline_item(wnd, v)
+		end
+	end
+	cat9.flag_dirty(wnd)
+end
+
+local function fossil_timeline(f)
+	local wnd = {
+		dir = f.dir,
+		short = "dev:scm fossil:timeline",
+		raw = "dev:scm fossil:timeline",
+		fossil = f,
+		compact = true,
+		item_index = 1,
+		draw_timeline = draw_timeline,
+		dates = {},
+		entries = {
+			bad = {}
+		}
+	}
+
+	cat9.import_job(wnd)
+	wnd.write_override = write_monitor
+	wnd.handlers.mouse_button = click_monitor
+	wnd.protected = true
+	local cmd = {
+		{
+			"fossil", "timeline", "-n", builtin_cfg.scm.timeline_cap, "-t", "ci", "-v", "-W", "0",
+			handler =
+			function(scan, mon, code)
+				wnd.protected = false
+				if code ~= 0 then
+					wnd:add_line("Couldn't get timeline: " .. tostring(code))
+					return
+				end
+
+				local in_item
+				local date = "bad"
+				for i,v in ipairs(scan.data) do
+					local ch = string.sub(v, 1, 1)
+-- new date?
+					if ch == "=" then
+						if in_item then
+							table.insert(wnd.entries[date], in_item)
+							in_item = nil
+						end
+
+						date = string.sub(v, 5, -5)
+						wnd.entries[date] = {}
+						table.insert(wnd.dates, date)
+
+-- limit reached or eof
+					elseif ch == "-" or ch == "+" then
+						if in_item then
+							table.insert(wnd.entries[date], in_item)
+							in_item = nil
+							break
+						end
+					elseif ch == " " then
+						local cmd, file = string.match(v, "%s+(%a+)%s+(.+)")
+						if in_item then
+							table.insert(in_item.set, {cmd, file})
+						end
+-- new or first item entry?
+					else
+						local ts, hash, msg =
+							string.match(v, "(%d%d:%d%d:%d%d)%s+%[(%w+)%]%s+(.+)")
+						if ts and hash and msg then
+							if in_item then
+								table.insert(wnd.entries[date], in_item)
+							end
+							local author = ""
+-- extract (user: void tags: sub, trunk) from end of msg, pattern gets
+-- annoying as there's both (user: ... tags: ...) and (user: ...) as well
+-- as the thing possibly occuring in the message
+							for i=#msg,1,-1 do
+								if string.sub(msg, i, i) == "(" then
+									author = string.sub(msg, i)
+									break
+								end
+							end
+							in_item = {
+								time = ts,
+								hash = hash,
+								msg = msg,
+								author = author,
+								set = {}
+							}
+						end
+					end
+-- file change status
+				end
+				draw_timeline(wnd)
+			end
+		}
+	}
+
+	cat9.background_chain(cmd, {lf_strip = true})
 end
 
 local function tickets_to_data(dst, report_id, filter, closure)
@@ -586,7 +807,7 @@ end
 local function add_ticket(f, ticket)
 -- spawn a new window
 	local wnd = {
-		dir = dir,
+		dir = f.dir,
 		short = "dev:scm fossil:tickets",
 		raw = "dev:scm fossil:tickets"
 	}
@@ -884,6 +1105,14 @@ local function append_fossil_data(dst)
 		return promptstr
 	end
 
+	table.insert(main_aw,
+		{"Timeline", builtin_cfg.scm.action,
+		function()
+			fossil_timeline(f)
+		end
+		}
+	)
+
 -- we re-use the existing view with overwrites in order to not have to provide
 -- all the scroll/view/slice/... overrides that would be necessary.
 	dst:add_line(string.format(
@@ -977,14 +1206,6 @@ local function append_fossil_data(dst)
 			end
 			}
 		)
-
---		table.insert(main_aw, 1,
---			{"Timeline", builtin_cfg.scm.action,
---				function()
---					fossil_timeline(f)
---		end
---			}
---	)
 
 		dst:add_line(
 			string.format("\tRemote (%s):", def_remote_match or "off"),

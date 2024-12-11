@@ -108,6 +108,16 @@ This extra set of steps is to allow multiple shells to coexist, so that there
 is a premade path for other rulesets to join the scene with less of a
 disadvantage.
 
+Dependencies
+============
+
+Some of the built-in commands rely on existing tools installed in system
+appropriate locations to work properly:
+
+    System: open(afsrv_decode), doas(for switching uid)
+    Dev: scm(fossil), debug(gdb, lldb)
+    Net: wifi(wpa_supplicant with control socket)
+
 Use
 ===
 

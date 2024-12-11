@@ -7,6 +7,7 @@ return
 		strong_action = {bc = tui.colors.ref_red, fc = tui.colors.text},
 		data = {bc = tui.colors.text, fc = tui.colors.text},
 		time_format = "%y-%m-%d %H:%M",
+		timeline_cap = 100,
 		ticket_filters = {
 			Open = "status == 'Open'",
 			Fixed = "status == 'Fixed'",
