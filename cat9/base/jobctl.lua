@@ -1223,6 +1223,12 @@ function cat9.import_job(v, noinsert)
 		}
 	end
 
+	if not v.closure then
+		v.closure = {}
+	end
+
+	local data = v.data
+
 	local set_defaults =
 	function()
 		v.wrap = true
@@ -1249,11 +1255,11 @@ function cat9.import_job(v, noinsert)
 		v.reset = set_defaults
 	end
 
-	v.view = cat9.view_raw
-
-	v.closure = {}
-	if not v.data then
+	if data then
+		v.data = data
 	end
+
+	v.view = cat9.view_raw
 
 	if not v.cookie then
 		v.cookie = 0

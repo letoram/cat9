@@ -1,7 +1,10 @@
 return
 function(cat9, root, builtin_cfg, write_monitor, click_monitor, rebuild, in_monitor)
 
--- fossil should show timeline, chat,
+-- should show chat
+--   if there is a chat url configured, otherwise set one, the config store for that
+--   is uncertain, it doesn't seem like we can just add custom key vales?
+--
 --   issues to inject into commit message (requires custom editor) and forum
 --
 -- mouse over should have:
@@ -267,18 +270,11 @@ end
 
 local function add_timeline_item(wnd, item)
 	local lines = string.split(item.msg, "\n")
-	lines[1] = string.gsub(lines[1], "^%*CURRENT%*", "> ")
--- contract *CURRENT* into >
+	lines[1] = string.gsub(lines[1], "^%*CURRENT%*", "* ")
+-- contract *CURRENT* into >, if the first line is empty after the swapped CURRENT we
+-- should merge in the next line for formatting to work.
 
 	local aw = {
-		{
-			item.expanded and "Contract" or "Expand",
-			builtin_cfg.scm.action,
-			function()
-				item.expanded = not item.expanded
-				wnd:draw_timeline()
-			end
-		}
 	}
 
 	wnd:add_line(
@@ -287,10 +283,14 @@ local function add_timeline_item(wnd, item)
 			attr = builtin_cfg.scm.data,
 			columns = {
 				{
-					label = "Short: ",
+					label = "    ",
 					data = lines[1]
 				},
 			},
+			click = function()
+				item.expanded = not item.expanded
+				wnd:draw_timeline()
+			end,
 			action_words = aw
 		}
 	)
@@ -315,18 +315,42 @@ local function add_timeline_item(wnd, item)
 		end
 
 		for i, v in ipairs(item.set) do
+			local iaw = {
+				{
+					"Open", builtin_cfg.scm.action,
+					function()
+						cat9.background_chain(
+						{
+							{"fossil", "cat", v[2], "-r", item.hash,
+							handler =
+							function(scan, _, code)
+								local title = string.format("[%s] %s", item.hash, v[2])
+								local job = {
+									short = title,
+									raw = title,
+									data = code == 0 and scan.data or scan.err_buffer
+								}
+								cat9.import_job(job)
+							end
+						}}
+						)
+					end
+				}
+			}
+
+			if v[1] == "ADDED" or v[1] == "EDITED" or v[1] == "MERGED" then
+				table.insert(iaw, {
+					"Diff", builtin_cfg.scm.action,
+					function()
+					end
+				})
+			end
+
 			wnd:add_line(
-				string.format("\t%s: %s", action_to_symbol(v[1]), v[2]),
+				string.format("\t%s %s", action_to_symbol(v[1]), v[2]),
 			{
 				attr = builtin_cfg.scm.data,
-				action_words =
-				{
-					{
-						"Open", builtin_cfg.scm.action,
-						function()
-						end
-					}
-				}
+				action_words = iaw
 			}
 			)
 		end
@@ -389,7 +413,8 @@ local function draw_timeline(wnd)
 	end
 
 	for _,date in ipairs(set) do
-		wnd:add_line(date .. ":", {attr = builtin_cfg.scm.heading})
+		wnd:add_line(date .. ":", {
+			passive_attr = builtin_cfg.scm.passive_heading, attr = builtin_cfg.scm.heading})
 		for i,v in ipairs(wnd.entries[date]) do
 			add_timeline_item(wnd, v)
 		end

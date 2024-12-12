@@ -3,6 +3,8 @@ return
 	scm =
 	{
 		heading = {bc = tui.colors.text, fc= tui.colors.ref_yellow, border_down = true},
+		passive_heading = {bc = tui.colors.text, fc= tui.colors.ref_yellow},
+
 		action = {bc = tui.colors.text, fc = tui.colors.ref_green},
 		strong_action = {bc = tui.colors.ref_red, fc = tui.colors.text},
 		data = {bc = tui.colors.text, fc = tui.colors.text},
