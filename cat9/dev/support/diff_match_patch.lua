@@ -23,12 +23,10 @@
 -- Lua 5.1 and earlier requires the external BitOp library.
 -- This library is built-in from Lua 5.2 and later as 'bit32'.
 require 'bit'   -- <https://bitop.luajit.org/>
-local band, bor, lshift
-    = bit.band, bit.bor, bit.lshift
 --]]
 
 local band, bor, lshift
-    = bit32.band, bit32.bor, bit32.lshift
+    = bit.band, bit.bor, bit.lshift
 local type, setmetatable, ipairs, select
     = type, setmetatable, ipairs, select
 local unpack, tonumber, error
