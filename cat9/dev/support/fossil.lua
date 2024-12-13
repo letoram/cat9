@@ -199,7 +199,7 @@ end
 -- Set of fossil external binary commands and their parsers that is used to
 -- process the tracking table that is used to generate the active view. Better
 -- caching and masking of these is the main performance bottleneck.
-local function scan_fossil_output()
+local function scan_fossil_output(base)
 	local commands =
 	{
 		{"fossil", "changes", "--differ", handler = parse_fossil_changes},
@@ -214,12 +214,19 @@ local function scan_fossil_output()
 -- since we reset the monitor context, we need to transfer any option local to it
 	local expanded = false
 	local message
+	local dir = base
+
 	if in_monitor.fossil then
 		message = in_monitor.fossil.message
 		expanded = in_monitor.fossil.expanded
+		dir = in_monitor.fossil.directory
 	end
 
-	in_monitor.fossil = {expanded = expanded, message = message, ticket_fields = {}}
+	in_monitor.fossil = {
+		expanded = expanded, message = message, ticket_fields = {},
+		directory = dir
+	}
+
 	in_monitor.pending = in_monitor.pending + 1
 	cat9.background_chain(commands, {lf_strip = true}, in_monitor,
 		function(job)
@@ -266,6 +273,179 @@ end
 
 local function action_to_symbol(action)
 	return prompt_kvt[action] or action
+end
+
+local function rebuild_patch_job(job)
+	job.data = {linecount = 0, bytecount = 0}
+	local cfg = builtin_cfg.scm
+	local patch = job.patches[job.patch_index]
+
+	if not patch then
+		job:add_line("Empty patchset", {
+			attr = cfg.error_heading,
+			passive_attr = cfg.error_heading
+		})
+		return
+	end
+
+	local aw = {}
+
+	job:add_line(
+		string.format("File: %d / %d", job.patch_index, #job.patches),
+		{
+			attr = cfg.heading,
+			passive_attr = cfg.passive_heading,
+			action_words = aw
+		}
+	)
+
+	if #job.patches > 1 then
+		table.insert(aw,
+			{
+				"Next",
+				cfg.action,
+				function()
+					job.patch_index = job.patch_index + 1
+					if job.patch_index > #job.patches then
+						job.patch_index = 1
+					end
+					rebuild_patch_job(job)
+				end
+			}
+		)
+		table.insert(aw,
+			{
+				"Previous",
+				cfg.action,
+				function()
+					job.patch_index = job.patch_index - 1
+					if job.patch_index == 0 then
+						job.patch_index = #job.patches
+					end
+					rebuild_patch_job(job)
+				end
+			}
+		)
+	end
+
+	local opt_tbl = {}
+	opt_tbl[in_monitor.diff.DIFF_DELETE] = {"-", cfg.strong_action}
+	opt_tbl[in_monitor.diff.DIFF_INSERT] = {"+", cfg.action}
+	opt_tbl[in_monitor.diff.DIFF_EQUAL]  = {" ", cfg.data}
+
+	for i,v in ipairs(patch.diff) do
+		local op = opt_tbl[v[1]]
+		job:add_line(v[2], {
+			passive_attr = op[2]
+		})
+	end
+
+	cat9.flag_dirty(job)
+end
+
+local function setup_diff_job(diff, instr)
+	local idx = 1
+	local ok, obj = pcall(cat9.json.decode, instr, dex)
+
+	if not ok then
+		cat9.add_message(res)
+		return
+	end
+
+-- convert the json output to match the patch format from the diff support script.
+	local patches = {}
+	local name = obj[1].leftname or ""
+
+	for i,v in ipairs(obj) do
+		local cmd = 0
+		local ind = 1
+		local line = 0
+		local patch = {
+			old = v.leftname,
+			new = v.rightname,
+			diff = {}
+		}
+
+		repeat
+			cmd = v.diff[ind]
+			local arg = v.diff[ind+1]
+
+			if cmd == 1 then -- SKIP
+				line = line + arg
+			elseif cmd == 2 then -- COMMON -> DIFF_EQUAL
+				table.insert(patch.diff, {
+					in_monitor.diff.DIFF_EQUAL,
+					arg
+				}
+			)
+			elseif cmd == 3 then -- INSERT --> DIFF_INSERT
+				table.insert(patch.diff, {
+					in_monitor.diff.DIFF_INSERT,
+					arg
+				}
+			)
+			elseif cmd == 4 then -- DELETE --> DIFF_DELETE
+				table.insert(patch.diff, {
+					in_monitor.diff.DIFF_DELETE,
+					arg
+				}
+			)
+			elseif cmd == 5 then -- SUBARRAY -> ARRAY OF 3 * N + 1, [common, prev, new]n + suffix
+-- reconstruct as a DELETE and INSERT, for that we need to build two strings
+				local str_a = ""
+				local str_b = ""
+				local suff  = ""
+				if #arg % 3 == 1 then
+					suff = table.remove(arg, #arg)
+				end
+
+				for i=1, #arg, 3 do
+					str_a = str_a .. arg[i+0]
+					str_b = str_b .. arg[i+0]
+					str_a = str_a .. arg[i+1]
+					str_b = str_b .. arg[i+2]
+				end
+
+				str_a = str_a .. suff
+				str_b = str_b .. suff
+				table.insert(patch.diff, {
+					in_monitor.diff.DIFF_DELETE,
+					str_a
+				})
+				table.insert(patch.diff, {
+					in_monitor.diff.DIFF_INSERT,
+					str_b
+				})
+
+			else
+				break
+			end
+			ind = ind + 2
+		until cmd == 0
+
+		table.insert(patches, patch)
+	end
+
+-- controls for unstaging parts of a patch or to just add a single one to the stage
+-- set would require a revert of the file, apply the desired patchset, commit, then
+-- re-apply the remaining patches.
+--
+-- We can do this by converting the patch object toText and set that as the fossil
+-- input to the reverted checkout.
+--
+	local title = "Diff: " .. diff
+
+	local job = {
+		raw = title .. " " .. name,
+		short = title,
+		patches = patches,
+		patch_index = 1
+	}
+
+	cat9.import_job(job)
+	job.write_override = write_monitor
+	job.handlers.mouse_button = click_monitor
+	rebuild_patch_job(job)
 end
 
 local function add_timeline_item(wnd, item)
@@ -321,7 +501,7 @@ local function add_timeline_item(wnd, item)
 					function()
 						cat9.background_chain(
 						{
-							{"fossil", "cat", v[2], "-r", item.hash,
+							{"fossil", "cat", wnd.fossil.directory .. "/" .. v[2], "-r", item.hash,
 							handler =
 							function(scan, _, code)
 								local title = string.format("[%s] %s", item.hash, v[2])
@@ -332,8 +512,8 @@ local function add_timeline_item(wnd, item)
 								}
 								cat9.import_job(job)
 							end
-						}}
-						)
+						}
+						})
 					end
 				}
 			}
@@ -342,6 +522,18 @@ local function add_timeline_item(wnd, item)
 				table.insert(iaw, {
 					"Diff", builtin_cfg.scm.action,
 					function()
+						cat9.background_chain(
+							{
+								{
+									"fossil", "diff", "--json", "--from", item.hash,
+									wnd.fossil.directory .. "/" .. v[2],
+								handler =
+								function(scan, _, code)
+									setup_diff_job(item.hash, table.concat(scan.data, ""))
+								end
+								}
+							}
+						)
 					end
 				})
 			end
@@ -1306,9 +1498,14 @@ local function append_fossil_data(dst)
 						table.insert(action_words, 1, {"Diff",
 							builtin_cfg.scm.action,
 							function()
-								cat9.setup_shell_job(
-									{"fossil", "fossil", "diff", dst.dir .. "/" .. j}
-								)
+								cat9.background_chain({
+									{
+										"fossil", "diff", "--json", dst.dir .. "/" .. j,
+										handler = function(scan, _, code)
+											setup_diff_job("CURRENT", table.concat(scan.data, ""))
+										end
+									}
+								})
 							end
 						})
 					end
@@ -1333,7 +1530,7 @@ return
 				local base = table.concat(set, "/")
 				local ok, _, _ = root:fstatus(base .. "/.fslckout")
 				if ok then
-					scan_fossil_output()
+					scan_fossil_output(base)
 					return true
 				end
 				table.remove(set, #set)

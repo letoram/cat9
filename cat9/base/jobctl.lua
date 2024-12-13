@@ -289,7 +289,7 @@ function cat9.background_chain(commands, cmdopt, arg, closure)
 -- since these are asynch and running within the same process it is possible
 -- for the user to change directory while this happens. Before executing any
 -- command make sure the active directory is the same as during the initial call.
-	local cwd = root:chdir()
+	local cwd = (arg and arg.directory) or (root:chdir())
 
 	run_command =
 	function(tbl)

@@ -80,7 +80,8 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 		return
 	end
 
-	local attr = builtin_cfg.scm.data
+-- if there's a passive attr marked, use that instead
+	local attr = (tag and tag.passive_attr) or builtin_cfg.scm.data
 	write_row_or_column(job.root, x, y, cols, row, tag and tag.columns, attr)
 end
 
@@ -196,6 +197,9 @@ end
 local support_fossil =
 	loadfile(string.format("%s/cat9/dev/support/fossil.lua", lash.scriptdir))()
 
+local diff =
+	loadfile(string.format("%s/cat9/dev/support/diff_match_patch.lua", lash.scriptdir))()
+
 local function cmd_monitor(arg)
 -- 'prompt' form
 	local prompt = (arg and arg == "prompt") or nil
@@ -269,6 +273,7 @@ local function cmd_monitor(arg)
 		end
 
 	in_monitor = job
+	job.diff = diff
 
 	job.scm_handlers = {
 		support_fossil(cat9, root, builtin_cfg, write_monitor, click_monitor, build_data, job)
