@@ -87,18 +87,29 @@ end
 local function deploy_copy(cat9, root, job)
 -- once committed - this is not directly cancellable (currently) without
 -- explicitly closing the job src/dst inputs
+	print("deploy_copy", type(job.src), type(job.dst))
+
 	if type(job.src) == "userdata" and type(job.dst) == "userdata" then
 		return copy_ud_ud(cat9, root, job)
-	end
+
+-- explicit readout
+	elseif type(job.src) == "userdata" and not job.dst then
+		job.out = job.src
+		job.out:data_handler(
+			function()
+				local _, alive = cat9.flush_job(job, false, cat9.config.shell_job_linecount)
+				return alive
+			end
+		)
+		job.src = nil
 
 -- simpler, but we have to poll for progress if we want it via some
 -- clock timer hooking tick
-	if type(job.src) == "table" and type(job.dst) == "userdata" then
+	elseif type(job.src) == "table" and type(job.dst) == "userdata" then
 		return copy_tbl_ud(cat9, root, job)
-	end
 
 -- just a raw data copy
-	if type(job.src) == "table" and not job.dst then
+	elseif type(job.src) == "table" and not job.dst then
 		copy_tbl(cat9, root, job)
 	end
 end
@@ -163,9 +174,17 @@ function builtins.copy(src, opt1, opt2, opt3)
 		end
 
 -- get the active data-set, raw versus processed is a thing to consider here - strip
--- escape sequences or not as an example. srcargs (popt) could be used to this effect
+-- escape sequences or not as an example. srcargs (popt) could be used to this effect.
+-- if the source already holds a userdata, lift that.
 		srclbl = "(job: " .. tostring(src.id) .. ")"
-		src = src:slice(srcarg)
+		if src.src then
+			local ud = src.src
+			src.src = nil
+			cat9.remove_job(src)
+			src = ud
+		else
+			src = src:slice(srcarg)
+		end
 
 	elseif type(src) == "string" then
 		if string.sub(src, 1, 5) == "pick:" then
