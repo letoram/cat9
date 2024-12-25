@@ -404,14 +404,40 @@ function handlers.bchunk_out(self, blob, id)
 end
 
 function handlers.bchunk_in(self, blob, id, lref)
+-- do we have a copy operation waiting for this from :pick ?
 	if type(cat9.resources.bin) == "function" then
 		cat9.resources.bin(id, blob, lref)
+
+-- otherwise spawn a job with the option, use the action_job form so we can have
+-- the 'prompt to save or action' form and track it as 'src' so that it works
+-- with the 'copy' command
 	else
-		if not cat9.resources.bin then
-			cat9.resources.bin = {}
-		end
-		table.insert(cat9.resources.bin, {id, blob, lref})
-		cat9.add_message("input queued: " .. id)
+		local cont_job = {
+			short = "Input: " .. id,
+			raw = "Input: " .. id,
+			src = blob,
+			unbuffered = true
+		}
+		cat9.build_action_job(cont_job)
+
+-- if we chose to expand (mutate), convert the job to a regular one and add the
+-- same data handling we'd use for a shell job
+		cont_job:add_line("Expand / Read", {
+			click = function()
+				cont_job.data = {linecount = 0, bytecount = 0}
+				cont_job.out = blob
+				blob:data_handler(
+					function()
+						local _, alive =
+							cat9.flush_job(cont_job, false, config.shell_job_linecount)
+						return alive
+					end
+				)
+				cont_job.src = nil
+				cont_job.write_override = nil
+				cont_job.handlers.mouse_button = nil
+			end
+		})
 	end
 end
 

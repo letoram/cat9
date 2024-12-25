@@ -11,100 +11,6 @@ local in_monitor
 local config = cat9.config
 local update_prompt
 
-local function write_row_or_column(dst, x, y, cols, row, column, attr)
-	if not column then
-		_, x, y = dst:write_to(x, y, row, attr)
-		return x, y
-	end
-
-	for i,v in ipairs(column) do
-		_, x, y = dst:write_to(x, y, v.label, v.label_attr or attr)
-		_, x, y = dst:write_to(x, y, v.data, v.data_attr or attr)
-		x = x + 1
-
-		if x >= cols then
-			break
-		end
-	end
-
-	return x, y
-end
-
-local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
-	local mouse = job.mouse
-	local tags = set.tags or {}
-	local tag = tags[ind]
-
--- show most significant characters
-	if #row > cols then
-		row = "..." .. string.sub(row, #row - cols * 0.5)
-	end
-
--- expand action verbs when on a row with items
-	if mouse and mouse.on_row and mouse.on_row == ind and tag then
-		mouse.click_handler = nil
-		local attr = tag.attr
-
-		if tag.action_words then
-			x, y = write_row_or_column(job.root, x, y, cols, row, tag.columns, attr)
-
--- prioritize action_words on overflow
-			local count = 0
-			for i,v in ipairs(tag.action_words) do
-				count = count + #v[1] + 1
-			end
-
-			if x + count > cols then
-				x = cols - count
-				if x < 0 then
-					x = 0
-				end
-			end
-
-			for i,v in ipairs(tag.action_words) do
-				local attr = v[2]
-				_, x, y = job.root:write_to(x, y, " ")
-
-				if mouse[1] >= x and mouse[1] <= x + #v[1] then
-					attr = cat9.table_copy_shallow(attr)
-					mouse.click_handler = v[3]
-					attr.border_down = true
-				end
-
-				_, x, y = job.root:write_to(x, y, v[1], attr)
-			end
-		else
-			write_row_or_column(job.root, x, y, cols, row, tag.columns, tag and tag.attr)
-		end
-
-		return
-	end
-
--- if there's a passive attr marked, use that instead
-	local attr = (tag and tag.passive_attr) or builtin_cfg.scm.data
-	write_row_or_column(job.root, x, y, cols, row, tag and tag.columns, attr)
-end
-
-local function click_monitor(job, btn, ofs, yofs, mods)
-	local fn = job.data.tags and job.data.tags[yofs]
-
--- only use lclick
-	if btn ~= 1 then
-		return false
-	end
-
--- figure out the action word at which offset
-	if job.mouse and job.mouse.click_handler then
-		job.mouse.click_handler()
-		return true
-
-	elseif fn and fn.click then
-		fn.click()
-		return true
-	end
-	return yofs > 0 and btn == 1
-end
-
 local function build_data(path)
 	in_monitor.data = {linecount = 0, bytecount = 0}
 	local promptstr = ""
@@ -244,7 +150,7 @@ local function cmd_monitor(arg)
 			job = in_monitor
 		end
 
-		cat9.import_job(job)
+		cat9.build_action_job(job)
 		job.imported = true
 		job.show_line_number = false
 		job["repeat"] = refresh_monitor
@@ -262,9 +168,6 @@ local function cmd_monitor(arg)
 		)
 	end
 
-	job.write_override = write_monitor
-	job.handlers.mouse_button = click_monitor
-
 -- attach to directory changes and use it to trigger rescan
 	cat9.dir_monitor[job] =
 		function(new, old)
@@ -276,7 +179,7 @@ local function cmd_monitor(arg)
 	job.diff = diff
 
 	job.scm_handlers = {
-		support_fossil(cat9, root, builtin_cfg, write_monitor, click_monitor, build_data, job)
+		support_fossil(cat9, root, builtin_cfg, build_data, job)
 	}
 
 	refresh_monitor()

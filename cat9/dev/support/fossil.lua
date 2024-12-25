@@ -1,5 +1,5 @@
 return
-function(cat9, root, builtin_cfg, write_monitor, click_monitor, rebuild, in_monitor)
+function(cat9, root, builtin_cfg, rebuild, in_monitor)
 
 -- should show chat
 --   if there is a chat url configured, otherwise set one, the config store for that
@@ -80,10 +80,8 @@ local function append_staging(f, dir, ent, action)
 			short = "dev:scm fossil:staging",
 			raw = "dev:scm fossil:staging",
 		}
-		cat9.import_job(staging)
+		cat9.build_action_job(staging)
 
-		staging.write_override = write_monitor
-		staging.handlers.mouse_button = click_monitor
 		table.insert(staging.hooks.on_destroy,
 			function()
 				f.staging = nil
@@ -442,9 +440,7 @@ local function setup_diff_job(diff, instr)
 		patch_index = 1
 	}
 
-	cat9.import_job(job)
-	job.write_override = write_monitor
-	job.handlers.mouse_button = click_monitor
+	cat9.build_action_job(job)
 	rebuild_patch_job(job)
 end
 
@@ -629,9 +625,7 @@ local function fossil_timeline(f)
 		}
 	}
 
-	cat9.import_job(wnd)
-	wnd.write_override = write_monitor
-	wnd.handlers.mouse_button = click_monitor
+	cat9.build_action_job(wnd)
 	wnd.protected = true
 	local cmd = {
 		{
@@ -1029,10 +1023,8 @@ local function add_ticket(f, ticket)
 		raw = "dev:scm fossil:tickets"
 	}
 
-	cat9.import_job(wnd)
+	cat9.build_action_job(wnd)
 
-	wnd.write_override = write_monitor
-	wnd.handlers.mouse_button = click_monitor
 	wnd.pending_ticket = {}
 
 	for i,v in ipairs(builtin_cfg.scm.ticket_new_fields) do
@@ -1262,9 +1254,7 @@ local function fossil_tickets(f, filter)
 		raw = "dev:scm fossil:tickets"
 	}
 
-	cat9.import_job(wnd)
-	wnd.write_override = write_monitor
-	wnd.handlers.mouse_button = click_monitor
+	cat9.build_action_job(wnd)
 	wnd:add_line("Scanning for tickets...", {})
 
 	tickets_to_data(

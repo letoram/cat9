@@ -129,7 +129,7 @@ local function data_unbuffered(job, line, eof)
 	cat9.flag_dirty(job)
 end
 
-local function flush_job(job, finish, limit)
+function cat9.flush_job(job, finish, limit)
 	local upd = false
 	local outlim = limit
 	local falive = true
@@ -210,7 +210,7 @@ local function finish_job(job, code)
 	end
 
 	if job.out or job.err then
-		flush_job(job, true, 1)
+		cat9.flush_job(job, true, 1)
 
 		if job.out then
 			job.out:close()
@@ -375,7 +375,7 @@ function cat9.process_jobs()
 -- responsiveness of the shell vs throughput. If it is visible and in focus we
 -- should perhaps allow more.
 			elseif job.out or job.err then
-				upd = (flush_job(job, false, config.process_lines) and not job.deferred) or upd
+				upd = (cat9.flush_job(job, false, config.process_lines) and not job.deferred) or upd
 			end
 		end
 	end
@@ -483,7 +483,7 @@ function
 		if job.deferred then
 			job.out:data_handler(
 				function()
-					local _, alive = flush_job(job, false, config.shell_job_linecount)
+					local _, alive = cat9.flush_job(job, false, config.shell_job_linecount)
 					return alive
 				end
 			)
@@ -521,7 +521,7 @@ function
 	if job.deferred then
 		job.out:data_handler(
 			function()
-				local _, alive = flush_job(job, false, config.shell_job_linecount)
+				local _, alive = cat9.flush_job(job, false, config.shell_job_linecount)
 				return alive
 			end
 		)
@@ -1334,4 +1334,106 @@ function cat9.import_job(v, noinsert)
 
 	return v
 end
+
+local function write_row_or_column(dst, x, y, cols, row, column, attr)
+	if not column then
+		_, x, y = dst:write_to(x, y, row, attr)
+		return x, y
+	end
+
+	for i,v in ipairs(column) do
+		_, x, y = dst:write_to(x, y, v.label, v.label_attr or attr)
+		_, x, y = dst:write_to(x, y, v.data, v.data_attr or attr)
+		x = x + 1
+
+		if x >= cols then
+			break
+		end
+	end
+
+	return x, y
+end
+
+local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
+	local mouse = job.mouse
+	local tags = set.tags or {}
+	local tag = tags[ind]
+
+-- show most significant characters
+	if #row > cols then
+		row = "..." .. string.sub(row, #row - cols * 0.5)
+	end
+
+-- expand action verbs when on a row with items
+	if mouse and mouse.on_row and mouse.on_row == ind and tag then
+		mouse.click_handler = nil
+		local attr = tag.attr
+
+		if tag.action_words then
+			x, y = write_row_or_column(job.root, x, y, cols, row, tag.columns, attr)
+
+-- prioritize action_words on overflow
+			local count = 0
+			for i,v in ipairs(tag.action_words) do
+				count = count + #v[1] + 1
+			end
+
+			if x + count > cols then
+				x = cols - count
+				if x < 0 then
+					x = 0
+				end
+			end
+
+			for i,v in ipairs(tag.action_words) do
+				local attr = v[2]
+				_, x, y = job.root:write_to(x, y, " ")
+
+				if mouse[1] >= x and mouse[1] <= x + #v[1] then
+					attr = cat9.table_copy_shallow(attr)
+					mouse.click_handler = v[3]
+					attr.border_down = true
+				end
+
+				_, x, y = job.root:write_to(x, y, v[1], attr)
+			end
+		else
+			write_row_or_column(job.root, x, y, cols, row, tag.columns, tag and tag.attr)
+		end
+
+		return
+	end
+
+-- if there's a passive attr marked, use that instead
+	local attr = (tag and tag.passive_attr) or job.default_attr
+	write_row_or_column(job.root, x, y, cols, row, tag and tag.columns, attr)
+end
+
+local function click_monitor(job, btn, ofs, yofs, mods)
+	local fn = job.data.tags and job.data.tags[yofs]
+
+-- only use lclick
+	if btn ~= 1 then
+		return false
+	end
+
+-- figure out the action word at which offset
+	if job.mouse and job.mouse.click_handler then
+		job.mouse.click_handler()
+		return true
+
+	elseif fn and fn.click then
+		fn.click()
+		return true
+	end
+	return yofs > 0 and btn == 1
+end
+
+function cat9.build_action_job(job)
+	cat9.import_job(job)
+	job.write_override = write_monitor
+	job.handlers.mouse_button = click_monitor
+	job.default_attr = job.default_attr or config.styles.data
+end
+
 end
