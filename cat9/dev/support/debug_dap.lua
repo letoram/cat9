@@ -876,18 +876,6 @@ function Debugger:terminate(hard)
 -- kill job so we don't leave dangling DAPs around
 end
 
-function Debugger:get_threads()
-	send_request(self, "threads", {},
-		function(job, msg)
-			if not msg.success then
-				self.output:add_line(self, "thread request failed: " .. msg.message)
-			else
-			end
-		end
-	)
-	return set
-end
-
 local function add_tbl_line(tbl, dbg, line)
 -- presenting the number as a timeline gives weird interactions with the default
 -- crop view, track the counter as linear between the buffers but don't add it to
@@ -903,7 +891,7 @@ local function add_tbl_line(tbl, dbg, line)
 end
 
 local inf, outf, errf, pid =
-	lash.root:popen(args.dap_default, "rw")
+	lash.root:popen(args.dap_default, "rwe")
 
 if not pid then
 	cat9.add_message(errors.popen)

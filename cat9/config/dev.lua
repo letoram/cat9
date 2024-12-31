@@ -53,6 +53,7 @@ return
 	},
 	debug =
 	{
+		arcan_default_mode = "split-r",
 		dap_default = {"gdb", "gdb", "-i", "dap", "-q"},
 --		dap_default = {"lldb-dap", "lldb-dap"},
 		dap_create = {

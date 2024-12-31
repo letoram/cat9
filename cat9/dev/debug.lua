@@ -8,6 +8,9 @@ local parse_dap =
 local debugger =
 	loadfile(string.format("%s/cat9/dev/support/debug_dap.lua", lash.scriptdir))()
 
+local debug_arcan =
+	loadfile(string.format("%s/cat9/dev/support/debug_arcan.lua", lash.scriptdir))()
+
 --
 -- split out the rendering and interaction code for each window
 --
@@ -574,9 +577,21 @@ function cmds.launch(...)
 		return false, errors.no_target
 	end
 
+	local dbgfn =
+	function()
+		return debugger(cat9, parse_dap, builtin_cfg.debug, outargs)
+	end
+
+	if outargs[1] == "arcan" then
+		dbgfn =
+		function()
+			return debug_arcan(cat9, builtin_cfg.debug, outargs)
+		end
+	end
+
 	local job = {
 		short = string.format("Debug:launch(%s)", outargs[1]),
-		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, outargs),
+		debugger = dbgfn(),
 		windows = {},
 		check_status = cat9.always_active,
 		["repeat"] = function(self)
@@ -740,7 +755,8 @@ function suggest.debug(args, raw)
 			{
 				"attach",
 				"launch",
-				hint = {
+				hint =
+				{
 					"Attach a new debugger to a job or process-identifer",
 					"Create a new debugging session and have it launch a target",
 				}
