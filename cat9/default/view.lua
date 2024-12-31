@@ -277,6 +277,10 @@ local function view_monitor()
 	return
 end
 
+local function make_editable(job)
+	cat9.make_editable(job, {})
+end
+
 local function view_colour()
 	local job =
 	{
@@ -338,6 +342,11 @@ function builtins.view(job, ...)
 
 -- dynamically loaded views take precedence
 	local arg = {...}
+	if type(arg[1]) == "string" and arg[1] == "edit" then
+		make_editable(job)
+		return
+	end
+
 	local viewer = cat9.views[arg[1]]
 	if viewer then
 		viewer(job, false, arg)

@@ -255,6 +255,7 @@ load_feature("layout.lua")  -- drawing screen, decorations and related handlers
 load_feature("vt100.lua")   -- state machine to plugin decoding
 load_feature("jobmeta.lua") -- job contextual information providers
 load_feature("json.lua")    -- json parsing
+load_feature("editctl.lua") -- making jobs editable
 load_feature("promptmeta.lua") --  prompt contextual information providers
 load_feature("bindings.lua", "config")
 load_builtins("default")
