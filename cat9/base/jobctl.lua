@@ -184,6 +184,7 @@ function cat9.flush_job(job, finish, limit)
 			outlim = outlim - 1
 		end
 	end
+	job.err_buffer.linecount = #job.err_buffer
 
 	return upd, falive
 end
@@ -587,7 +588,7 @@ function cat9.term_handover(cmode, ...)
 	term_handover(cmode, env, "/usr/bin/afsrv_terminal", ...)
 end
 
-function cat9.shmif_handover(cmode, omode, bin, env, argv)
+function cat9.shmif_handover(cmode, omode, bin, env, argv, closure)
 	local dir = root:chdir()
 	cat9.new_window(root, "handover",
 		function(wnd, new)
@@ -595,7 +596,7 @@ function cat9.shmif_handover(cmode, omode, bin, env, argv)
 				return
 			end
 			wnd:chdir(dir)
-			local inp, out, err, pid = wnd:phandover(bin, cmode, argv, env)
+			local inp, out, err, pid = wnd:phandover(bin, omode, argv, env)
 
 -- only create a job entry if we explicitly ask for one
 			if #omode > 0 or cmode == "embed" then
@@ -610,6 +611,9 @@ function cat9.shmif_handover(cmode, omode, bin, env, argv)
 				}
 				job.wnd = new
 				cat9.import_job(job)
+				if closure then
+					closure(job)
+				end
 			end
 		end, cmode
 	)
