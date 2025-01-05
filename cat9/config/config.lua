@@ -193,6 +193,10 @@ return
 		ok_line = {fc = tui.colors.ref_green, bc = tui.colors.text}
 	},
 
+	edit =
+	{
+	},
+
 	glob =
 	{
 		dir_argv = {"/usr/bin/env", "/usr/bin/env", "find", "$path", "-maxdepth", "1", "-type", "d"},
