@@ -179,9 +179,13 @@ function handlers.key(self, sub, keysym, code, mods)
 				cat9.block_readline(root, false)
 				cat9.setup_readline(root)
 				self:update_identity(self:chdir())
+				local sj = cat9.selectedjob
 
-				if cat9.selectedjob then
-					cat9.selectedjob.selected = false
+				if sj then
+					sj.selected = false
+					if sj.handlers.toggle_selected then
+						sj.handlers.toggle_selected(sj, false)
+					end
 				end
 
 			elseif keysym == bnd.window_next then
@@ -247,6 +251,7 @@ function handlers.key(self, sub, keysym, code, mods)
 -- we move selection with CTRL+ARROW|CTRL+HJLK
 			if not cat9.selectedjob and cat9.latestjob then
 				cat9.selectedjob = cat9.latestjob
+
 			elseif not cat9.selectedjob then
 				return
 			end
@@ -255,8 +260,14 @@ function handlers.key(self, sub, keysym, code, mods)
 			root:update_identity(
 				string.format("#%d : %s %s", sj.id, sj.short,
 					sj.exit and (sj.exit == 0 and "ok" or "fail") or "running"))
+
 			sj.selected = true
 			cat9.hide_readline(root)
+
+			if sj.handlers.toggle_selected then
+				sj.handlers.toggle_selected(sj, true)
+			end
+
 			return
 
 		elseif keysym == tui.keys.SPACE then

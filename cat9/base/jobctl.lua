@@ -588,8 +588,10 @@ function cat9.term_handover(cmode, ...)
 	term_handover(cmode, env, "/usr/bin/afsrv_terminal", ...)
 end
 
-function cat9.shmif_handover(cmode, omode, bin, env, argv, closure)
+function cat9.shmif_handover(cmode, omode, bin, env, argv, opts)
 	local dir = root:chdir()
+	opts = opts or {}
+
 	cat9.new_window(root, "handover",
 		function(wnd, new)
 			if not new then
@@ -609,10 +611,12 @@ function cat9.shmif_handover(cmode, omode, bin, env, argv, closure)
 					env = env,
 					dir = dir
 				}
-				job.wnd = new
+				if not opts.block_wnd then
+					job.wnd = new
+				end
 				cat9.import_job(job)
-				if closure then
-					closure(job)
+				if opts.closure then
+					opts.closure(job)
 				end
 			end
 		end, cmode
@@ -766,8 +770,10 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			root:write_to(cx, y+i, num, lineattr)
 			root:write(": ", lineattr)
 			cx = cx + 2 + digits
+			job.line_number_width = 2 + #num
 			ccols = cols - digits - 4
 		else
+			job.line_number_width = 0
 			if on_row then
 				job.mouse.on_col = job.mouse[1] <= cx + #row and 2
 			end
@@ -1161,6 +1167,7 @@ function cat9.import_job(v, noinsert)
 		v.collapsed_rows = config.collapsed_rows
 	end
 
+	v.line_number_width = 0
 	v.bar_color = tui.colors.ui
 	v.row_offset = 1
 	v.col_offset = 0
