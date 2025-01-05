@@ -81,7 +81,8 @@ local function attach_window(key, fact, ...)
 					short = fact,
 					parent = job,
 					data = job.debugger[key],
-					check_status = cat9.always_active
+					check_status = cat9.always_active,
+					block_edit = true
 				})
 		else
 			wnd = fact(cat9, builtin_cfg, job, th, frame, opts)
@@ -137,17 +138,19 @@ views.files = attach_window("files", view_factories.files)
 views.maps = attach_window("maps", view_factories.maps)
 views.watches = attach_window("watches", view_factories.watches)
 
-local function spawn_views(job, set)
+local function spawn_views(job, set, opts)
 	cat9.list_processes(function() end, true)
 
 	activejob = job
-	for i,v in ipairs(builtin_cfg.debug.options) do
-		job.debugger:eval(
-			v,
-			"repl",
-			function()
-			end
-		)
+	if opts then
+		for i,v in ipairs(opts) do
+			job.debugger:eval(
+				v,
+				"repl",
+				function()
+				end
+			)
+		end
 	end
 
 	if not set then
@@ -442,6 +445,8 @@ function cmds.source(job, ...)
 -- do we bind to track a specific thread and/or frame?
 			local thid = tonumber(base[2])
 			local swnd = views.source(job, {}, source, ref[1])
+			swnd:set_thread(thid)
+
 			swnd.source_ref = ref[1]
 
 			local line = tonumber(ref[2])
@@ -577,6 +582,8 @@ function cmds.launch(...)
 		return false, errors.no_target
 	end
 
+	local view_set
+	local opts = builtin_cfg.debug.options
 	local dbgfn =
 	function()
 		return debugger(cat9, parse_dap, builtin_cfg.debug, outargs)
@@ -587,6 +594,9 @@ function cmds.launch(...)
 		function()
 			return debug_arcan(cat9, builtin_cfg.debug, outargs)
 		end
+-- no breakpoint support
+		view_set = {"threads", "stdout", "stderr", "errors"}
+		opts = {}
 	end
 
 	local job = {
@@ -620,7 +630,7 @@ function cmds.launch(...)
 
 	job.data = job.debugger.output
 	cat9.import_job(job)
-	spawn_views(job)
+	spawn_views(job, view_set, opts)
 end
 
 function cmds.attach(...)
@@ -703,9 +713,8 @@ function builtins.debug(...)
 	end
 end
 
-builtins["_default"] =
-function(args)
-	local job = active_job
+local function get_debug_job(args)
+	local job = activejob
 
 	if type(args[1]) == "table" then
 		if args[1].debugger then
@@ -715,19 +724,80 @@ function(args)
 		end
 	end
 
+	return job
+end
+
+builtins["eval"] =
+function(...)
+	local args = {...}
+
+	local job = get_debug_job(args)
+	if not job then
+		return false, errors.no_active
+	end
+
+	local oprompt = cat9.get_prompt
+	if cat9.readline then
+		print("revert")
+		job.root:revert()
+	end
+
+	local opts =
+	{
+		cancellable = true,
+		forward_meta = false,
+		forward_paste = false,
+		forward_mouse = false
+	}
+
+	local rlover
+	rlover =
+	function(self, line)
+		if #line == 0 then
+			cat9.get_prompt = oprompt
+			cat9.block_readline(root, false, false)
+			cat9.reset()
+			return
+		else
+			cat9.set_readline(job.root:readline(rlover, opts), "debug:eval")
+		end
+
+		job.debugger:eval(
+			line, "repl",
+			function()
+			end
+		)
+	end
+
+	cat9.set_readline(job.root:readline(rlover, opts), "debug:eval")
+	cat9.block_readline(root, true, true)
+	cat9.readline:suggest({})
+
+	cat9.get_prompt =
+		function()
+			return {"(lua-repl)"}
+		end
+
+	return job
+end
+
+builtins["_default"] =
+function(args)
+	local job = get_debug_job(args)
+
 	local base = {}
 	local ok, msg = cat9.expand_arg(base, args)
 	if not ok then
 		return false, msg
 	end
 
-	if not activejob then
+	if not job then
 		return false, errors.no_active
 	end
 
 -- other options here is to assume debug #jobid command and when there is no
 -- overlay command, fall back to eval
-	activejob.debugger:eval(
+	job.debugger:eval(
 		table.concat(base, " "), "repl",
 		function()
 			cat9.flag_dirty(activejob)

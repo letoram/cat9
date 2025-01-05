@@ -75,7 +75,8 @@ function(cat9, cfg, job, source, sref)
 		cat9.flag_dirty(wnd)
 	end
 
-	if thid then
+	wnd.set_thread =
+	function(wnd, thid)
 		wnd.selected_bar =
 		{
 			{

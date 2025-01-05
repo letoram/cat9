@@ -214,7 +214,7 @@ local function view_threads(job, x, y, cols, rows, probe)
 				function()
 					local str = frame.ref ~= nil and tostring(frame.ref) or frame.path
 					local str = string.format(
-						"#%d debug #%d source %s%s %d",
+						"#%d debug #%d source \"%s%s\" %d",
 						job.parent.id, job.parent.id,
 						str,
 						(frame.line and ":" .. tostring(frame.line)) or "",
