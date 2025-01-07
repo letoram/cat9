@@ -60,7 +60,7 @@ local wnd =
 	})
 
 wnd.show_line_number = false
-wnd:set_view(view_bpt, slice_bpt, {}, "threads")
+wnd:set_view(view_bpt, slice_bpt, {}, "breakpoints")
 wnd.write_override = write_bpt
 
 return wnd

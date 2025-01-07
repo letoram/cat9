@@ -191,6 +191,10 @@ function process_key(debug)
 				path = "/tmp",
 			}
 			local shmif = string.unpack_shmif_argstr(v)
+			for k,v in pairs(shmif) do
+				print(k, v)
+			end
+
 			if shmif and shmif.type == "stacktrace" then
 				frame.path = shmif.source
 				frame.block_start = tonumber(shmif.start)
@@ -244,7 +248,7 @@ cat9.shmif_handover(
 		"-O", -- monitor through stdout
 		"LOGFD:1",
 		"-C", -- accept commands through stdin
-		"/home/void/.arcan/appl/pipeworld" -- appl to run
+		"/home/void/.arcan/appl/test" -- appl to run
 	},
 	{
 	block_wnd = true,

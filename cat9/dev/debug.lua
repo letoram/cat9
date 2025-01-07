@@ -24,7 +24,8 @@ local view_factories =
 	"variables",
 	"files",
 	"maps",
-	"watches"
+	"watches",
+	"entrypoints"
 }
 
 for i=1,#view_factories do
@@ -137,6 +138,7 @@ views.variables = attach_window("variables", view_factories.variables)
 views.files = attach_window("files", view_factories.files)
 views.maps = attach_window("maps", view_factories.maps)
 views.watches = attach_window("watches", view_factories.watches)
+views.entrypoints = attach_window("entrypoints", view_factories.entrypoints)
 
 local function spawn_views(job, set, opts)
 	cat9.list_processes(function() end, true)
@@ -595,7 +597,7 @@ function cmds.launch(...)
 			return debug_arcan(cat9, builtin_cfg.debug, outargs)
 		end
 -- no breakpoint support
-		view_set = {"threads", "stdout", "stderr", "errors"}
+		view_set = {"threads", "stdout", "stderr", "errors", "entrypoints"}
 		opts = {}
 	end
 
