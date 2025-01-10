@@ -174,7 +174,8 @@ function(thread)
 					pc = v.instructionPointerReference,
 					thread = thread,
 					name = v.name,
-					locals = get_frame_locals
+					locals = get_frame_locals,
+					disassembly = true
 				}
 
 				if v.source then

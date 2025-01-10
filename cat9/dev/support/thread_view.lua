@@ -214,11 +214,12 @@ local function view_threads(job, x, y, cols, rows, probe)
 				function()
 					local str = frame.ref ~= nil and tostring(frame.ref) or frame.path
 					local str = string.format(
-						"#%d debug #%d source \"%s%s\" %d",
+						"#%d debug #%d source \"%s%s\" %d %d",
 						job.parent.id, job.parent.id,
 						str,
 						(frame.line and ":" .. tostring(frame.line)) or "",
-						th.id
+						th.id,
+						i
 					)
 					cat9.parse_string(cat9.readline, str)
 				end
@@ -252,8 +253,10 @@ local function view_threads(job, x, y, cols, rows, probe)
 								set.click[#set] = gen_debug_call(frame.id, "variables")
 							end
 
-							table.insert(set, "Disassemble ")
-							set.click[#set] = gen_debug_call(frame.id, "disassemble")
+							if frame.disassembly then
+								table.insert(set, "Disassemble ")
+								set.click[#set] = gen_debug_call(frame.id, "disassemble")
+							end
 
 							table.insert(data, "")
 							table.insert(data.threads, set)

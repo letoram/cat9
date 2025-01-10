@@ -25,7 +25,8 @@ local view_factories =
 	"files",
 	"maps",
 	"watches",
-	"entrypoints"
+	"entrypoints",
+	"vmstack"
 }
 
 for i=1,#view_factories do
@@ -73,7 +74,7 @@ local function attach_window(key, fact, ...)
 		local dkey = opts.override_key or key
 
 		if job[group][dkey] then
-			return job[group][dkey]
+			return job[group][dkey], false
 		end
 
 		if type(fact) == "string" then
@@ -122,7 +123,7 @@ local function attach_window(key, fact, ...)
 			end
 		)
 
-		return wnd
+		return wnd, true
 	end
 end
 
@@ -139,6 +140,7 @@ views.files = attach_window("files", view_factories.files)
 views.maps = attach_window("maps", view_factories.maps)
 views.watches = attach_window("watches", view_factories.watches)
 views.entrypoints = attach_window("entrypoints", view_factories.entrypoints)
+views.vmstack = attach_window("vmstack", view_factories.vmstack)
 
 local function spawn_views(job, set, opts)
 	cat9.list_processes(function() end, true)
@@ -314,8 +316,14 @@ function cmds.thread(job, ...)
 		end,
 		variables =
 		function()
-			views.variables(job,
+			local wnd, new = views.variables(job,
 				{invalidated = frame, override_key = "locals"}, th, frame)
+-- swap tracked scope
+			if not new then
+				wnd.frameid = frame
+				wnd.thread = th
+				wnd:invalidated()
+			end
 		end,
 		arguments =
 		function()
@@ -419,6 +427,10 @@ function(job, ...)
 	end
 end
 
+-- arguments:
+--  base[1] source file:line
+--  thread identifier
+--  [frame identifier]
 function cmds.source(job, ...)
 	local set = {...}
 	local base = {}
@@ -447,8 +459,8 @@ function cmds.source(job, ...)
 -- do we bind to track a specific thread and/or frame?
 			local thid = tonumber(base[2])
 			local swnd = views.source(job, {}, source, ref[1])
-			swnd:set_thread(thid)
 
+			swnd:set_thread(thid)
 			swnd.source_ref = ref[1]
 
 			local line = tonumber(ref[2])
@@ -464,7 +476,12 @@ function cmds.source(job, ...)
 			if not th then
 				return
 			end
+
+	-- do we have tracking for this window? then stop.
 			swnd.thid = thid
+			if swnd.track then
+				return
+			end
 
 			local synch_markers =
 			function()
@@ -478,29 +495,33 @@ function cmds.source(job, ...)
 				cat9.flag_dirty(swnd)
 			end
 
-			local track =
+			local fid = tonumber(base[3]) or 1
+
+			swnd.track =
 			function(th)
-				if th.stack[1].path ~= ref[1] then
-					job.debugger:source(th.stack[1].path,
+				if th.stack[fid] and -- frame not dead while waiting?
+					th.stack[fid].line >= 0 and -- referring to actual source?
+					th.stack[fid].path ~= ref[1] then -- source changed from initial?
+					job.debugger:source(th.stack[fid].path,
 						function(source)
-							th.stack[1].source = th.stack[1].line
-							swnd.source_ref = th.stack[1].path
+							th.stack[fid].source = th.stack[fid].line
+							swnd.source_ref = th.stack[ifd].path
 						end
 					)
 				else
-					swnd:move_to(th.stack[1].line)
+					swnd:move_to(th.stack[fid].line)
 				end
 				synch_markers()
 			end
 
 			synch_markers()
-			table.insert(th.handlers.invalidated, track)
+			table.insert(th.handlers.invalidated, swnd.track)
 
 -- detach tracking if we terminate
 			table.insert(swnd.hooks.on_destroy,
 				function()
 					for i=1,#th.handlers.invalidated do
-						if th.handlers[i] == track then
+						if th.handlers[i] == swnd.track then
 							table.remove(th.handlers.invalidated, i)
 							break
 						end
@@ -597,7 +618,7 @@ function cmds.launch(...)
 			return debug_arcan(cat9, builtin_cfg.debug, outargs)
 		end
 -- no breakpoint support
-		view_set = {"threads", "stdout", "stderr", "errors", "entrypoints"}
+		view_set = {"threads", "stdout", "stderr", "errors", "entrypoints", "vmstack"}
 		opts = {}
 	end
 
@@ -740,7 +761,6 @@ function(...)
 
 	local oprompt = cat9.get_prompt
 	if cat9.readline then
-		print("revert")
 		job.root:revert()
 	end
 

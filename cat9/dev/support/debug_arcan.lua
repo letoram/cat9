@@ -24,6 +24,10 @@
 return
 function(cat9, args, target)
 
+local errors = {
+	no_frame = "missing requested frame %d",
+}
+
 local synch_frame =
 -- Arcan- specific debugger to cover both the needs of stepping
 function(thread)
@@ -77,9 +81,13 @@ local function ensure_thread(dbg, id)
 		locals = function(th, fid, cb)
 			local frame = th:frame(fid)
 			if not frame then
-				cb({error = string.format(errors.no_frame, fid)})
+				cb({error = string.format(errors.no_frame, fid or -1)})
+			else
+				frame:locals(cb)
 			end
-			frame:locals(cb)
+		end,
+		stackvars = function(th, cb)
+			cb(th.vmstack)
 		end,
 		frame = function(th, fid)
 			for i=1,#th.stack do
@@ -88,6 +96,7 @@ local function ensure_thread(dbg, id)
 				end
 			end
 		end,
+		vmstack = {},
 		stack = {},
 		handlers = {
 			invalidated = {}
@@ -166,17 +175,46 @@ function Debugger:set_log(login, logout)
 end
 
 local function get_frame_locals(frame, cb)
--- each local:
---  ref = someref
---  :modify(val, val)
---  :fetch(var, cb)
---  variables = {}
+	cb({locals = { variables = frame.locals_tbl }})
+end
+
+local function gen_local(frame, shmif)
+	local tbl =
+	{
+		ref = tonumber(shmif.index),
+		type = shmif.vartype and tonumber(shmif.vartype) or "nil",
+		value = shmif.value,
+		name = shmif.name,
+		modify =
+		function(var, val)
+			print("set", frame.id, shmif.index, val)
+		end,
+		fetch =
+		function(var, cb)
+			if var.type ~= "table" then
+				cb(var.value or "nil")
+			end
+			print("fetch table")
+-- if table we need to fetch that specifically and hierarchically
+-- so maintain a queue for that with cb reference retained
+		end
+	}
+
+	if shmif.vartype == "table" then
+		tbl.namedVariables = tonumber(shmif.length) + tonumber(shmif.keys)
+	elseif not tbl.value then
+		tbl.value = "nil"
+	end
+
+	return tbl
 end
 
 function process_key(debug)
 -- BEGINKV is special as its contents will depend on if we ran dumpstate or
 -- dumpkeys, this is because how arcan-net does it based on exit status
 	if debug.key.name == "BACKTRACE" then
+		local stack = debug.data.threads[1].stack
+
 		for i,v in ipairs(debug.key) do
 			local frame = {
 				id = i,
@@ -187,23 +225,40 @@ function process_key(debug)
 				thread = 0,
 				name = "",
 				locals = get_frame_locals,
+				locals_tbl = {},
 				source = "nop",
 				path = "/tmp",
 			}
 			local shmif = string.unpack_shmif_argstr(v)
-			for k,v in pairs(shmif) do
-				print(k, v)
-			end
 
+-- some frames of anonymous inner functions we should resolve the outer name
+-- afterwards as a fixup and propagate onwards
 			if shmif and shmif.type == "stacktrace" then
 				frame.path = shmif.source
+				frame.source = frame.path
 				frame.block_start = tonumber(shmif.start)
 				frame.block_end = tonumber(shmif["end"])
 				frame.line = tonumber(shmif.current)
 				frame.line_end = current
 				frame.name = shmif.name
-				table.insert(debug.data.threads[1].stack, frame)
+				frame.id = tonumber(shmif.frame) or i
+				table.insert(stack, frame)
+
+			elseif shmif and shmif.type == "local" then
+				table.insert(stack[#stack].locals_tbl, gen_local(stack[#stack], shmif))
 			end
+		end
+
+	elseif debug.key.name == "STACK" then
+		debug.data.threads[1].vmstack = {}
+		for i,v in ipairs(debug.key) do
+			print("addstack", v)
+		end
+
+		elseif debug.key.name == "ERROR" then
+		for _,v in ipairs(debug.key) do
+			print("fixme: format error line")
+			debug.errors:add_line(debug, v)
 		end
 
 	elseif debug.key.name == "SOURCE" then
@@ -213,13 +268,28 @@ function process_key(debug)
 			debug.source_closure(table.concat(debug.key, "\n"))
 			debug.source_closure = nil
 		end
+	else
+		print("unhandled key", debug.key.name)
 	end
-
-	invalidate_threads(debug)
 end
 
 function Debugger:terminate(hard)
 end
+
+local function add_tbl_line(tbl, dbg, line)
+-- presenting the number as a timeline gives weird interactions with the default
+-- crop view, track the counter as linear between the buffers but don't add it to
+-- the explicit data for now
+	line = string.trim(line)
+	if #line == 0 then
+		return
+	end
+
+	table.insert(tbl, line)
+	tbl.linecount = tbl.linecount + 1
+	tbl.bytecount = tbl.bytecount + #line
+end
+
 
 local debug = setmetatable(
 {
@@ -232,6 +302,9 @@ local debug = setmetatable(
 		breakpoints = {},
 		sources = {}
 	},
+	stdout = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
+	output = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
+	errors = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 
 	job = job,
 }, {__index = Debugger})
@@ -269,13 +342,15 @@ cat9.shmif_handover(
 		table.insert(
 			debug.job.hooks.on_data,
 			function(line, _, _)
+				local th = ensure_thread(debug, 1)
 				line = string.sub(line, 1, -2) -- trailing linefeed
 
 -- special cases: WAITING, FINISHED
 				if line == "#WAITING" then
-					local th = ensure_thread(debug, 1)
-					th.state = "stopped"
-					invalidate_threads(debug)
+					if th.state ~= "stopped" then
+						th.state = "stopped"
+						invalidate_threads(debug)
+					end
 				elseif string.sub(line, 1, 4) == "#END" then
 					if debug.key and string.sub(line, 5) == debug.key.name then
 						process_key(debug)
@@ -303,8 +378,15 @@ cat9.shmif_handover(
 						table.insert(debug.key, line)
 					end
 
-				else
-					print("unexpected", line)
+-- print output from the debugee?
+				elseif th.state ~= "stopped" then
+					local shmif = string.unpack_shmif_argstr(line)
+					if shmif and shmif.type and shmif.value then
+						debug.stdout:add_line(debug,
+							string.format("%s: %s", shmif.type, shmif.value))
+					else
+						print("unexpected", line)
+					end
 				end
 			end
 		)

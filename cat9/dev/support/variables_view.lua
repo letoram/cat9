@@ -49,7 +49,7 @@ local function var_click(job, btn, ofs, yofs, mods)
 		cat9.readline:set(
 			string.format(
 				"#%d debug #%d thread %d %d watches %s %s",
-				job.id, job.id, job.thread.id, frameid,
+				job.id, job.id, job.thread.id, job.frameid,
 				opts.scope or "locals", table.concat(namepath, " ")
 			)
 		)
@@ -107,14 +107,20 @@ cat9.import_job({
 	short = "Debug:" .. (opts.scope and opts.scope or "variables"),
 	parent = job,
 	thread = th,
+	frameid = frameid,
 	data = {bytecount = 0, linecount = 0}
 })
 
 wnd.invalidated =
 function()
 -- locals might be pending, defer update until that happens
-	th:locals(frameid,
+	th:locals(wnd.frameid,
 		function(locals)
+			print("requested locals for", wnd.frameid)
+			if not wnd.frameid then
+				print(debug.traceback())
+			end
+
 			wnd.data = {linecount = 0, bytecount = 0, vars = {}}
 			local key = opts.scope and opts.scope or "locals"
 
@@ -123,6 +129,7 @@ function()
 
 -- align left part for first layer
 				for i,v in ipairs(locals[key].variables) do
+					print(i, v.name)
 					if #v.name > max then
 						max = #v.name
 					end
