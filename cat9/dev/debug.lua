@@ -508,7 +508,7 @@ function cmds.source(job, ...)
 							swnd.source_ref = th.stack[ifd].path
 						end
 					)
-				else
+				elseif th.stack[fid] then
 					swnd:move_to(th.stack[fid].line)
 				end
 				synch_markers()

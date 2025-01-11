@@ -214,6 +214,7 @@ function process_key(debug)
 -- dumpkeys, this is because how arcan-net does it based on exit status
 	if debug.key.name == "BACKTRACE" then
 		local stack = debug.data.threads[1].stack
+		stack.entrypoint = "(unknown)"
 
 		for i,v in ipairs(debug.key) do
 			local frame = {
@@ -230,10 +231,14 @@ function process_key(debug)
 				path = "/tmp",
 			}
 			local shmif = string.unpack_shmif_argstr(v)
+			if not shmif then
+				debug.errors:add_line("Broken backtrace: " .. v)
+				return
+			end
 
 -- some frames of anonymous inner functions we should resolve the outer name
 -- afterwards as a fixup and propagate onwards
-			if shmif and shmif.type == "stacktrace" then
+			if shmif.type == "stacktrace" then
 				frame.path = shmif.source
 				frame.source = frame.path
 				frame.block_start = tonumber(shmif.start)
@@ -244,9 +249,21 @@ function process_key(debug)
 				frame.id = tonumber(shmif.frame) or i
 				table.insert(stack, frame)
 
-			elseif shmif and shmif.type == "local" then
+			elseif shmif.type == "entrypoint" then
+				stack.entrypoint = shmif.kind
+
+			elseif shmif.type == "local" then
 				table.insert(stack[#stack].locals_tbl, gen_local(stack[#stack], shmif))
 			end
+		end
+
+-- fixup stack in reverse, propagate name into (null) named ones
+		local lastname = stack.entrypoint
+		for i=#stack,1,-1 do
+			if stack[i].name == "(null)" then
+				stack[i].name = lastname
+			end
+			lastname = stack[i].name
 		end
 
 	elseif debug.key.name == "STACK" then
@@ -257,8 +274,14 @@ function process_key(debug)
 
 		elseif debug.key.name == "ERROR" then
 		for _,v in ipairs(debug.key) do
-			print("fixme: format error line")
-			debug.errors:add_line(debug, v)
+			local source, line, msg = string.match(v, "%[string%s(.+)%]%:(%d+):(.+)")
+			if not source or not line or not msg then
+				debug.errors:add_line(debug, "couldn't parse error message, raw:")
+				debug.errors:add_line(debug, v)
+			else
+-- can get string.sub 2,-2 from source for the full filename
+				debug.errors:add_line(debug, msg)
+			end
 		end
 
 	elseif debug.key.name == "SOURCE" then
@@ -320,7 +343,7 @@ cat9.shmif_handover(
 		string.format("arcan(debug:%s)", applname), -- actual name
 		"-O", -- monitor through stdout
 		"LOGFD:1",
-		"-C", -- accept commands through stdin
+		"-C", "-", -- accept commands through stdin
 		"/home/void/.arcan/appl/test" -- appl to run
 	},
 	{
