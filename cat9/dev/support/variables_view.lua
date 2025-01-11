@@ -116,11 +116,6 @@ function()
 -- locals might be pending, defer update until that happens
 	th:locals(wnd.frameid,
 		function(locals)
-			print("requested locals for", wnd.frameid)
-			if not wnd.frameid then
-				print(debug.traceback())
-			end
-
 			wnd.data = {linecount = 0, bytecount = 0, vars = {}}
 			local key = opts.scope and opts.scope or "locals"
 
@@ -129,7 +124,6 @@ function()
 
 -- align left part for first layer
 				for i,v in ipairs(locals[key].variables) do
-					print(i, v.name)
 					if #v.name > max then
 						max = #v.name
 					end
@@ -149,7 +143,7 @@ function()
 end
 
 wnd:invalidated()
-wnd.show_line_numbers = false
+wnd.show_line_number = false
 wnd.handlers.mouse_button = var_click
 wnd.write_override = write_vars
 

@@ -39,7 +39,7 @@ function(thread)
 end
 
 local function invalidate_threads(dbg)
-	for k,thread in pairs(dbg.data.threads) do
+	for k,thread in ipairs(dbg.data.threads) do
 		for i=#thread.handlers.invalidated,1,-1 do
 			thread.handlers.invalidated[i](thread)
 		end
@@ -50,11 +50,18 @@ local function ensure_thread(dbg, id)
 	if dbg.data.threads[id] then
 		return dbg.data.threads[id]
 	end
+
 	local th
 	th = {
 		id = id,
 		state = "unknown",
 		dbg = dbg,
+		vmstack = {
+			locals =
+			function(_, cb)
+				cb({locals = { variables = th.vmstack }})
+			end
+		},
 		synch_frames = synch_frame,
 		step = function(th)
 			dbg.job.inp:write("stepnext\n")
@@ -86,17 +93,17 @@ local function ensure_thread(dbg, id)
 				frame:locals(cb)
 			end
 		end,
-		stackvars = function(th, cb)
-			cb(th.vmstack)
-		end,
 		frame = function(th, fid)
+			if fid == -1 then
+				return th.vmstack
+			end
+
 			for i=1,#th.stack do
 				if th.stack[i].id == fid then
 					return th.stack[i]
 				end
 			end
 		end,
-		vmstack = {},
 		stack = {},
 		handlers = {
 			invalidated = {}
@@ -184,7 +191,7 @@ local function gen_local(frame, shmif)
 		ref = tonumber(shmif.index),
 		type = shmif.vartype and tonumber(shmif.vartype) or "nil",
 		value = shmif.value,
-		name = shmif.name,
+		name = shmif.name or "(missing)",
 		modify =
 		function(var, val)
 			print("set", frame.id, shmif.index, val)
@@ -194,6 +201,13 @@ local function gen_local(frame, shmif)
 			if var.type ~= "table" then
 				cb(var.value or "nil")
 			end
+
+-- to fetch or modify a table:
+--  add request to fetch queue with a callback and key
+--  g(lobal):ofs:cap:key1:key2:..keyn
+--  s(tack) :n  :(local index):ofs:cap:key1:key2:..keyn
+--  v(mstck):n:ofs:cap:key1:key2:..keyn
+--
 			print("fetch table")
 -- if table we need to fetch that specifically and hierarchically
 -- so maintain a queue for that with cb reference retained
@@ -266,10 +280,19 @@ function process_key(debug)
 			lastname = stack[i].name
 		end
 
+-- stack is just a special frame-id (with a possible stack marker for each frame
 	elseif debug.key.name == "STACK" then
-		debug.data.threads[1].vmstack = {}
+		for i=#debug.data.threads[1].vmstack, 1, -1 do
+			table.remove(debug.data.threads[1].vmstack, i)
+		end
+
 		for i,v in ipairs(debug.key) do
-			print("addstack", v)
+			local shmif = string.unpack_shmif_argstr(v)
+			if not shmif then
+				debug.errors:add_line("Broken VM stack: " .. v)
+				return
+			end
+			table.insert(debug.data.threads[1].vmstack, gen_local({id = -1}, shmif))
 		end
 
 		elseif debug.key.name == "ERROR" then
@@ -328,7 +351,9 @@ local debug = setmetatable(
 	stdout = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	output = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	errors = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
-
+	features = {
+		launch = true,
+	},
 	job = job,
 }, {__index = Debugger})
 
@@ -372,8 +397,9 @@ cat9.shmif_handover(
 				if line == "#WAITING" then
 					if th.state ~= "stopped" then
 						th.state = "stopped"
-						invalidate_threads(debug)
 					end
+					invalidate_threads(debug)
+
 				elseif string.sub(line, 1, 4) == "#END" then
 					if debug.key and string.sub(line, 5) == debug.key.name then
 						process_key(debug)

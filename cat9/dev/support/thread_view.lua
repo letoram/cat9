@@ -105,6 +105,18 @@ local function view_threads(job, x, y, cols, rows, probe)
 	local active_row
 	local active_col
 
+	local gen_debug_call =
+		function(th, frame, arg)
+			return
+			function()
+				local str = string.format(
+						"#%d debug #%d thread %d %s %s",
+						job.parent.id, job.parent.id, th.id, frame, arg
+				)
+				cat9.parse_string(cat9.readline, str)
+			end
+	end
+
 -- sorted set, then build placeholder with lines in data, and the
 -- actual relevant components and click handlers in .threads
 	for i,v in ipairs(set) do
@@ -141,13 +153,21 @@ local function view_threads(job, x, y, cols, rows, probe)
 			table.insert(newth, ") ")
 
 -- if there is any watchset, also add the option to freerun
-			table.insert(newth, "Watch")
-			newth.click[#newth] = function()
-				local str = string.format(
-					"#%d debug #%d thread %d watches thread",
-					job.parent.id, job.parent.id, th.id
-				)
-				cat9.parse_string(cat9.readline, str)
+			if dbg.features.watch then
+				table.insert(newth, "Watch")
+				newth.click[#newth] = function()
+					local str = string.format(
+						"#%d debug #%d thread %d watches thread",
+						job.parent.id, job.parent.id, th.id
+					)
+					cat9.parse_string(cat9.readline, str)
+				end
+				table.insert(newth, " ")
+			end
+
+			if th.vmstack then
+				table.insert(newth, "Stack")
+				newth.click[#newth] = gen_debug_call(th, -1, "vmstack")
 			end
 		end
 
@@ -163,18 +183,6 @@ local function view_threads(job, x, y, cols, rows, probe)
 				dbg:continue(th.id)
 			else
 				dbg:pause(th.id)
-			end
-		end
-
-		local gen_debug_call =
-		function(frame, arg)
-			return
-			function()
-				local str = string.format(
-						"#%d debug #%d thread %d %s %s",
-						job.parent.id, job.parent.id, th.id, frame, arg
-				)
-				cat9.parse_string(cat9.readline, str)
 			end
 		end
 
@@ -231,7 +239,7 @@ local function view_threads(job, x, y, cols, rows, probe)
 
 							if locals.globals then
 								table.insert(set, "Globals ")
-								set.click[#set] = gen_debug_call(frame.id, "globals")
+								set.click[#set] = gen_debug_call(th, frame.id, "globals")
 							end
 
 -- these should probably just be shown as
@@ -240,22 +248,22 @@ local function view_threads(job, x, y, cols, rows, probe)
 -- back into any source view.
 							if locals.arguments then
 								table.insert(set, "Arguments ")
-								set.click[#set] = gen_debug_call(frame.id, "arguments")
+								set.click[#set] = gen_debug_call(th, frame.id, "arguments")
 							end
 
 							if locals.registers then
 								table.insert(set, "Registers ")
-								set.click[#set] = gen_debug_call(frame.id, "registers")
+								set.click[#set] = gen_debug_call(th, frame.id, "registers")
 							end
 
 							if locals.locals then
 								table.insert(set, "Variables ")
-								set.click[#set] = gen_debug_call(frame.id, "variables")
+								set.click[#set] = gen_debug_call(th, frame.id, "variables")
 							end
 
 							if frame.disassembly then
 								table.insert(set, "Disassemble ")
-								set.click[#set] = gen_debug_call(frame.id, "disassemble")
+								set.click[#set] = gen_debug_call(th, frame.id, "disassemble")
 							end
 
 							table.insert(data, "")

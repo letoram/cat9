@@ -25,8 +25,7 @@ local view_factories =
 	"files",
 	"maps",
 	"watches",
-	"entrypoints",
-	"vmstack"
+	"entrypoints"
 }
 
 for i=1,#view_factories do
@@ -325,6 +324,11 @@ function cmds.thread(job, ...)
 				wnd:invalidated()
 			end
 		end,
+		vmstack =
+		function()
+			local wnd, new = views.variables(job,
+				{invalidated = frame, override_key = "vmstack"}, th, -1)
+		end,
 		arguments =
 		function()
 			views.variables(job,
@@ -505,7 +509,7 @@ function cmds.source(job, ...)
 					job.debugger:source(th.stack[fid].path,
 						function(source)
 							th.stack[fid].source = th.stack[fid].line
-							swnd.source_ref = th.stack[ifd].path
+							swnd.source_ref = th.stack[fid].path
 						end
 					)
 				elseif th.stack[fid] then
@@ -618,7 +622,7 @@ function cmds.launch(...)
 			return debug_arcan(cat9, builtin_cfg.debug, outargs)
 		end
 -- no breakpoint support
-		view_set = {"threads", "stdout", "stderr", "errors", "entrypoints", "vmstack"}
+		view_set = {"threads", "stdout", "stderr", "errors", "entrypoints"}
 		opts = {}
 	end
 

@@ -927,6 +927,14 @@ local debug = setmetatable(
 	},
 	request = {},
 	response = {},
+	features = {
+		attach = true,
+		launch = true,
+		watch = true,
+		registers = true,
+		breakpoints = true,
+		disassemble = true
+	},
 	clock = 1,
 	pending = 0,
 	output = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
