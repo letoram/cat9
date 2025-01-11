@@ -1,25 +1,28 @@
--- Arcan- specific debugger to cover both the needs of stepping
--- arcan/arcan_lwa via the --monitor command, and through arcan-net to
--- attach to a running controller and debugging an appl.
+-- Arcan- specific debugger to cover both the needs of stepping arcan/arcan_lwa
+-- via the --monitor command, and through arcan-net to attach to a running
+-- controller and debugging an appl.
 --
 -- The only 'special' thing versus DAP, other than a lot of the
 -- functions matching raw memory doesn't make sense, is that we
 -- have the .lua snapshot format to create a view for.
 --
--- Since everything is single threaded, the thread interface makes
--- more sense to be used for when we can attach to an appl-controller
--- and step/interface with that. Then we map that as thread 2 .. n
+-- Since everything is single threaded, the thread interface makes more sense
+-- to be used for when we can attach to an appl-controller and step/interface
+-- with that. Then we map that as thread 2 .. n.
 --
--- for breakpoints we want a special view for hooks:
---
--- clock, input, input_raw, input_end, preframe, postframe,
--- adopt, autores, autofont, displaystate, displayreset,
--- frameserver, mesh, calctarget, lwa, image, audio, main,
--- shutdown, nbio_read, nbio_write, nbio_data, handover,
--- trace
---
--- toggle_hook(name)
---  then tracking window for the states
+-- Todo:
+--   [ ] - expand table
+--   [ ] - support varargs
+--   [ ] - modify local
+--   [ ] - breakpoint support
+--   [ ] - completion helper for arcan launch
+--   [ ] - add local attach support
+--   [ ] - view for showing snapshots and snapshot deltas
+--   [ ] - copy table to spreadsheet
+--   [ ] - move reads/writes to thread specific inp/outp
+--   [ ] - port interface to arcan-net directory
+--   [ ] - port interface to afsrv_terminal:lua
+--   [ ] - arcan_db key to trigger debugger
 --
 return
 function(cat9, args, target)
@@ -185,12 +188,13 @@ local function get_frame_locals(frame, cb)
 	cb({locals = { variables = frame.locals_tbl }})
 end
 
-local function gen_local(frame, shmif)
+local function gen_local(debug, frame, shmif, parent)
 	local tbl =
 	{
 		ref = tonumber(shmif.index),
 		type = shmif.vartype and tonumber(shmif.vartype) or "nil",
 		value = shmif.value,
+		parent = parent,
 		name = shmif.name or "(missing)",
 		modify =
 		function(var, val)
@@ -202,15 +206,19 @@ local function gen_local(frame, shmif)
 				cb(var.value or "nil")
 			end
 
--- to fetch or modify a table:
---  add request to fetch queue with a callback and key
---  g(lobal):ofs:cap:key1:key2:..keyn
---  s(tack) :n  :(local index):ofs:cap:key1:key2:..keyn
---  v(mstck):n:ofs:cap:key1:key2:..keyn
---
-			print("fetch table")
--- if table we need to fetch that specifically and hierarchically
--- so maintain a queue for that with cb reference retained
+-- walk parents and build forward- list of indices
+			table.insert(debug.queue, {"TABLEVALUE", cb})
+			local base = string.format("table %d ", frame.id)
+			local tree = {tostring(var.ref)}
+			local cv = var.parent
+			while cv do
+				table.insert(tree, 1, tostring(cv.ref))
+				cv = cv.parent
+			end
+
+-- need to check if the table reference is local, stack, vararg, global
+			dbg.job.inp:write(string.format(
+				"table l %d %s\n", frame.id, table.concat(tree, " ")))
 		end
 	}
 
@@ -224,6 +232,13 @@ local function gen_local(frame, shmif)
 end
 
 function process_key(debug)
+-- priority if the key matches a queued one
+	if debug.queue[1] and debug.queue[1][1] == debug.key.name then
+		local ent = table.remove(debug.queue, 1)
+		ent(debug.key)
+		return
+	end
+
 -- BEGINKV is special as its contents will depend on if we ran dumpstate or
 -- dumpkeys, this is because how arcan-net does it based on exit status
 	if debug.key.name == "BACKTRACE" then
@@ -267,7 +282,7 @@ function process_key(debug)
 				stack.entrypoint = shmif.kind
 
 			elseif shmif.type == "local" then
-				table.insert(stack[#stack].locals_tbl, gen_local(stack[#stack], shmif))
+				table.insert(stack[#stack].locals_tbl, gen_local(debug, stack[#stack], shmif))
 			end
 		end
 
@@ -292,7 +307,7 @@ function process_key(debug)
 				debug.errors:add_line("Broken VM stack: " .. v)
 				return
 			end
-			table.insert(debug.data.threads[1].vmstack, gen_local({id = -1}, shmif))
+			table.insert(debug.data.threads[1].vmstack, gen_local(debug, {id = -1}, shmif))
 		end
 
 		elseif debug.key.name == "ERROR" then
@@ -348,6 +363,7 @@ local debug = setmetatable(
 		breakpoints = {},
 		sources = {}
 	},
+	queue = {},
 	stdout = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	output = {bytecount = 0, linecount = 0, add_line = add_tbl_line},
 	errors = {bytecount = 0, linecount = 0, add_line = add_tbl_line},

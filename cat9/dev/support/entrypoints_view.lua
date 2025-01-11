@@ -50,7 +50,7 @@ local function pack_set(cols, set)
 
 -- pack to fit cols without wrapping or cropping
 	for i,v in ipairs(set) do
-		if #v >= cols - 1 then
+		if #str + #v >= cols - 1 then
 			if #str == 0 then
 				return res
 			end
