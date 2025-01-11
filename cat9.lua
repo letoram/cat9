@@ -308,6 +308,12 @@ end
 local root = lash.root
 root:update_identity(root:chdir())
 
+if tui.arguments then
+	for i,v in ipairs(tui.arguments) do
+		cat9.parse_string(cat9.readline, v)
+	end
+end
+
 while root:process() do
 	if (cat9.process_jobs()) then
 -- updating the current prompt will also cause the contents to redraw
