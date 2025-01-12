@@ -169,6 +169,11 @@ local function view_threads(job, x, y, cols, rows, probe)
 				table.insert(newth, "Stack")
 				newth.click[#newth] = gen_debug_call(th, -1, "vmstack")
 			end
+
+			if th.tls then
+				table.insert(newth, "Globals")
+				newth.click[#newth] = gen_debug_call(th, -1, "globals")
+			end
 		end
 
 		newth.click[1] =
