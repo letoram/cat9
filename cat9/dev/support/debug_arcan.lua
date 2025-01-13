@@ -205,7 +205,38 @@ local function get_frame_locals(frame, cb)
 	cb({locals = { variables = frame.locals_tbl }})
 end
 
-local function gen_local(debug, frame, shmif, parent)
+local gen_local
+local function handler_for_tbl(debug, frame, var, cb)
+-- having a scope filter in presentation would be useful also outside global
+--     global_filter[shmif.tblkey]
+-- in order to highlight new/changed keys
+	return
+	function(key)
+		var.variables = {}
+
+-- we have table:index:tblkey:type:value | name
+		for i,v in ipairs(key) do
+			local shmif = string.unpack_shmif_argstr(v)
+			local repack =
+			{
+				index = shmif.index,
+				vartype = shmif.vartype,
+				value = shmif.value,
+				parent = val,
+				name = shmif.tblkey,
+				length = shmif.length,
+				keys = shmif.keys
+			}
+
+-- append accessor functions and let us recurse into hierarchies
+			table.insert(var.variables, gen_local(debug, frame, repack, var))
+		end
+		cb(var)
+	end
+end
+
+gen_local =
+function(debug, frame, shmif, parent)
 	local tbl =
 	{
 		ref = tonumber(shmif.index),
@@ -224,16 +255,9 @@ local function gen_local(debug, frame, shmif, parent)
 			end
 
 -- walk parents and build forward- list of indices
-			table.insert(debug.queue, {"TABLE",
-				function(key)
-					for i,v in ipairs(key) do
-						local shmif = string.unpack_shmif_argstr(v)
-						print(v)
-					end
-				end
-			})
-			local base = string.format("table %d ", frame.id)
-			local tree = {tostring(var.ref)}
+			table.insert(debug.queue, {"TABLE", handler_for_tbl(debug, frame, var, cb)})
+			local tree = {tonumber(shmif.index)}
+
 			local cv = var.parent
 			while cv do
 				table.insert(tree, 1, tostring(cv.ref))
@@ -241,10 +265,9 @@ local function gen_local(debug, frame, shmif, parent)
 			end
 
 -- need to check if the table reference is local, stack, vararg, global
---			local line = string.format(
---				"table l %d %s\n", frame.id, table.concat(tree, " "))
---				print(line)
-			debug.job.inp:write("table g\n")
+			local line = string.format(
+				"table l %d %s\n", frame.id, table.concat(tree, " "))
+			debug.job.inp:write(line)
 		end
 	}
 
