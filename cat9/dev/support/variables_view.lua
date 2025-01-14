@@ -14,12 +14,15 @@ local function write_vars(job, x, y, row, set, ind, _, selected)
 end
 
 local function var_click(job, btn, ofs, yofs, mods)
-	if not cat9.readline or not job.data[yofs] then
+	local row = yofs + job.row_offset - 1
+	local var = job.data.vars[row]
+
+	if not cat9.readline or not var then
 		return false
 	end
 
-	local var = job.data.vars[yofs]
-	if var.namedVariables and var.namedVariables > 0 then
+-- expand table?
+	if btn == 1 and var.namedVariables and var.namedVariables > 0 then
 		if not var.variables then
 			var:fetch(
 				function(inv)
@@ -34,8 +37,9 @@ local function var_click(job, btn, ofs, yofs, mods)
 
 		return true
 
+-- right click to add to watchset
 	elseif btn == 2 then
-		local cv = job.data.vars[yofs]
+		local cv = var
 
 -- need to handle nested structs so reverse-build a path up to the scope,
 -- but the outmost one is the variable scope itself
@@ -54,6 +58,10 @@ local function var_click(job, btn, ofs, yofs, mods)
 			)
 		)
 		return true
+
+-- let wheel actions through for scrolling
+	elseif btn ~= 1 then
+		return false
 	end
 
 -- with modifier click a variable tracker should be spawned or appended to
@@ -66,7 +74,7 @@ local function var_click(job, btn, ofs, yofs, mods)
 			function(self, line)
 				cat9.get_prompt = oprompt
 				if line and #line > 0 then
-					job.data.vars[yofs]:modify(line)
+					var:modify(line)
 				end
 				cat9.block_readline(lash.root, false, false)
 				cat9.reset()
@@ -80,10 +88,10 @@ local function var_click(job, btn, ofs, yofs, mods)
 	)
 	cat9.block_readline(lash.root, true, true)
 	cat9.get_prompt = function()
-		return {"(set " .. job.data.vars[yofs].name .. ") "}
+		return {"(set " .. var.name .. ") "}
 	end
 
-	cat9.readline:set(job.data.vars[yofs].value)
+	cat9.readline:set(var.value)
 	return true
 end
 

@@ -11,7 +11,6 @@
 -- with that. Then we map that as thread 2 .. n.
 --
 -- Todo:
---   [ ] - expand table
 --   [ ] - support varargs
 --   [ ] - modify local
 --   [ ] - breakpoint support
@@ -37,6 +36,7 @@ function(cat9, args, target)
 --
 local global_filter =
 	loadfile(string.format("%s/cat9/dev/support/arcan_globals.lua", lash.scriptdir))()
+local gen_local
 
 local errors = {
 	no_frame = "missing requested frame %d",
@@ -70,12 +70,6 @@ local function ensure_thread(dbg, id)
 		id = id,
 		state = "unknown",
 		dbg = dbg,
-		globals = {
-			locals =
-			function(_, cb)
-				dbg.job.inp:write("table g\n")
-			end
-		},
 		vmstack = {
 			locals =
 			function(_, cb)
@@ -201,12 +195,24 @@ function Debugger:set_log(login, logout)
 
 end
 
-local function get_frame_locals(frame, cb)
-	cb({locals = { variables = frame.locals_tbl }})
+local function get_frame_locals(debug, frame, cb)
+	cb(
+		{
+			locals = { variables = frame.locals_tbl },
+			globals = { variables = frame.globals_tbl }
+		}
+	)
 end
 
-local gen_local
-local function handler_for_tbl(debug, frame, var, cb)
+local function frame_filter(frame, var, scope)
+	if not frame.filters or not frame.filters[scope] then
+		return
+	end
+
+	return frame.filters[scope][var.name] ~= nil
+end
+
+local function handler_for_tbl(debug, frame, var, cb, scope)
 -- having a scope filter in presentation would be useful also outside global
 --     global_filter[shmif.tblkey]
 -- in order to highlight new/changed keys
@@ -225,22 +231,34 @@ local function handler_for_tbl(debug, frame, var, cb)
 				parent = val,
 				name = shmif.tblkey,
 				length = shmif.length,
-				keys = shmif.keys
+				keys = shmif.keys,
+				source = shmif.source,
+				line = shmif.line and tonumber(shmif.line) or nil,
+				line_end = shmif.line_end and tonumber(shmif.line_end) or nil
 			}
 
+-- for C functions we could just check name against the doc and get the
+-- reference from there
+			if shmif.vartype == "func" then
+				repack.value = shmif.source or "function(C)"
+			end
+
 -- append accessor functions and let us recurse into hierarchies
-			table.insert(var.variables, gen_local(debug, frame, repack, var))
+			if not frame_filter(frame, repack, scope) then
+				table.insert(
+					var.variables, gen_local(debug, frame, repack, var, scope))
+			end
 		end
 		cb(var)
 	end
 end
 
 gen_local =
-function(debug, frame, shmif, parent)
+function(dbg, frame, shmif, parent, scope)
 	local tbl =
 	{
 		ref = tonumber(shmif.index),
-		type = shmif.vartype and tonumber(shmif.vartype) or "nil",
+		type = shmif.vartype and shmif.vartype or "nil",
 		value = shmif.value,
 		parent = parent,
 		name = shmif.name or "(missing)",
@@ -255,7 +273,10 @@ function(debug, frame, shmif, parent)
 			end
 
 -- walk parents and build forward- list of indices
-			table.insert(debug.queue, {"TABLE", handler_for_tbl(debug, frame, var, cb)})
+			table.insert(
+				dbg.queue, {"TABLE", handler_for_tbl(dbg, frame, var, cb, scope)}
+			)
+
 			local tree = {tonumber(shmif.index)}
 
 			local cv = var.parent
@@ -264,10 +285,28 @@ function(debug, frame, shmif, parent)
 				cv = cv.parent
 			end
 
--- need to check if the table reference is local, stack, vararg, global
-			local line = string.format(
-				"table l %d %s\n", frame.id, table.concat(tree, " "))
-			debug.job.inp:write(line)
+-- for global scope we don't want the id of the outmost variable as it is
+-- just the container reference, and we want a filter-set that excludes the
+-- known default arcan functions (with some caveat that if a function has
+-- a non-C reference we want to see it as it means it is overwritten and
+-- can be used as a possible breakpoint)
+			local line
+			if scope == "global" then
+				line = "table g"
+				if var.parent then
+					table.remove(tree, 1)
+					line = line .. " " .. table.concat(tree, " ")
+				end
+			elseif scope == "stack" then
+				line =
+					string.format("table s %s", table.concat(tree, " "))
+			else
+				line = string.format(
+					"table l %d %s", frame.id, table.concat(tree, " "))
+			end
+
+		dbg.job.inp:write(line)
+		dbg.job.inp:write("\n")
 		end
 	}
 
@@ -280,10 +319,25 @@ function(debug, frame, shmif, parent)
 	return tbl
 end
 
-function process_key(debug)
+local function add_globals_wrapper(debug)
+	return
+		gen_local(
+			debug, {id = -1, filters = {global = global_filter}},
+			{
+				index = 1,
+				vartype = "table",
+				name = "_G",
+-- count isn't actually used in variables_view.lua
+				length = 1,
+				keys = 1,
+			}, nil, "global"
+		)
+end
+
+function process_key(debug, thread)
 -- priority if the key matches a queued one
 	if debug.queue[1] and debug.queue[1][1] == debug.key.name then
-		local ent = table.remove(debug.queue, 1)
+		local ent = table.remove(debug.queue, thread)
 		ent[2](debug.key)
 		return
 	end
@@ -303,8 +357,14 @@ function process_key(debug)
 				pc = 0,
 				thread = 0,
 				name = "",
-				locals = get_frame_locals,
+				locals = function(...)
+					return get_frame_locals(debug, ...)
+				end,
+				filters = {
+					global = global_filter
+				},
 				locals_tbl = {},
+				globals_tbl = {add_globals_wrapper(debug)},
 				source = "nop",
 				path = "/tmp",
 			}
@@ -331,7 +391,9 @@ function process_key(debug)
 				stack.entrypoint = shmif.kind
 
 			elseif shmif.type == "local" then
-				table.insert(stack[#stack].locals_tbl, gen_local(debug, stack[#stack], shmif))
+				table.insert(
+					stack[#stack].locals_tbl,
+					gen_local(debug, stack[#stack], shmif, nil, shmif.type))
 			end
 		end
 
@@ -356,7 +418,10 @@ function process_key(debug)
 				debug.errors:add_line("Broken VM stack: " .. v)
 				return
 			end
-			table.insert(debug.data.threads[1].vmstack, gen_local(debug, {id = -1}, shmif))
+			table.insert(
+				debug.data.threads[1].vmstack,
+				gen_local(debug, {id = -1}, shmif, nil, "stack")
+			)
 		end
 
 		elseif debug.key.name == "ERROR" then
@@ -465,9 +530,11 @@ cat9.shmif_handover(
 					end
 					invalidate_threads(debug)
 
+-- process key tags with the frame ID, so when we have remote threads as well
+-- their IDs should be swapped accordingly and we add it as hidden
 				elseif string.sub(line, 1, 4) == "#END" then
 					if debug.key and string.sub(line, 5) == debug.key.name then
-						process_key(debug)
+						process_key(debug, 1)
 						debug.key = nil
 					else
 						table.insert(debug.key, line)
