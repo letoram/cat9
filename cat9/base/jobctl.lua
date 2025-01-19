@@ -1159,6 +1159,27 @@ function cat9.hook_import_job(closure)
 	return old
 end
 
+local function align_offset_window(job)
+-- on neagitve index just wrap around
+	if job.row_offset < 0 then
+		job.row_offset = job.data.linecount + job.row_offset
+	end
+
+-- then make sure we use the entire window
+	local page_size = job.region[4] - job.region[2] - 2
+	if job.row_offset + page_size > job.data.linecount then
+		job.row_offset = job.data.linecount - page_size
+	end
+
+-- can still underflow again on linecount < page_size
+	if job.row_offset <= 0 then
+		job.row_offset = 1
+	end
+
+	cat9.flag_dirty(job)
+end
+
+
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
 -- 'cat9.parse_string'.
@@ -1174,6 +1195,7 @@ function cat9.import_job(v, noinsert)
 	v.job = true
 	v.hide = hide_job
 	v.cursor = {0, 0, false} -- relative input cursor, last field is priority over mouse
+	v.align_offset = align_offset_window
 
 	if not v.root then
 		v.root = root

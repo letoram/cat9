@@ -357,7 +357,15 @@ local function draw_job(job, x, y, cols, rows, cc)
 		end
 
 -- the row to job can probably be ignored eventually by just tracking
--- visual set and scanning based on x, y, cols, rows
+-- visual set and scanning based on x, y, cols, rows.
+--
+-- first set the maximum region based on allocation and make sure we
+-- don't go outside the offset region (case of toggle expanded / contracted)
+--
+-- then shrink the region to fit actual consumed.
+--
+		job.region[4] = rows + y + 1
+		job:align_offset()
 		local ay = job:view(x, y, cols, rows)
 		job.region[4] = ay + y + 1
 
