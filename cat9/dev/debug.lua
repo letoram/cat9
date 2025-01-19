@@ -596,6 +596,27 @@ function cmds.memory(job, ...)
 	)
 end
 
+local function attach_logging(debugger)
+	local dbgin, dbgout
+	if builtin_cfg.debug.log_in then
+		local fin = root:fopen(builtin_cfg.debug.log_in, "w")
+		dbgin = function(msg)
+			fin:write(msg)
+			fin:flush()
+		end
+	end
+
+	if builtin_cfg.debug.log_out then
+		local fout = root:fopen(builtin_cfg.debug.log_out, "w")
+		dbgout = function(msg)
+			fout:write(msg)
+			fout:flush()
+		end
+	end
+
+	debugger:set_log(dbgin, dbgout)
+end
+
 function cmds.launch(...)
 	local set = {...}
 	local outargs = {}
@@ -619,10 +640,16 @@ function cmds.launch(...)
 	if outargs[1] == "arcan" then
 		dbgfn =
 		function()
-			return debug_arcan(cat9, builtin_cfg.debug, outargs)
+			return debug_arcan(cat9, "launch", builtin_cfg.debug, outargs)
 		end
--- no breakpoint support
-		view_set = {"threads", "stdout", "stderr", "errors", "entrypoints"}
+		view_set = {
+			"threads",
+			"stdout",
+			"stderr",
+			"errors",
+			"entrypoints",
+			"breakpoints"
+		}
 		opts = {}
 	end
 
@@ -636,24 +663,7 @@ function cmds.launch(...)
 		end
 	}
 
-	local dbgin, dbgout
-	if builtin_cfg.debug_in then
-		local fin = root:fopen(builtin_cfg.debug_in, "w")
-		dbgin = function(msg)
-			fin:write(msg)
-			fin:flush()
-		end
-	end
-
-	if builtin_cfg.debug_out then
-		local fout = root:fopen(builtin_cfg.debug_out, "r")
-		dbgout = function(msg)
-			fout:write(msg)
-			fout:flush()
-		end
-	end
-
-	job.debugger:set_log(dbgin, dbgout)
+	attach_logging(job.debugger)
 
 	job.data = job.debugger.output
 	cat9.import_job(job)
@@ -664,9 +674,35 @@ function cmds.attach(...)
 	local set = {...}
 	local process = set[1]
 	local pid
+	local debugfn
+	local view_set
+	local opts = builtin_cfg.debug.options
 
 	if type(process) == "string" then
-		pid = tonumber(process)
+
+-- attach arcan [infile] [outfile]
+		if process == "arcan" then
+			local outargs = {}
+			local ok, msg = cat9.expand_arg(outargs, set)
+			if not ok then
+				return false, msg
+			end
+			table.remove(outargs, 1)
+			debugfn = function()
+				return debug_arcan(cat9, "attach", builtin_cfg.debug, outargs)
+			end
+			view_set = {
+				"threads",
+				"stdout",
+				"stderr",
+				"errors",
+				"entrypoints",
+				"breakpoints"
+			}
+			opts = {}
+		else
+			pid = tonumber(process)
+		end
 
 -- table arguments can be (1,2,3) or #1, the former has the parg attribute set
 	elseif type(process) == "table" then
@@ -684,17 +720,29 @@ function cmds.attach(...)
 
 			pid = tonumber(outargs[1])
 		end
+		debugfn = function()
+			return debugger(cat9, parse_dap, builtin_cfg.debug, pid)
+		end
 	end
 
-	if not pid then
+	if not debugfn then
 		return false, errors.bad_pid
+	end
+
+	local dbg, msg = debugfn()
+	if not dbg then
+		return false, msg
 	end
 
 	local job = {
 		short = "Debug:attach",
-		debugger = debugger(cat9, parse_dap, builtin_cfg.debug, pid),
+		debugger = dbg,
 		windows = {},
-		check_status = cat9.always_active
+		check_status = cat9.always_active,
+		["repeat"] =
+		function(self)
+			self.debugger:restart()
+		end
 	}
 
 -- this lets us swap out job.data between the different buffers, i.e. stderr,
@@ -702,6 +750,8 @@ function cmds.attach(...)
 -- of the debugger state itself, as well as spawning separate views for the
 -- many data domains.
 	job.data = job.debugger.output
+	attach_logging(job.debugger)
+
 	cat9.import_job(job)
 	table.insert(job.hooks.on_destroy,
 		function()
@@ -709,7 +759,7 @@ function cmds.attach(...)
 		end
 	)
 
-	spawn_views(job)
+	spawn_views(job, view_set, opts)
 end
 
 function builtins.debug(...)
@@ -730,7 +780,7 @@ function builtins.debug(...)
 	local cmd = table.remove(set, 1)
 
 	if not cmds or not cmds[cmd] then
-		return false, errors.no_cmd
+		return false, errors.no_cmd .. " " ..table.concat(set, " ")
 	end
 
 	if cmd == "attach" or cmd == "launch" then
