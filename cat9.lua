@@ -352,6 +352,12 @@ while root:process() do
 	root:refresh()
 end
 
+-- ensure destroy handlers are triggered before shutting down so any
+-- external cleanup isn't omitted if the window is forcibly closed.
+for i=#cat9.jobs,1,-1 do
+	cat9.remove_job(cat9.jobs[i])
+end
+
 -- update config/state persistence, note that the tmp file and dest
 -- need to be on the same filesystem for the atomic rename to work
 if cat9.config.allow_state and cat9.handlers.state_out then
