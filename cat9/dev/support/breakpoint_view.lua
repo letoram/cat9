@@ -1,8 +1,7 @@
 return
 function(cat9, cfg, job)
 
--- should have a click to toggle, to go to source, to go to
--- instruction ...
+-- should have a click to toggle, to go to source, to go to instruction ...
 
 local function write_bpt(job, x, y, row, set, ind, _, selected)
 	job.root:write_to(x, y, row)
@@ -32,17 +31,29 @@ local function view_bpt(job, x, y, cols, rows, probe)
 			end
 		end
 
+		local str
+		if v.instruction then
+			str =
+			string.format(
+				"%s: %s%s%s @ %s+%s",
+				tostring(v.id) or "[]",
+				v.source,
+				#linefmt > 0 and ":" or "",
+				linefmt,
+				v.instruction[1],
+				tostring(v.instruction[2])
+			)
+		else
+			str =
+			string.format(
+				"%s: %s%s%s",
+				tostring(v.id) or "[]",
+				v.source,
+				#linefmt > 0 and ":" or "",
+				linefmt
+			)
+		end
 -- this view ignores column
-		local str =
-		string.format(
-			"%s: %s%s%s @ %s+%s",
-			tostring(v.id) or "[]",
-			v.source,
-			#linefmt > 0 and ":" or "",
-			linefmt,
-			v.instruction[1],
-			tostring(v.instruction[2])
-		)
 		table.insert(data, str)
 		data.bytecount = data.bytecount + #str
 	end

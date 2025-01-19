@@ -37,7 +37,6 @@ local function ep_click(job, btn, ofs, yofs, mods)
 	end
 	local cmd = "entrypoint " .. table.concat(active, " ") .. "\n"
 	job.parent.debugger.job.inp:write(cmd)
-	print("send", cmd)
 
 	cat9.flag_dirty(job)
 	return true
