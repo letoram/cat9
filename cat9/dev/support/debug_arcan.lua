@@ -37,6 +37,7 @@ local gen_local
 
 local errors = {
 	no_frame = "missing requested frame %d",
+	missing_source = "append target missing"
 }
 
 local synch_frame =
@@ -67,6 +68,9 @@ local function ensure_thread(dbg, id)
 		id = id,
 		state = "unknown",
 		dbg = dbg,
+		write = function(...)
+			dbg.job.inp:write(...)
+		end,
 		vmstack = {
 			locals =
 			function(_, cb)
@@ -75,24 +79,24 @@ local function ensure_thread(dbg, id)
 		},
 		synch_frames = synch_frame,
 		step = function(th)
-			dbg.job.inp:write("stepnext\n")
+			th.write("stepnext\n")
 			th.stack = {}
 			th.state = "running"
 		end,
 		stepin = function(th)
-			dbg.job.inp:write("stepcall\n")
+			th.write("stepcall\n")
 			th.stack = {}
 			th.state = "running"
 		end,
 		stepout = function(th)
-			dbg.job.inp:write("stepend\n")
+			th.write("stepend\n")
 			th.stack = {}
 			th.state = "running"
 		end,
 		freerun = function(th, mode, granularity)
 		end,
 		stepi = function(th)
-			dbg.job.inp:write("stepinstruction\n")
+			th.write("stepinstruction\n")
 			th.stack = {}
 			th.state = "running"
 		end,
@@ -164,28 +168,21 @@ function Debugger:update_signal(signo, state, closure)
 end
 
 function Debugger:continue(id)
-	if id ~= 1 then
-		return
-	end
-
-	local th = ensure_thread(self, 1)
+	local th = ensure_thread(self, id)
 	th.state = "running"
 	th.stack = {}
-
-	self.job.inp:write("continue\n")
+	th:write("continue\n")
 end
 
 function Debugger:pause(id)
-	if id ~= 1 then
-		return
-	end
+	local th = ensure_thread(id)
 
 	if self.job.pid then
 		lash.root:psignal(self.job.pid, "user1");
 	end
 
-	self.job.inp:write("dumpkeys\n");
-	self.job.inp:write("backtrace\n");
+	th.write("dumpkeys\n");
+	th.write("backtrace\n");
 end
 
 function Debugger:restart()
@@ -193,6 +190,7 @@ function Debugger:restart()
 		lash.root:psignal(self.job.pid, "user1");
 	end
 
+-- need to send to all threads
 	self.job.inp:write("reload\n");
 end
 
@@ -485,6 +483,27 @@ function process_key(debug, thread)
 	end
 
 	print("unhandled key", debug.key.name)
+end
+
+function Debugger:append(source)
+	if not source or #source == 0 then
+		return false, errors.missing_source
+	end
+
+-- check if we have an a12 tag (@tag) or if it's another launch job that we
+-- should mask as a new thread.
+--
+-- find a free thread id in self.data.thread
+--  replace the write function with something for our new job
+--  modify break_at to do the same
+--  modify source to do the same
+--  modify eval to do the same
+--  modify restart to do the same
+--  modify terminate to do the same
+--  modify gen_local to take thread into account
+--
+-- for pause we need something else.
+--
 end
 
 function Debugger:terminate(hard)

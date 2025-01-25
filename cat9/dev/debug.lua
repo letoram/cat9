@@ -58,7 +58,8 @@ local errors = {
 	bad_frame = "debug thread i cmd >frame< .. unknown or missing stack frame",
 	no_source = "debug source >fn< .. missing source reference",
 	no_pid = "debug >job< .. no process id assigned to job",
-	no_break = "debug break job >target< ... no breakpoint target"
+	no_break = "debug break job >target< ... no breakpoint target",
+	no_append = "debug >job< append ... backend doesn't support append"
 }
 
 local cmds = {}
@@ -668,6 +669,21 @@ function cmds.launch(...)
 	job.data = job.debugger.output
 	cat9.import_job(job)
 	spawn_views(job, view_set, opts)
+end
+
+function cmds.append(job, ...)
+	local set = {...}
+	if not job.debugger.append then
+		return false, errors.no_append
+	end
+
+	local outargs = {}
+	local ok, msg = cat9.expand_arg(outargs, set)
+	if not ok then
+		return false, msg
+	end
+
+	return job.debugger:append(unpack(outargs))
 end
 
 function cmds.attach(...)

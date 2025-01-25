@@ -59,6 +59,7 @@ return
 		dap_create = {
 --		"target create %s",
 		},
+		log_in = "/tmp/arcan.log",
 		dap_id = {"gdb"},
 --		dap_default = {"lldb-dap", "lldb-dap"}, },
 		dap_id = {"gdb"},
