@@ -81,10 +81,8 @@ local function data_buffered(job, line, eof)
 	end
 
 	job.data.linecount = job.data.linecount + 1
-	if #line > 0 then
-		job.data.bytecount = job.data.bytecount + #line
-		table.insert(job.data, line)
-	end
+	job.data.bytecount = job.data.bytecount + #line
+	table.insert(job.data, line)
 end
 
 local function drop_selection(job)

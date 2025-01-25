@@ -13,17 +13,19 @@ local function show_ptn(job, ...)
 -- apply pattern to new data, some kind of processing queue here
 -- that limits the amount of lines processed and defer the rest to
 -- renderloop downtime (or actually thread .. )
-	if job.view_state.data_linecount < dset.linecount then
+	if state.data_linecount < dset.linecount then
 		for i=state.linecount+1,dset.linecount do
 			local ok, res = filterfn(dset[i])
 			if ok then
-				table.insert(job.view_state, res)
-				job.view_state.linecount = job.view_state.linecount + 1
+				table.insert(state, res)
+				state.linecount = state.linecount + 1
 			end
 		end
-		job.view_state.data_linecount = dset.linecount
+		state.data_linecount = dset.linecount
 	end
 
+-- forward to regular view presenter but swap data back so we
+-- don't sample ourselves
 	job.data = job.view_state
 	local rc = cat9.view_raw(job, ...)
 	job.data = dset
