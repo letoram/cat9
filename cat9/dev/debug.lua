@@ -654,9 +654,14 @@ function cmds.launch(...)
 		opts = {}
 	end
 
+	local debugger, error = dbgfn()
+	if not debugger then
+		return false, error
+	end
+
 	local job = {
 		short = string.format("Debug:launch(%s)", outargs[1]),
-		debugger = dbgfn(),
+		debugger = debugger,
 		windows = {},
 		check_status = cat9.always_active,
 		["repeat"] = function(self)

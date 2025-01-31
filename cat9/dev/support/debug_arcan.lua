@@ -37,7 +37,8 @@ local gen_local
 
 local errors = {
 	no_frame = "missing requested frame %d",
-	missing_source = "append target missing"
+	missing_source = "append target missing",
+	missing_appl = "launch >target< missing"
 }
 
 local synch_frame =
@@ -68,7 +69,8 @@ local function ensure_thread(dbg, id)
 		id = id,
 		state = "unknown",
 		dbg = dbg,
-		write = function(...)
+		write = function(_, ...)
+			local args = {...}
 			dbg.job.inp:write(...)
 		end,
 		vmstack = {
@@ -79,24 +81,24 @@ local function ensure_thread(dbg, id)
 		},
 		synch_frames = synch_frame,
 		step = function(th)
-			th.write("stepnext\n")
+			th:write("stepnext\n")
 			th.stack = {}
 			th.state = "running"
 		end,
 		stepin = function(th)
-			th.write("stepcall\n")
+			th:write("stepcall\n")
 			th.stack = {}
 			th.state = "running"
 		end,
 		stepout = function(th)
-			th.write("stepend\n")
+			th:write("stepend\n")
 			th.stack = {}
 			th.state = "running"
 		end,
 		freerun = function(th, mode, granularity)
 		end,
 		stepi = function(th)
-			th.write("stepinstruction\n")
+			th:write("stepinstruction\n")
 			th.stack = {}
 			th.state = "running"
 		end,
@@ -174,15 +176,19 @@ function Debugger:continue(id)
 	th:write("continue\n")
 end
 
+function Debugger:thread(id)
+	return ensure_thread(self, id)
+end
+
 function Debugger:pause(id)
-	local th = ensure_thread(id)
+	local th = ensure_thread(self, id)
 
 	if self.job.pid then
 		lash.root:psignal(self.job.pid, "user1");
 	end
 
-	th.write("dumpkeys\n");
-	th.write("backtrace\n");
+	th:write("dumpkeys\n");
+	th:write("backtrace\n");
 end
 
 function Debugger:restart()
@@ -507,8 +513,8 @@ function Debugger:append(source)
 end
 
 function Debugger:terminate(hard)
-	if self.job.inp then
-		self.job.inp:write("detach\n")
+	for k,v in pairs(self.data.threads) do
+		v:write("detach\n")
 	end
 end
 
@@ -612,8 +618,6 @@ local debug = setmetatable(
 	job = job,
 }, {__index = Debugger})
 
-local applname = "pipeworld"
-
 if mode == "attach" then
 	local job = {
 		raw = "Arcan:Debug",
@@ -664,17 +668,21 @@ if mode == "attach" then
 	return debug
 end
 
+if not target[2] then
+	return false, errors.missing_appl
+end
+
 cat9.shmif_handover(
 	args.arcan_default_mode, -- creation
 	"rwe", -- streams wanted
 	"/usr/bin/arcan_lwa", -- binary
-	{}, -- environment
+	cat9.env,
 	{
 		string.format("arcan(debug:%s)", applname), -- actual name
 		"-O", -- monitor through stdout
 		"LOGFD:1",
 		"-C", "-", -- accept commands through stdin
-		"/home/void/.arcan/appl/test" -- appl to run
+		target[2]
 	},
 	{
 	block_wnd = true,
