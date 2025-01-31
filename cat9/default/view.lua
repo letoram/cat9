@@ -24,6 +24,7 @@ local function destroy_wnd(job)
 	if job.root ~= lash.root then
 		job.root:close()
 		job.root = lash.root
+		job.lasthint = nil
 	end
 
 	job.redraw = job.detach_redraw
@@ -63,14 +64,27 @@ local function detach(job, mode)
 			wnd:set_handlers(job.detach_handlers)
 			job.root = wnd
 
+-- if the job is an embedded external, reanchor to the new wnd
+			if job.wnd then
+				local cols, rows = wnd:dimensions()
+				job.wnd:hint(wnd, {
+					scale = false,
+					anchor_row = 1,
+					anchor_col = 0,
+					max_rows = rows - 1,
+					max_cols = cols
+				})
+			end
+
 -- handle job terminating versus window being destroyed
 			job.detach_destroy = destroy_wnd
 			job.detach_keep = keep
 
 -- since the job is hidden layout will call it separately,
-			table.insert(job.hooks.on_destroy, function()
-				destroy_wnd(job)
-			end
+			table.insert(job.hooks.on_destroy,
+				function()
+					destroy_wnd(job)
+				end
 			)
 			wnd:update_identity(job.name)
 

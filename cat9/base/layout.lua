@@ -419,7 +419,7 @@ local function draw_job(job, x, y, cols, rows, cc)
 		lh.anchor_col = x
 		lh.max_rows = rcap
 		lh.max_cols = cols
-		job.wnd:hint(root, lh)
+		job.wnd:hint(job.root, lh)
 	end
 
 	y = y + rows
