@@ -45,6 +45,20 @@ function cat9.remove_match(tbl, ent)
 	end
 end
 
+function table.find_key_i(table, field, r)
+	for k,v in ipairs(table) do
+		if (v[field] == r) then
+			return k, v;
+		end
+	end
+end
+
+function table.find_i(table, r)
+	for k,v in ipairs(table) do
+		if (v == r) then return k, table[k]; end
+	end
+end
+
 -- assumes no cycles
 function table.copy_recursive(tbl)
 	local res = {}

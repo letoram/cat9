@@ -1,9 +1,8 @@
 return
 function(cat9, root, builtin_cfg, rebuild, in_monitor)
 
--- should show chat
---   if there is a chat url configured, otherwise set one, the config store for that
---   is uncertain, it doesn't seem like we can just add custom key vales?
+--
+--   chat should be handled in social so it attaches to that monitor / timeline
 --
 --   issues to inject into commit message (requires custom editor) and forum
 --
