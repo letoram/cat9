@@ -3,6 +3,7 @@ return
 	mail = {
 		client = {"/usr/bin/himalaya", "-o", "json"},
 		page_size = 512,
+		show_from = 20,
 		read = {bc = tui.colors.text, fc = tui.colors.text},
 		unread = {bc = tui.colors.text, fc = tui.colors.label},
 		important = {bc = tui.colors.text, fc = tui.colors.alert},

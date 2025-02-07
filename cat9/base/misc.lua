@@ -87,6 +87,37 @@ function table.equal(tbl1, tbl2)
 	return true
 end
 
+function string.fit_to_length(str, cap, lpad)
+	local left = cap
+	local out = ""
+
+	if cap == 0 then
+		return str
+	end
+
+-- other options here is to consider other unicode quirks, e.g. combiners,
+-- non-advancing space, double-width, and put them as arguments to each_ch
+	cat9.each_ch(str,
+		function(ch)
+			out = out .. ch
+			left = left - 1
+			return left == 0
+		end,
+		function()
+		end
+	)
+
+	if left > 0 then
+		if lpad then
+			return string.rep(" ", left) .. out
+		else
+			return out .. string.rep(" ", left)
+		end
+	end
+
+	return out
+end
+
 if not string.unpack_shmif_argstr then
 function string.unpack_shmif_argstr(a1, a2)
 	local arg

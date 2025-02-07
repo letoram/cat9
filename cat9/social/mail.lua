@@ -105,6 +105,7 @@ function list_envelopes_in_folder(job, folder, page)
 	local args =
 		args_for_cmd(
 			"list",
+			"-f", folder,
 			"--page", page, "--page-size", builtin_cfg.page_size
 		)
 
@@ -115,7 +116,7 @@ function list_envelopes_in_folder(job, folder, page)
 -- date: ...
 	args.handler =
 	function(scan, _, code)
-		if code == 0 then
+		if code == 0 and scan.data.linecount > 0 then
 			job.data = {linecount = 0, bytecount = 0}
 			local msg = table.concat(scan.data, "")
 			local status, data = pcall(function()
@@ -140,6 +141,7 @@ function list_envelopes_in_folder(job, folder, page)
 --
 -- Configurable click action to open in existing job or spawn new (possibly
 -- detached) one.
+			job.data.column_index = 1
 			for i,v in ipairs(data) do
 				job:add_line(
 					v.subject,
@@ -147,15 +149,9 @@ function list_envelopes_in_folder(job, folder, page)
 					columns =
 					{
 						{
-							label = "ID: ",
-							data = v.id or "",
-							collapsed = builtin_cfg.show_id,
-							width = 0,
-						},
-						{
 							label = "From: ",
 							data = v.from.name or (" < " .. v.from.addr .. " >"),
-							collapsed = builtin_cfg.show_from,
+							width = builtin_cfg.show_from,
 						},
 						{
 							label = "Subject: ",
@@ -252,7 +248,9 @@ function cmd.folder(arg)
 		raw = string.format("Mail:%s - %s", mstate.account.name, name),
 		short = name,
 		check_status = cat9.always_active,
-		folder = folder
+		folder = folder,
+		show_line_number = false,
+		scroll_lock = true
 -- missing: tbar actions for sorting, convert to action-words while scanning
 	}
 

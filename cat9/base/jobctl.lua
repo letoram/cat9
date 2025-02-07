@@ -1221,7 +1221,9 @@ function cat9.import_job(v, noinsert)
 	v.views = cat9.views
 	v.suggest = cat9.suggest
 
-	v.show_line_number = config.show_line_number
+	if v.show_line_number == nil then
+		v.show_line_number = config.show_line_number
+	end
 
 	if not v.slice then
 		v.slice = cat9.default_slice
@@ -1366,16 +1368,78 @@ function cat9.import_job(v, noinsert)
 	return v
 end
 
-local function write_row_or_column(dst, x, y, cols, row, column, attr)
+local function write_column_header(dst, x, y, cols, columns)
+	if not columns then
+		return x, y
+	end
+
+	local rpad = cat9.table_copy_shallow(config.styles.column_header)
+	rpad.border_left = true
+
+	for i,v in ipairs(columns) do
+		local cw = v.width or 0
+		_, x, y =
+			dst:write_to(
+				x, y, string.fit_to_length(v.label, cw, false),
+				config.styles.column_header
+			)
+
+			if i < #columns then
+				_, x, y = dst:write_to(x, y, " ", rpad)
+			end
+
+			if x >= cols then
+				break
+			end
+	end
+	return x, y
+end
+
+local function write_row_or_column(dst, job, x, y, cols, row, column, attr)
 	if not column then
 		_, x, y = dst:write_to(x, y, row, attr)
 		return x, y
 	end
 
+-- if we have columns, check if there is a column header in the dataset.
+-- if there is, crop / pad to that width and then toggle right border in
+-- the attr. This assumes symmetric column data with the index row.
+	local lc = job.data.tags[job.data.column_index or 0]
+
+	if lc then
+		local lcols = lc.columns
+		if not lcols then
+			error("malformed column data for " .. job.id)
+			return
+		end
+
+		for i,v in ipairs(column) do
+			local cw = (lcols[i] and lcols[i].width) or 0
+			_, x, y =
+				dst:write_to( x, y,
+					string.fit_to_length(v.data, cw, false), v.label_attr or attr)
+
+-- border-append
+			if i < #column then
+				local rpad = cat9.table_copy_shallow(v.data_attr or attr)
+				rpad.border_left = true
+				_, x, y = dst:write_to(x, y, " ", rpad)
+			end
+
+			if x >= cols then
+				break
+			end
+		end
+
+		return x, y
+	end
+
+--
+-- otherwise draw
+--  label: data...  label: data..
 	for i,v in ipairs(column) do
 		_, x, y = dst:write_to(x, y, v.label, v.label_attr or attr)
 		_, x, y = dst:write_to(x, y, v.data, v.data_attr or attr)
-		x = x + 1
 
 		if x >= cols then
 			break
@@ -1390,6 +1454,14 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 	local tags = set.tags or {}
 	local tag = tags[ind]
 
+-- actually ignore [row] and replace with set[ind], reason for that is if we have
+-- column headers on, everything is offset by one to make room for the header.
+	row = set[ind]
+	if tag and job.data.column_index and y - job.last_row == 1 then
+		write_column_header(job.root, x, y, cols, tag.columns)
+		return
+	end
+
 -- show most significant characters
 	if #row > cols then
 		row = "..." .. string.sub(row, #row - cols * 0.5)
@@ -1398,10 +1470,10 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 -- expand action verbs when on a row with items
 	if mouse and mouse.on_row and mouse.on_row == ind and tag then
 		mouse.click_handler = nil
-		local attr = tag.attr
+		local attr = tag.attr or job.default_attr
 
 		if tag.action_words then
-			x, y = write_row_or_column(job.root, x, y, cols, row, tag.columns, attr)
+			x, y = write_row_or_column(job.root, job, x, y, cols, row, tag.columns, attr)
 
 -- prioritize action_words on overflow
 			local count = 0
@@ -1429,7 +1501,8 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 				_, x, y = job.root:write_to(x, y, v[1], attr)
 			end
 		else
-			write_row_or_column(job.root, x, y, cols, row, tag.columns, tag and tag.attr)
+			local attr = tag.attr or job.default_attr
+			write_row_or_column(job.root, job, x, y, cols, row, tag.columns, attr)
 		end
 
 		return
@@ -1437,7 +1510,7 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 
 -- if there's a passive attr marked, use that instead
 	local attr = (tag and tag.passive_attr) or job.default_attr
-	write_row_or_column(job.root, x, y, cols, row, tag and tag.columns, attr)
+	write_row_or_column(job.root, job, x, y, cols, row, tag and tag.columns, attr)
 end
 
 local function click_monitor(job, btn, ofs, yofs, mods)

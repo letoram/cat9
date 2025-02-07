@@ -190,7 +190,8 @@ return
 		data = {fc = tui.colors.text, bc = tui.colors.text},
 		data_highlight = {fc = tui.colors.alert, bc = tui.colors.alert},
 		error_line = {fc = tui.colors.ref_red, bc = tui.colors.text},
-		ok_line = {fc = tui.colors.ref_green, bc = tui.colors.text}
+		ok_line = {fc = tui.colors.ref_green, bc = tui.colors.text},
+		column_header = {border_down = true, fc = tui.colors.ui, bc = tui.colors.label}
 	},
 
 	edit =
