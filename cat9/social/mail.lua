@@ -156,6 +156,11 @@ function list_envelopes_in_folder(job, folder, page)
 						{
 							label = "Subject: ",
 							data = v.subject or "",
+							width = 0.8
+						},
+						{
+							label = "Date: ",
+							data = v.date or "",
 						}
 					}
 				}

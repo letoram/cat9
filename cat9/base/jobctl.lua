@@ -1378,6 +1378,14 @@ local function write_column_header(dst, x, y, cols, columns)
 
 	for i,v in ipairs(columns) do
 		local cw = v.width or 0
+		if cw > 0.0 and cw < 1.0 then
+			cw = math.floor((cols - x) * cw)
+		end
+
+		if i == #columns then
+			cw = cols - x
+		end
+
 		_, x, y =
 			dst:write_to(
 				x, y, string.fit_to_length(v.label, cw, false),
@@ -1415,9 +1423,17 @@ local function write_row_or_column(dst, job, x, y, cols, row, column, attr)
 
 		for i,v in ipairs(column) do
 			local cw = (lcols[i] and lcols[i].width) or 0
+			if cw > 0.0 and cw < 1.0 then
+				cw = math.floor((cols - x) * cw)
+			end
+
+			if i == #column then
+				cw = cols - x
+			end
+
 			_, x, y =
 				dst:write_to( x, y,
-					string.fit_to_length(v.data, cw, false), v.label_attr or attr)
+					string.fit_to_length(v.data, cw, false), v.data_attr or attr)
 
 -- border-append
 			if i < #column then
@@ -1457,9 +1473,12 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 -- actually ignore [row] and replace with set[ind], reason for that is if we have
 -- column headers on, everything is offset by one to make room for the header.
 	row = set[ind]
-	if tag and job.data.column_index and y - job.last_row == 1 then
-		write_column_header(job.root, x, y, cols, tag.columns)
-		return
+	if job.data.column_index and y - job.last_row == 1 then
+		tag = tags[job.data.column_index]
+		if tag then
+			write_column_header(job.root, x, y, cols, tag.columns)
+			return
+		end
 	end
 
 -- show most significant characters

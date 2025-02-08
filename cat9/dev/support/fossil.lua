@@ -1243,6 +1243,24 @@ function(wnd)
 			wnd:add_line(table.concat(linear, ";"), tag)
 		end
 	end
+
+-- low n so repeat and set column_index width to caps, first seed with
+-- the label widths, then enumerate each columns entry and widen the seed
+	local cr = wnd.data.tags[2]
+	wnd.data.column_index = 2
+	for i, v in ipairs(cr.columns) do
+		v.width = #v.label
+	end
+
+	for i=3,#wnd.data do
+		local v = wnd.data.tags[i]
+		for i,v in ipairs(v.columns) do
+			if cr.columns[i].width < #v.data then
+				cr.columns[i].width = #v.data
+			end
+		end
+	end
+
 end
 
 local function fossil_tickets(f, filter)
