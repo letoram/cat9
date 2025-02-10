@@ -194,7 +194,13 @@ local function run_hook(job, a, ...)
 	end
 end
 
-local function job_mm(job, x, y)
+local function job_mm(job, _, x, y)
+	if job.mouse then
+-- when mouse changes row, record the transition point so action words can position
+		if job.mouse[2] ~= y then
+			job.mouse_transition = {x, y}
+		end
+	end
 end
 
 local function job_mb(job, ind, x, y, mods, active)
@@ -1403,7 +1409,7 @@ local function write_column_header(dst, x, y, cols, columns)
 	return x, y
 end
 
-local function write_row_or_column(dst, job, x, y, cols, row, column, attr)
+local function write_row_or_column(dst, job, x, y, cols, row, column, attr, over)
 	if not column then
 		_, x, y = dst:write_to(x, y, row, attr)
 		return x, y
@@ -1419,6 +1425,12 @@ local function write_row_or_column(dst, job, x, y, cols, row, column, attr)
 		if not lcols then
 			error("malformed column data for " .. job.id)
 			return
+		end
+
+		attr = attr or v.data_attr
+		if over then
+			attr = cat9.table_copy_shallow(attr)
+			attr.border_down = true
 		end
 
 		for i,v in ipairs(column) do
@@ -1454,7 +1466,13 @@ local function write_row_or_column(dst, job, x, y, cols, row, column, attr)
 -- otherwise draw
 --  label: data...  label: data..
 	for i,v in ipairs(column) do
-		_, x, y = dst:write_to(x, y, v.label, v.label_attr or attr)
+		local la = v.label_attr or attr
+		if over then
+			la = cat9.table_copy_shallow(la)
+			la.border_down = true
+		end
+
+		_, x, y = dst:write_to(x, y, v.label, v.label_attr)
 		_, x, y = dst:write_to(x, y, v.data, v.data_attr or attr)
 
 		if x >= cols then
@@ -1492,12 +1510,18 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 		local attr = tag.attr or job.default_attr
 
 		if tag.action_words then
-			x, y = write_row_or_column(job.root, job, x, y, cols, row, tag.columns, attr)
+			x, y = write_row_or_column(job.root, job, x, y, cols, row, tag.columns, attr, true)
 
 -- prioritize action_words on overflow
 			local count = 0
 			for i,v in ipairs(tag.action_words) do
 				count = count + #v[1] + 1
+			end
+
+-- if we are overflowing, it is better to use the cursor position with an offset
+-- to position the action_words
+			if x + count > cols and job.mouse_transition then
+				x = job.mouse_transition[1] + 5
 			end
 
 			if x + count > cols then
@@ -1507,6 +1531,8 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 				end
 			end
 
+			local aw_x = x
+			local aw_y = y
 			for i,v in ipairs(tag.action_words) do
 				local attr = v[2]
 				_, x, y = job.root:write_to(x, y, " ")
@@ -1514,14 +1540,17 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 				if mouse[1] >= x and mouse[1] <= x + #v[1] then
 					attr = cat9.table_copy_shallow(attr)
 					mouse.click_handler = v[3]
-					attr.border_down = true
+					attr.inverse = true
 				end
 
 				_, x, y = job.root:write_to(x, y, v[1], attr)
 			end
+
+			job.root:write_border(aw_x, aw_y, x, y, nil, 1)
+
 		else
 			local attr = tag.attr or job.default_attr
-			write_row_or_column(job.root, job, x, y, cols, row, tag.columns, attr)
+			write_row_or_column(job.root, job, x, y, cols, row, tag.columns, attr, false)
 		end
 
 		return

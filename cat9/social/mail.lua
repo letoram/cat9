@@ -101,6 +101,25 @@ local function add_retry_line(job, msg, func)
 	)
 end
 
+local function open_envelope(job, envelope)
+
+end
+
+local function reply_envelope(job, envelope)
+
+end
+
+local function toggle_seen_envelope(job, envelope)
+
+end
+
+local function move_to_trash(job, envelope)
+
+end
+
+local function move_to_spam(job, envelope)
+end
+
 function list_envelopes_in_folder(job, folder, page)
 	local args =
 		args_for_cmd(
@@ -109,11 +128,6 @@ function list_envelopes_in_folder(job, folder, page)
 			"--page", page, "--page-size", builtin_cfg.page_size
 		)
 
--- list -f folder -o json -p page
--- id: flags["Seen"]
--- subject: ...
--- from: {name, addr}
--- date: ...
 	args.handler =
 	function(scan, _, code)
 		if code == 0 and scan.data.linecount > 0 then
@@ -162,8 +176,38 @@ function list_envelopes_in_folder(job, folder, page)
 							label = "Date: ",
 							data = v.date or "",
 						}
-					}
-				}
+					},
+					action_words = {
+					{
+						"Open",
+						builtin_cfg.action,
+						function()
+							open_envelope(job, v)
+						end
+					},
+					{
+						"Reply",
+						builtin_cfg.action,
+						function()
+							reply_envelope(job, v)
+						end
+					},
+					{
+						"Toggle Seen",
+						builtin_cfg.action,
+						function()
+							toggle_seen_envelope(job, v)
+						end
+					},
+					{
+						"Trash",
+						builtin_cfg.strong_action,
+						function()
+							move_to_trash(job, v)
+						end
+					},
+	-- need folder specific action as well
+				}}
 				)
 			end
 			cat9.flag_dirty(job)

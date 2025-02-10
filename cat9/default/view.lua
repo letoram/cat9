@@ -223,8 +223,10 @@ local function view_monitor()
 		monitor = true,
 		short = "Monitor: messages",
 		raw = "Monitor: messages",
-		check_status = function() return true; end
+		check_status = function() return true; end,
+		scroll_lock = false
 	}
+
 	local job = cat9.import_job(job)
 	local oldam = cat9.add_message
 	local oldprint = print
@@ -240,8 +242,7 @@ local function view_monitor()
 		local msg = string.format(fmtstr, unpack(tbl))
 		local lst = string.split(msg, "\n")
 		for _,v in ipairs(lst) do
-			table.insert(job.data, v)
-			job.data.linecount = job.data.linecount + 1
+			job:add_line(v)
 		end
 		cat9.flag_dirty()
 	end

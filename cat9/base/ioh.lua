@@ -91,7 +91,6 @@ function handlers.mouse_motion(self, rel, x, y, mods)
 -- let whatever job renderer that can leverage the information work
 	job.selected = true
 	cat9.selectedjob = job
-	job.mouse = {x, y}
 	cat9.flag_dirty()
 end
 
