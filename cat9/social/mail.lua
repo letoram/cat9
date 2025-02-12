@@ -1,14 +1,35 @@
 return
 function(cat9, root, builtins, suggest, views, builtin_cfg)
 
+local list_envelopes_in_folder
+local open_envelope
+
 -- launch background probe for integration (himalaya now)
+--   need to check version >= 1.0 due to interface break
+--
+-- then also for the separate tool that monitors, 'mirador'.
+--
+-- for viewing envelope, need to have a jobctl for the action view
+-- that lets us wrap based on some width.
+--
+-- there is a query language on envelopes list that we can update:
+--   subject [xxx] and/or body [xxx]
+--   before, after, date : yyyy-mm-dd
+--   from, to
+--   flag
+--
+--   order by
+--       [date | from | to | subject] [desc] [subcategory]
+--
+-- easiest to first have these as mail presets in config along with
+-- some dynamic "step month, year"
+--
 -- command:
 --  accounts
 --  folders
 --  flags
 --  template
 --  attachments
---  search
 --  monitor
 --  template
 --  attachments
@@ -27,7 +48,9 @@ function(cat9, root, builtins, suggest, views, builtin_cfg)
 --
 -- watch for changes into social
 --
--- default 'on-load' action
+-- default 'on-load' action,
+--
+-- data filtering vs. tags?!
 --
 builtin_cfg = builtin_cfg.mail
 
@@ -39,7 +62,9 @@ local errors =
 	couldnt_run = "mail client doesn't respond",
 	unknown_command = "unknown mail command",
 	missing_argument = "missing argument",
-	too_many_arguments = "too many arguments to command"
+	too_many_arguments = "too many arguments to command",
+	list_envelopes = "couldn't list envelopes in mailbox",
+	parse_envelopes = "couldn't parse json output"
 }
 
 if not builtin_cfg or not builtin_cfg.client then
@@ -47,6 +72,10 @@ if not builtin_cfg or not builtin_cfg.client then
 end
 
 local mstate = {}
+
+local function name_from_item(v)
+	return v.from.name or (" < " .. v.from.addr .. " >")
+end
 
 local function args_for_cmd(...)
 	local ret = {}
@@ -60,7 +89,7 @@ local function args_for_cmd(...)
 end
 
 local function probe_accounts()
-	local args = args_for_cmd("accounts")
+	local args = args_for_cmd("accounts", "list")
 	mstate.accounts = {}
 
 	args.handler =
@@ -85,14 +114,14 @@ probe_accounts()
 
 local function add_retry_line(job, msg, func)
 	job.data = {linecount = 0, bytecount = 0}
-	job.add_line(
-		errors.list_envelopes,
+	job:add_line(
+		msg,
 		{
 			action_words = {
 				{
 					"Retry",
 					builtin_cfg.error,
-					function()
+					function(btn, mods)
 						func()
 					end
 				}
@@ -101,8 +130,121 @@ local function add_retry_line(job, msg, func)
 	)
 end
 
-local function open_envelope(job, envelope)
+local function envelope_to_job(job, data)
+-- if job has .folder then we need a back action
+	job.data = {linecount = 0, bytecount = 0}
+	local status, data =
+		pcall(
+			function()
+				local msg = table.concat(data, "")
+				return cat9.json.decode(msg)
+			end
+		)
 
+	if not status then
+		ioh:write(data)
+		add_retry_line(job, errors.parse_envelopes,
+			function()
+				open_envelope(job, job.envelope, false)
+			end
+		)
+		return
+	end
+
+-- these are column views (until its not) but not with an index
+	local in_headers = true
+	local hstart = 1
+	local hend = 1
+	local maxw = 1
+
+	for i,v in ipairs(string.split(data, "\n")) do
+		if #v ~= 0 then
+			if not in_headers then
+				job:add_line(v)
+			else
+				local label, data = string.match(v, "(%a+:)%s(.+)")
+				if label and data then
+					maxw = #label > maxw and #label or maxw
+					job:add_line(v,
+						{
+							columns =
+							{
+								{
+									label = label,
+									data = data,
+									label_attr = builtin_cfg.header_label,
+									data_attr = builtin_cfg.header_data,
+								}
+							}
+						}
+					)
+-- should have action words here for reply, forward, write-to, copy, move
+				else
+					in_headers = false
+					hend = #job.data
+					job:add_line("")
+					job:add_line(v)
+				end
+			end
+		end
+	end
+
+	if hstart ~= hend then
+		for i=hstart,hend do
+			job.data.tags[i].columns[1].label_width = maxw
+		end
+	end
+end
+
+-- message [read]
+-- thread doesn't work
+--  reply
+--  forward
+--  writems
+--  copy - folder
+--  move - folder
+--  delete
+--
+open_envelope =
+function(job, ref, new)
+	if new then
+		cat9.new_window(job.root, "tui",
+			function(wnd, new)
+				if not new then
+					open_envelope(job, ref, false)
+				end
+				local job =
+				{
+					raw = string.format("Mail:%s - %s", name_from_item(ref), ref.subject or ""),
+					short = ref.id,
+					check_status = cat9.always_active,
+					show_line_number = false,
+					scroll_lock = true,
+					folder = job.folder,
+					envelope = ref
+				}
+
+				cat9.build_action_job(job)
+				open_envelope(job, ref, false)
+			end,
+			builtin_cfg.new_mode
+		)
+		return
+	end
+
+	local args = args_for_cmd("message", "read",
+		"-f", job.folder.name, "-a", mstate.account.name, ref.id)
+
+	args.handler =
+	function(scan, _, code)
+		if code == 0 then
+			envelope_to_job(job, scan.data, "")
+		else
+			cat9.add_message(errors.prefix .. errors.open_envelope)
+		end
+	end
+
+	cat9.background_chain({args}, {lf_strip = false}, nil)
 end
 
 local function reply_envelope(job, envelope)
@@ -120,10 +262,11 @@ end
 local function move_to_spam(job, envelope)
 end
 
-function list_envelopes_in_folder(job, folder, page)
+list_envelopes_in_folder =
+function(job, folder, page)
 	local args =
 		args_for_cmd(
-			"list",
+			"envelope", "list",
 			"-f", folder,
 			"--page", page, "--page-size", builtin_cfg.page_size
 		)
@@ -132,6 +275,8 @@ function list_envelopes_in_folder(job, folder, page)
 	function(scan, _, code)
 		if code == 0 and scan.data.linecount > 0 then
 			job.data = {linecount = 0, bytecount = 0}
+			job.folder = {name = folder, page = page}
+
 			local msg = table.concat(scan.data, "")
 			local status, data = pcall(function()
 				return cat9.json.decode(msg)
@@ -139,7 +284,7 @@ function list_envelopes_in_folder(job, folder, page)
 			)
 
 			if not status then
-				add_retry_line(job, errors.list_envelopes,
+				add_retry_line(job, errors.parse_envelopes,
 					function()
 						list_envelopes_in_folder(job, folder, page)
 					end
@@ -164,7 +309,7 @@ function list_envelopes_in_folder(job, folder, page)
 					{
 						{
 							label = "From: ",
-							data = v.from.name or (" < " .. v.from.addr .. " >"),
+							data = name_from_item(v),
 							width = builtin_cfg.show_from,
 						},
 						{
@@ -181,14 +326,15 @@ function list_envelopes_in_folder(job, folder, page)
 					{
 						"Open",
 						builtin_cfg.action,
-						function()
-							open_envelope(job, v)
-						end
+						function(btn, mods)
+							open_envelope(job, v, mods > 0)
+						end,
+						"Open in New",
 					},
 					{
 						"Reply",
 						builtin_cfg.action,
-						function()
+						function(btn, mods)
 							reply_envelope(job, v)
 						end
 					},
@@ -217,7 +363,7 @@ function list_envelopes_in_folder(job, folder, page)
 					list_envelopes_in_folder(job, folder, page)
 				end
 			)
-			cat9.add_message(errors.prefix .. errors.couldnt_list)
+			cat9.add_message(errors.prefix .. errors.list_envelopes)
 		end
 	end
 
@@ -232,7 +378,7 @@ function get_folders_for_account(account, closure)
 		return
 	end
 
-	local args = args_for_cmd("folders", "-a", account.name)
+	local args = args_for_cmd("folders", "list", "-a", account.name)
 	args.handler =
 	function(scan, _, code)
 		if code == 0 then

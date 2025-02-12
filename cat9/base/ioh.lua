@@ -523,6 +523,14 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		end
 	end
 
+-- jobs spawned by certain builtins can have custom mouse handlers
+-- that take precedence
+	if job and job.handlers.mouse_button and
+		job.handlers.mouse_button(
+			job, index, x - job.last_col, y - job.last_row, mods, active) then
+		return
+	end
+
 	if job and id > 0 then
 		local mind = "m" .. tostring(index)
 
@@ -547,14 +555,6 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 -- Then check if we should act special on the data region of a job
 	local in_data = cat9.xy_to_data(self, x, y)
 	if not in_data then
-		return
-	end
-
--- jobs spawned by certain builtins can have custom mouse handlers
--- that take precedence
-	if job.handlers.mouse_button and
-		job.handlers.mouse_button(
-			job, index, x - job.last_col, y - job.last_row, mods, active) then
 		return
 	end
 

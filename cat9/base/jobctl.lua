@@ -1472,7 +1472,12 @@ local function write_row_or_column(dst, job, x, y, cols, row, column, attr, over
 			la.border_down = true
 		end
 
-		_, x, y = dst:write_to(x, y, v.label, v.label_attr)
+		if v.label_width then
+			_, x, y = dst:write_to(x, y,
+				string.fit_to_length(v.label, v.label_width, false), v.label_attr)
+		else
+			_, x, y = dst:write_to(x, y, v.label, v.label_attr)
+		end
 		_, x, y = dst:write_to(x, y, v.data, v.data_attr or attr)
 
 		if x >= cols then
@@ -1499,13 +1504,16 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 		end
 	end
 
--- show most significant characters
+	local mouse_row = mouse and mouse.on_row and mouse.on_row == ind
+-- show most significant characters, more job options are needed here to take
+-- horizontal scrolling into account or making '...' clickable to automatically
+-- scroll in steps (half-width or so).
 	if #row > cols then
 		row = "..." .. string.sub(row, #row - cols * 0.5)
 	end
 
 -- expand action verbs when on a row with items
-	if mouse and mouse.on_row and mouse.on_row == ind and tag then
+	if mouse_row and tag then
 		mouse.click_handler = nil
 		local attr = tag.attr or job.default_attr
 
@@ -1536,14 +1544,15 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 			for i,v in ipairs(tag.action_words) do
 				local attr = v[2]
 				_, x, y = job.root:write_to(x, y, " ")
+				local text = v[1]
 
-				if mouse[1] >= x and mouse[1] <= x + #v[1] then
+				if mouse[1] >= x and mouse[1] <= x + #text then
 					attr = cat9.table_copy_shallow(attr)
 					mouse.click_handler = v[3]
 					attr.inverse = true
 				end
 
-				_, x, y = job.root:write_to(x, y, v[1], attr)
+				_, x, y = job.root:write_to(x, y, text, attr)
 			end
 
 			job.root:write_border(aw_x, aw_y, x, y, nil, 1)
@@ -1571,7 +1580,7 @@ local function click_monitor(job, btn, ofs, yofs, mods)
 
 -- figure out the action word at which offset
 	if job.mouse and job.mouse.click_handler then
-		job.mouse.click_handler()
+		job.mouse.click_handler(btn, mods)
 		return true
 
 	elseif fn and fn.click then

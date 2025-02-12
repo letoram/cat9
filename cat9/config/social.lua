@@ -9,6 +9,10 @@ return
 		important = {bc = tui.colors.text, fc = tui.colors.alert},
 		error = {bc = tui.colors.text, fc = tui.colors.alert},
 		action = {bc = tui.colors.text, fc = tui.colors.ref_green},
-		strong_action = {bc = tui.colors.ref_red, fc = tui.colors.text}
+		strong_action = {bc = tui.colors.ref_red, fc = tui.colors.text},
+		header_label = {fc = tui.colors.label, bc = tui.colors.label},
+		header_data = {fc = tui.colors.ref_green, bc = tui.colors.text},
+		body = {fc = tui.colors.text, bc = tui.colors.text},
+		new_mode = "join-r"
 	}
 }
