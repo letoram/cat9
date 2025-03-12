@@ -63,6 +63,7 @@ local errors = {
 }
 
 local cmds = {}
+local cmd_sugg = {}
 local views = {}
 
 -- wrapper for tracking singleton or grouped windows (sources)
@@ -246,6 +247,23 @@ local function add_watch_spread(wnd)
 	cat9.builtins["builtin"](ob)
 end
 
+function cmd_sugg.thread(job, args, raw)
+	local thread_cmds = {
+		"stop", "continue", "next", "stepi", "in", "freerun", "out",
+		"disassemble", "variabves", "registers", "vmstack",
+		"arguments", "globals", "watches",
+	}
+	local thread_hints = {
+		stop = "Pause execution",
+		continue = "Resume execution",
+		next = "Step to the next line of execution",
+		stepi = "Step one instruction",
+		["in"] = "Step into a function",
+		freerun = "Sample at every line",
+		out = "Continue until the current function has completed"
+	}
+end
+
 function cmds.thread(job, ...)
 	local set = {...}
 	local base = {}
@@ -355,7 +373,7 @@ function cmds.thread(job, ...)
 				wnd:invalidated()
 			end
 		end,
-		var =
+		set =
 		function()
 			th:locals(frame,
 				function(locals)
@@ -691,6 +709,10 @@ function cmds.append(job, ...)
 	return job.debugger:append(unpack(outargs))
 end
 
+function cmds.append(...)
+
+end
+
 function cmds.attach(...)
 	local set = {...}
 	local process = set[1]
@@ -704,6 +726,7 @@ function cmds.attach(...)
 -- attach arcan [infile] [outfile]
 		if process == "arcan" then
 			local outargs = {}
+			print("attach to arcan process", set[1])
 			local ok, msg = cat9.expand_arg(outargs, set)
 			if not ok then
 				return false, msg
@@ -907,7 +930,11 @@ function suggest.debug(args, raw)
 		return
 	end
 
-	local set = {}
+	table.remove(args, 1)
+
+	local set = {
+		hint = {}
+	}
 
 -- these are a bit special in the sense that we can either go debug #job (where the
 -- ID is any job with a debugger or parent.debugger OR go from the activejob and then
@@ -915,9 +942,19 @@ function suggest.debug(args, raw)
 	local function append_dbg_commands()
 		table.insert(set, "memory")
 		table.insert(set.hint, "View memory at a specific address or reference")
+		table.insert(set, "thread")
+		table.insert(set.hint, "Specify a thread to control")
+		table.insert(set, "break")
+		table.insert(set.hint, "Set a breakpoint")
+		table.insert(set, "files")
+		table.insert(set.hint, "List files open by the debuggee")
+		table.insert(set, "maps")
+		table.insert(set.hint, "Extract the memory maps for the debuggee")
+		table.insert(set, "source")
+		table.insert(set.hint, "Open a source code reference")
 	end
 
-	if #args == 2 then
+	if #args == 1 then
 		set =
 			{
 				"attach",
@@ -929,17 +966,35 @@ function suggest.debug(args, raw)
 				}
 			}
 		if activejob then
-			append_dbg_commands()
+			append_dbg_commands(activejob)
 		end
+
+-- don't add all viable job targets as it just spams the completion list
+		cat9.add_job_suggestions(set, false,
+			function(job)
+				return job.debugger ~= nil
+			end
+		)
 	else
-		if args[2] == "attach" and attach_block then
+		if args[1] == "attach" and attach_block then
 			cat9.add_message(errors.attach_block)
+			return false, #"debug  "
 		end
 
 -- get list of known targets, otherwise create a new based on treating first
 -- as normal executable completion and the rest as --args style forwarding
-		if args[2] == "launch" then
+		if args[1] == "launch" then
 		end
+
+		if type(args[1]) == "table" then
+			local at = args[1]
+			if not at.debugger and not (at.parent and at.parent.debugger) then
+				cat9.add_message(errors.bad_ref)
+				return false, #"debug  "
+			end
+		end
+
+		append_dbg_commands(args[1])
 
 -- check if we reference an existing debugger session, then append_dbg_commands
 	end
