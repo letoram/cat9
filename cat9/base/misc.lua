@@ -87,9 +87,10 @@ function table.equal(tbl1, tbl2)
 	return true
 end
 
-function string.fit_to_length(str, cap, lpad)
+function string.fit_to_length(str, cap, lpad, ofs)
 	local left = cap
 	local out = ""
+	ofs = ofs or 0
 
 	if cap == 0 then
 		return str
@@ -99,8 +100,12 @@ function string.fit_to_length(str, cap, lpad)
 -- non-advancing space, double-width, and put them as arguments to each_ch
 	cat9.each_ch(str,
 		function(ch)
-			out = out .. ch
-			left = left - 1
+			if ofs > 0 then
+				ofs = ofs - 1
+			else
+				out = out .. ch
+				left = left - 1
+			end
 			return left == 0
 		end,
 		function()
