@@ -24,6 +24,7 @@ local open_envelope
 -- easiest to first have these as mail presets in config along with
 -- some dynamic "step month, year"
 --
+-- 📎
 -- command:
 --  accounts
 --  folders
@@ -160,7 +161,7 @@ local function envelope_to_job(job, data)
 	for i,v in ipairs(string.split(data, "\n")) do
 		if #v ~= 0 then
 			if not in_headers then
-				job:add_line(v)
+				job:add_line(v, {horizontal_step = 0})
 			else
 				local label, data = string.match(v, "(%a+:)%s(.+)")
 				if label and data then
@@ -178,12 +179,15 @@ local function envelope_to_job(job, data)
 							}
 						}
 					)
--- should have action words here for reply, forward, write-to, copy, move
+-- should have action words here for reply, forward, write-to, copy, move also
+-- need to parse <#part > and if we have [...](...) that should be moved to URL
+-- somehow. It doesn't fit with the column approach so another thing to add to
+-- action_job for future re-use.
 				else
 					in_headers = false
 					hend = #job.data
 					job:add_line("")
-					job:add_line(v)
+					job:add_line(v, {horizontal_step = 0})
 				end
 			end
 		end
@@ -221,7 +225,7 @@ function(job, ref, new)
 					show_line_number = false,
 					scroll_lock = true,
 					folder = job.folder,
-					envelope = ref
+					envelope = ref,
 				}
 
 				cat9.build_action_job(job)
