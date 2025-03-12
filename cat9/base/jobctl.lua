@@ -1505,11 +1505,15 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 	end
 
 	local mouse_row = mouse and mouse.on_row and mouse.on_row == ind
--- show most significant characters, more job options are needed here to take
--- horizontal scrolling into account or making '...' clickable to automatically
--- scroll in steps (half-width or so).
+
+-- if horizontal step is set, that is used as the column offset and click to
+-- step it by half-page. breaking to a specific width need to be done elsewhere
 	if #row > cols then
-		row = "..." .. string.sub(row, #row - cols * 0.5)
+		if tag and tag.horizontal_step then
+			row = string.fit_to_length(row, cols, false, tag.horizontal_step)
+		else
+			row = "..." .. string.sub(row, #row - cols * 0.5)
+		end
 	end
 
 -- expand action verbs when on a row with items
@@ -1571,7 +1575,12 @@ local function write_monitor(job, x, y, row, set, ind, _, selected, cols)
 end
 
 local function click_monitor(job, btn, ofs, yofs, mods)
-	local fn = job.data.tags and job.data.tags[yofs]
+-- FIXME: should we apply job.row_offset to yofs?
+	local tag = job.data.tags and job.data.tags[yofs]
+
+	if not job.data[yofs] then
+		return false
+	end
 
 -- only use lclick
 	if btn ~= 1 then
@@ -1583,10 +1592,20 @@ local function click_monitor(job, btn, ofs, yofs, mods)
 		job.mouse.click_handler(btn, mods)
 		return true
 
-	elseif fn and fn.click then
-		fn.click()
+	elseif tag and tag.click then
+		tag.click()
 		return true
+
+-- cycle horizontal_step with 0.5 * (job.region[3] - job.region[1]) versus
+-- u8-len on job.data[yofs]
+	elseif tag and tag.horizontal_step then
+		local cw = job.region[3] - job.region[1]
+		local len = job.root.utf8_len(job.data[yofs])
+		if len > cw then
+--			if tag.horizontal_step + job.root.utf8_len(job.data[yofs])
+		end
 	end
+
 	return yofs > 0 and btn == 1
 end
 
