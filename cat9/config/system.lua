@@ -63,9 +63,11 @@ return
 		{
 			{"Size"},
 			{"Name"},
+			{"Date"},
 			m1 = {
 				[1] = "list #csel sort size",
-				[2] = "list #csel sort alphabetic"
+				[2] = "list #csel sort alphabetic",
+				[3] = "list #csel sort date",
 			}
 		},
 
