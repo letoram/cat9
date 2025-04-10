@@ -92,14 +92,14 @@ local function build_chain(job, args)
 	local
 	function walk_chain(chain)
 		return function(line)
-			for _, v in ipairs(chain) do
+			for i, v in ipairs(chain) do
 				local res
 				res, line = v(line)
 				if not res then
 					return false
 				end
 			end
-			return true, line
+			return true, line, i
 		end
 	end
 
@@ -109,10 +109,10 @@ local function build_chain(job, args)
 		table.insert(split, chain)
 		return
 		function(line)
-			for _,v in ipairs(split) do
-				local ok, retl = (walk_chain(v))(line)
+			for i,v in ipairs(split) do
+				local ok, retl, reti = (walk_chain(v))(line)
 				if ok then
-					return ok, retl
+					return i
 				end
 			end
 			return false

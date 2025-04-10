@@ -786,7 +786,10 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- expanding tabs should go here:
 --  be configured per job and allow shenanigans like tabstobs or other
 --  markers e.g. --> row:gsub("\t", "  ")
-		local ranges = (job.highlight_filter and job.highlight_filter(row)) or nil
+		local match = (job.highlight_filter and job.highlight_filter(row)) or nil
+		if type(match) == "boolean" then
+			match = 1
+		end
 
 		if #row > ccols and not job.write_override then
 			row = string.sub(row, 1, ccols)
@@ -800,9 +803,10 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 -- it is possible to set a generic highlight filter through view search
 -- which also works as a stepper filter for scroll
-		elseif ranges then
-			root:write_to(cx, y+i, row, config.styles.data_highlight)
-
+		elseif match then
+			local nc = #config.styles.match_set
+			local style = config.styles.match_set[((match-1) % nc) + 1]
+			root:write_to(cx, y+i, row, style)
 		else
 -- finally print it, hightlight any manually selected lines
 			root:write_to(cx, y+i, row,

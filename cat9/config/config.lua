@@ -199,7 +199,15 @@ return
 		data_highlight = {fc = tui.colors.alert, bc = tui.colors.alert},
 		error_line = {fc = tui.colors.ref_red, bc = tui.colors.text},
 		ok_line = {fc = tui.colors.ref_green, bc = tui.colors.text},
-		column_header = {border_down = true, fc = tui.colors.ui, bc = tui.colors.label}
+		column_header = {border_down = true, fc = tui.colors.ui, bc = tui.colors.label},
+		match_set = {
+			{fc = tui.colors.ref_red, bc = tui.colors.text},
+			{fc = tui.colors.ref_green, bc = tui.colors.text},
+			{fc = tui.colors.ref_yellow, bc = tui.colors.text},
+			{fc = tui.colors.ref_blue, bc = tui.colors.text},
+			{fc = tui.colors.ref_magenta, bc = tui.colors.text},
+			{fc = tui.colors.ref_cyan, bc = tui.colors.text}
+		}
 	},
 
 	edit =
