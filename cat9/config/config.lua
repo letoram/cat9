@@ -121,12 +121,20 @@ return
 		group_sep = group_sep,
 		{selected_sym, "#", "$id", group_sep, "$pid_or_exit", group_sep, "$memory_use"},
 		{"$short"},
+		{function(cat9, job) return job["repeat"] and "repeat" or ""; end},
 		{function(cat9, job)
-			return job["repeat"] and "repeat" or ""; end},
+			if job.pid then
+				return job.deferred and "undefer" or "defer"
+			else
+				return ""
+			end
+		end
+		},
 		{"X"},
 		m1 = {
 			[3] = "repeat #csel flush",
-			[4] = "forget #csel"
+			[4] = "view #csel defer",
+			[5] = "forget #csel"
 		}
 	},
 

@@ -375,10 +375,10 @@ function cat9.process_jobs()
 					run_hook(job, "on_fail")
 				end
 
--- the '100' here should really be balanced against time and not a set amount of
--- reads / lines but the actual buffer sizes are up for question to balance
--- responsiveness of the shell vs throughput. If it is visible and in focus we
--- should perhaps allow more.
+-- the [process_lines] here should really be balanced against time and not a
+-- set amount of reads / lines but the actual buffer sizes are up for question
+-- to balance responsiveness of the shell vs throughput. If it is visible and
+-- in focus we should perhaps allow more.
 			elseif job.out or job.err then
 				upd = (cat9.flush_job(job, false, config.process_lines) and not job.deferred) or upd
 			end

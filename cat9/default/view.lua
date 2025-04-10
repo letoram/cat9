@@ -347,18 +347,25 @@ function builtins.view(job, ...)
 	end
 
 -- special case the detach as run_lut etc. is designed for and or, .. like filters
-	if type(arg[1]) == "string" and arg[1] == "detach" then
-		detach(job, arg[2])
-		cat9.flag_dirty(job)
-		return
-	end
+	if type(arg[1]) == "string" then
+		if arg[1] == "detach" then
+			detach(job, arg[2])
+			cat9.flag_dirty(job)
+			return
 
-	if type(arg[1]) == "string" and arg[1] == "select" then
-		cat9.selectedjob = job
-		if not cat9.readline then
-			job.root:update_identity(string.format("#%d : %s", job.id, job.short))
+		elseif arg[1] == "select" then
+			cat9.selectedjob = job
+			if not cat9.readline then
+				job.root:update_identity(string.format("#%d : %s", job.id, job.short))
+			end
+			cat9.flag_dirty(job)
+			return
+
+		elseif arg[1] == "defer" then
+			job.deferred = not job.deferred
+			cat9.flag_dirty(job)
+			return
 		end
-		cat9.flag_dirty(job)
 	end
 
 	cat9.run_lut("view #job", job, viewlut, arg)
@@ -390,6 +397,8 @@ function suggest.view(args, raw)
 		return
 	end
 
+	local job = args[2]
+
 	if #args > 3 then
 		if cat9.views[args[3]] then
 			table.remove(args, 1)
@@ -405,6 +414,11 @@ function suggest.view(args, raw)
 		"Bind the job to its own window",
 		"Mark the job as being the layout focus"
 	}
+
+	if job.deferred and job.pid then
+		table.insert(set, "defer")
+		table.insert(set.hint, "Toggle between live view and input statistics")
+	end
 
 	for k,v in pairs(cat9.views) do
 		if k ~= "hint" then
