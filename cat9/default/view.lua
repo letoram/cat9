@@ -203,7 +203,15 @@ function viewlut.scroll(set, i, job)
 			end
 		end
 	else
-		job.row_offset = job.row_offset + row
+		local start = job.row_offset
+
+-- "snap" to first row before wrapping
+		if job.row_offset + row < 1 and job.row_offset ~= 1 then
+			job.row_offset = 1
+		else
+			job.row_offset = job.row_offset + row
+		end
+
 		job.col_offset = job.col_offset + col
 	end
 
