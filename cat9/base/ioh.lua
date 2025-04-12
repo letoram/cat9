@@ -170,7 +170,6 @@ function handlers.key(self, sub, keysym, code, mods)
 	local mod = bnd.modifier and bnd.modifier or tui.modifiers.CTRL
 
 	if bit.band(mods, mod) > 0 then
-
 -- if the readline is hidden, also block the other keybindings
 -- to avoid them clashing
 		if not cat9.readline then
@@ -282,6 +281,30 @@ function handlers.key(self, sub, keysym, code, mods)
 				cat9.suggest_history()
 				return
 			end
+
+		elseif keysym >= tui.keys["1"] and keysym <= tui.keys["9"] then
+			local ind = keysym - tui.keys["1"]
+			local set = cat9.get_visible_jobs(false, true)
+
+-- use derived visible index to pick job
+			if set[#set - ind] then
+				local sj = set[#set - ind]
+
+-- deselect any current
+				if cat9.selectedjob then
+					cat9.selectedjob.selected = false
+				end
+
+-- and replace / hide / trigger event
+				cat9.selectedjob = sj
+				cat9.selectedjob.selected = true
+				cat9.hide_readline(root)
+				if sj.handlers.toggle_selected then
+					sj.handlers.toggle_selected(sj, true)
+				end
+			end
+
+			return
 		end
 	end
 
