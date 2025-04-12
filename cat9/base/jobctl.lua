@@ -1280,6 +1280,7 @@ function cat9.import_job(v, noinsert)
 		v.row_offset = 1
 		v.col_offset = 0
 		v.bar_color = tui.colors.ui
+		v.bar_color_selected = tui.colors.highlight
 		v.view = cat9.view_raw
 		v.selections = {}
 		v.data = {

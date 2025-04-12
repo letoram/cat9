@@ -428,6 +428,11 @@ function suggest.view(args, raw)
 		table.insert(set.hint, "Toggle between live view and input statistics")
 	end
 
+	if not job.block_edit then
+		table.insert(set, "edit")
+		table.insert(set.hint, "Make job output editable")
+	end
+
 	for k,v in pairs(cat9.views) do
 		if k ~= "hint" then
 			table.insert(set, k)

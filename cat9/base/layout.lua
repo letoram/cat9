@@ -165,8 +165,8 @@ function cat9.draw_job_header(job, x, y, cols, rows)
 	local job_key = job.expanded and "job_bar_expanded" or "job_bar_collapsed"
 	if job.selected then
 		job_key = "job_bar_selected"
-		hdrattr.fc = tui.colors.highlight
-		hdrattr.bc = tui.colors.highlight
+		hdrattr.fc = job.bar_color_selected
+		hdrattr.bc = job.bar_color_selected
 	end
 
 	local hdrattr_border = {

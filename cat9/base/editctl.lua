@@ -8,9 +8,6 @@ function(cat9, root, config)
 -- but we need cooperation with some language oracle and maintain a tmpfile that
 -- we can feed it through
 --
--- utf8 challenge is that job.data is in utf8, while cursor is logical screen cell
--- which is a full codepoint.
-
 local inputs = {}
 
 -- this set things up for a vim mode, if we have a config for something else,
@@ -161,57 +158,61 @@ local inputs = {}
 local function set_input_mode(job)
 	job.edit.insert = {}
 	job.edit.mode = "insert"
+	job.bar_color_selected = tui.colors.ref_green
 end
 
 local function set_command_mode(job)
 	job.edit.command = {}
 	job.edit.mode = "command"
+	job.bar_color_selected = tui.colors.highlight
+end
+
+local function set_append_mode(job)
+	set_input_mode(job)
+	job.cursor[1] = job.cursor[1] + 1
+end
+
+local function set_replace_mode(job)
+	job.edit.mode = "replace"
+	job.edit.replace = {}
+	job.bar_color_selected = tui.colors.ref_red
 end
 
 inputs[config.edit.input_mode   or tui.keys.I]      = set_input_mode
 inputs[config.edit.command_mode or tui.keys.ESCAPE] = set_command_mode
+inputs[config.edit.replace_mode or tui.keys.R]      = set_replace_mode
+inputs[config.edit.append_mode  or tui.keys.A]      = set_append_mode
 
 local function cursor_data_index(job)
 	return job.row_offset + job.cursor[2], job.col_offset + job.cursor[1]
 end
 
--- map to view highlight
-local function insert_ch(job, ch, advance, leave)
-	local row, col = cursor_data_index(job)
-	local insert = true
-
--- unicode fail:
---     to figure out the number of bytes to cursor position
---     root:utf8_len can be used to seek from start to cursor position and
---     step backwards (repeat until a valid length of 1+ is returned)
-
-	if ch == "\n" or ch == "\r" then
-		table.insert(job.data, row, "")
-		job.data.linecount = job.data.linecount + 1
-		job.cursor[2] = job.cursor[2] + 1
-		insert = false
-
-		if job.data.invalidate then
-			job.data:invalidate(row)
-		end
-
-	elseif ch == "\t" then
-		ch = job.edit.tab
-
-	elseif ch == "\b" then
--- special case, if we are at cursor:0, remove line and append to previous
--- unless at top, otherwise remove 1
+local function cursor_byte_index(job, ofs)
+	local y = job.row_offset + job.cursor[2]
+	local row = job.data[y]
+	if not row then
+		return -1
 	end
 
-	if insert then
-		job.data[row] =
-			string.sub(job.data[row], 1, col) ..
-			ch ..
-			string.sub(job.data[row], col+1)
-		job.cursor[1] = job.cursor[1] + #ch
+	return root:utf8_step(row, job.col_offset + job.cursor[1] + ofs)
+end
 
-		if job.data.invalidate then
-			job.data:invalidate(row)
+-- call when the underlying data has been modified and we want to redraw
+local function realign_synch(job)
+	local cy = cursor_data_index(job)
+	local co = job.edit.mode == "insert" and 1 or 0
+
+	if not job.data[cy] then
+		job.cursor[1] = 1
+-- should be u8 len, also insert mode needs us to be at the next
+	elseif job.cursor[1] >= #job.data[cy] + co then
+		job.cursor[1] = #job.data[cy] - 1
+	end
+
+	if job.row_offset + job.cursor[2] > job.data.linecount then
+		job.cursor[2] = job.data.linecount - job.row_offset
+		if job.cursor[2] < 0 then
+			job.cursor[2] = 0
 		end
 	end
 
@@ -222,6 +223,8 @@ local function cursor_left_n(job, n)
 	while n > 0 do
 		if job.cursor[1] > 0 then
 			job.cursor[1] = job.cursor[1] - 1
+		elseif job.col_offset > 0 then
+			job.col_offset = job.col_offset - 1
 		else
 			break
 		end
@@ -229,7 +232,6 @@ local function cursor_left_n(job, n)
 	end
 end
 
--- clamping is done at end against actual line data
 local function cursor_right_n(job, n)
 	while n > 0 do
 		job.cursor[1] = job.cursor[1] + 1
@@ -253,6 +255,7 @@ end
 
 local function cursor_beg(job, ch)
 	job.cursor[1] = 0
+	job.col_offset = 0
 end
 
 local function cursor_end(job, ch)
@@ -274,6 +277,141 @@ local function cursor_up_n(job, n)
 	end
 end
 
+local function delete_rows_up(job, n)
+	local row = cursor_data_index(job)
+	while n > 0 and job.data[row-1] do
+		table.remove(job.data, row - 1)
+		n = n - 1
+		job.data.linecount = job.data.linecount - 1
+	end
+	cat9.flag_dirty(job)
+end
+
+local function delete_rows_down(job, n)
+	local row = cursor_data_index(job)
+	while n > 0 and job.data[row] do
+		table.remove(job.data, row)
+		n = n - 1
+		job.data.linecount = job.data.linecount - 1
+	end
+
+	cat9.flag_dirty(job)
+end
+
+local function cursor_delete_n(job, n)
+	local cy, cx = cursor_data_index(job)
+
+	local work = job.data[cy]
+	if not work then
+		return
+	end
+
+-- special case [cx == 0]
+	if cx == 0 then
+		if cy > 1 then
+			job.cursor[1] = job.root:utf8_len(job.data[cy - 1]) + 1
+			job.data[cy - 1] = job.data[cy - 1] .. job.data[cy]
+			table.remove(job.data, cy)
+			job.data.linecount = job.data.linecount - 1
+			job.data.bytecount = job.data.bytecount - 1
+			cursor_up_n(job, 1)
+
+			cat9.flag_dirty(job)
+		end
+		return
+	end
+
+	while n > 0 and job.data[cy] do
+		local beg = cursor_byte_index(job, -2)
+		local cur = cursor_byte_index(job, 0)
+
+		if beg > 0 then
+			if cur > 0 then
+				job.data[cy] = string.sub(work, 1, beg) .. string.sub(work, cur)
+			end
+			cat9.flag_dirty(job)
+		elseif cur > 0 then
+			job.data[cy] = string.sub(work, cur)
+		end
+
+		n = n - 1
+	end
+end
+
+-- map to view highlight
+local function insert_ch(job, ch, advance, leave)
+	local row, col = cursor_data_index(job)
+	local bv = string.byte(ch, 1)
+
+	local insert = true
+	local consume = false
+
+-- unicode fail:
+--     to figure out the number of bytes to cursor position
+--     root:utf8_len can be used to seek from start to cursor position and
+--     step backwards (repeat until a valid length of 1+ is returned)
+
+	if ch == "\n" or ch == "\r" then
+		local bi = cursor_byte_index(job, -1)
+		local bd = cursor_byte_index(job, 0)
+		local ti = ""
+
+		if bi > 1 then
+			ti = string.sub(job.data[row], bd)
+			job.data[row] = string.sub(job.data[row], 1, bi)
+			table.insert(job.data, row + 1, ti)
+		else
+			table.insert(job.data, row, "")
+		end
+		job.cursor[2] = job.cursor[2] + 1
+		job.data.linecount = job.data.linecount + 1
+		cursor_beg(job)
+
+		insert = false
+		consume = true
+
+		if job.data.invalidate then
+			job.data:invalidate(row)
+		end
+
+	elseif ch == "\t" then
+		ch = job.edit.tab
+
+-- this will resolve to tui.keys.BACKSPACE in the keysym handler
+	elseif ch == "\b" or bv == 27 then
+		return false
+	end
+
+	if insert then
+		job.data[row] =
+			string.sub(job.data[row], 1, col) ..
+			ch ..
+			string.sub(job.data[row], col+1)
+		job.cursor[1] = job.cursor[1] + #ch
+
+		if job.data.invalidate then
+			job.data:invalidate(row)
+		end
+		consume = true
+	end
+
+	cat9.flag_dirty(job)
+	return consume
+end
+
+inputs[tui.keys.UP   ] = function(job) cursor_up_n(job,    1) end
+inputs[tui.keys.DOWN ] = function(job) cursor_down_n(job,  1) end
+inputs[tui.keys.LEFT ] = function(job) cursor_left_n(job,  1) end
+inputs[tui.keys.RIGHT] = function(job) cursor_right_n(job, 1) end
+inputs[tui.keys.BACKSPACE] =
+function(job)
+	if job.edit.mode == "insert" then
+		cursor_delete_n(job, 1)
+	end
+	cursor_left_n(job, 1)
+	return true
+end
+
 local function command_ch(job, ch)
 	if ch == "h" then
 		cursor_left_n(job, 1)
@@ -292,17 +430,20 @@ local function command_ch(job, ch)
 
 	elseif ch == "e" then
 		cursor_end(job)
+
+	elseif ch == "d" then
+		if job.edit.command[1] == "d" then
+			job.edit.command = {}
+			delete_rows_down(job, 1)
+		else
+			job.edit.command[1] = "d"
+		end
+	else
+		return falsde
 	end
 
-	local cy = cursor_data_index(job)
-	if not job.data[cy] then
-		job.cursor[1] = 0
--- should be u8 len
-	elseif job.cursor[1] >= #job.data[cy] then
-		job.cursor[1] = #job.data[cy] - 1
-	end
-
-	cat9.flag_dirty(job)
+	realign_synch(job)
+	return true
 end
 
 function cat9.make_editable(job, opts)
@@ -341,6 +482,7 @@ function cat9.make_editable(job, opts)
 	function(job, sub, keysym, code, mods)
 		if inputs[keysym] then
 			inputs[keysym](job, mods)
+			realign_synch(job)
 			return true
 		end
 	end
@@ -356,7 +498,7 @@ function cat9.make_editable(job, opts)
 		elseif job.edit.mode == "command" then
 			return command_ch(job, ch)
 		elseif job.edit.mode == "replace" then
-			return replace_ch(job, ch)
+			return -- replace_ch(job, ch)
 		end
 	end
 
