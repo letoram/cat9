@@ -15,9 +15,9 @@ return
 function(cat9, root, config)
 local lastmsg
 
-function cat9.each_ch(str, cb, err)
+function cat9.each_ch(str, cb, err, pos)
 	local u8_step = root.utf8_step
-	local pos = 1
+	local pos = pos or 1
 	while true do
 		local nextch = u8_step(str, 1, pos)
 		if nextch == -1 then
@@ -29,11 +29,9 @@ function cat9.each_ch(str, cb, err)
 		if cb(string.sub(str, pos, nextch-1), pos) then
 			break
 		end
-		if nextch - pos > 1 then
-		end
-
 		pos = nextch
 	end
+	return pos
 end
 
 function cat9.remove_match(tbl, ent)

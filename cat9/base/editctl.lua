@@ -65,7 +65,7 @@ local inputs = {}
 --   o append with new line below
 --   O append with new line above
 --   ea append at end of word
---   ctrl + h delete before
+--   ctrl + h characterbefore
 --   ctrl + w delete word before
 --   ctrl + j add a line break
 --   ctrl + t indent one
@@ -194,7 +194,7 @@ local function cursor_byte_index(job, ofs)
 		return -1
 	end
 
-	return root:utf8_step(row, job.col_offset + job.cursor[1] + ofs)
+	return root:utf8_step(row, job.col_offset + job.cursor[1] + ofs), y, row
 end
 
 -- call when the underlying data has been modified and we want to redraw
@@ -399,6 +399,46 @@ local function insert_ch(job, ch, advance, leave)
 	return consume
 end
 
+local function delete_cursor_end(job)
+	local beg, ind, row = cursor_byte_index(job, 0)
+	if beg < 0 then
+		return
+	end
+	job.data[ind] = string.sub(job.data[ind], 1, beg - 1)
+end
+
+local function delete_cursor_to(job, ofs)
+	local beg, ind, row = cursor_byte_index(job, 0)
+	if beg < 0 then
+		return
+	end
+	job.data[ind] = string.sub(row, 1, beg - 1) .. string.sub(row, ofs)
+end
+
+local function is_word_ch(ch)
+	return ch == string.upper(ch)
+end
+
+local function get_next_word(job)
+	local beg, ind, row = cursor_byte_index(job, 0)
+	local in_word
+	local steps = 0
+
+	stop = cat9.each_ch(row,
+		function(ch, pos)
+			steps = steps + 1
+			if in_word == nil then
+				in_word = is_word_ch(ch)
+			elseif in_word ~= is_word_ch(ch) then
+				return true
+			end
+		end,
+		_, beg
+	)
+
+	return stop, steps
+end
+
 inputs[tui.keys.UP   ] = function(job) cursor_up_n(job,    1) end
 inputs[tui.keys.DOWN ] = function(job) cursor_down_n(job,  1) end
 inputs[tui.keys.LEFT ] = function(job) cursor_left_n(job,  1) end
@@ -415,21 +455,47 @@ end
 local function command_ch(job, ch)
 	if ch == "h" then
 		cursor_left_n(job, 1)
+		job.edit.command = {}
 
 	elseif ch == "l" then
 		cursor_right_n(job, 1)
+		job.edit.command = {}
 
 	elseif ch == "j" then
 		cursor_down_n(job, 1)
+		job.edit.command = {}
 
 	elseif ch == "k" then
 		cursor_up_n(job, 1)
+		job.edit.command = {}
 
 	elseif ch == "b" then
 		cursor_beg(job)
+		job.edit.command = {}
 
 	elseif ch == "e" then
 		cursor_end(job)
+		job.edit.command = {}
+
+	elseif ch == "w" then
+-- step word or delete word
+		local ofs, steps = get_next_word(job)
+
+		if ofs then
+			if job.edit.command[1] == "d" then
+				delete_cursor_to(job, ofs)
+			else
+				cursor_right_n(job, steps - 1)
+			end
+		else
+			if job.edit.command[1] == "d" then
+				delete_cursor_end(job)
+			else
+				cursor_beg(job)
+				cursor_down_n(job, 1)
+			end
+		end
+		job.edit.command = {}
 
 	elseif ch == "d" then
 		if job.edit.command[1] == "d" then
@@ -439,7 +505,7 @@ local function command_ch(job, ch)
 			job.edit.command[1] = "d"
 		end
 	else
-		return falsde
+		return false
 	end
 
 	realign_synch(job)
