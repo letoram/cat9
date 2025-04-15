@@ -209,6 +209,10 @@ local function realign_synch(job)
 		job.cursor[1] = #job.data[cy] - 1
 	end
 
+	if job.cursor[1] < 0 then
+		job.cursor[1] = 0
+	end
+
 	if job.row_offset + job.cursor[2] > job.data.linecount then
 		job.cursor[2] = job.data.linecount - job.row_offset
 		if job.cursor[2] < 0 then
@@ -433,10 +437,41 @@ local function get_next_word(job)
 				return true
 			end
 		end,
-		_, beg
+		function()
+		end, beg
 	)
 
 	return stop, steps
+end
+
+local function cursor_word(job)
+-- step word or delete word
+	local ofs, steps = get_next_word(job)
+
+	if ofs then
+		if job.edit.command[1] == "d" then
+			delete_cursor_to(job, ofs)
+		else
+			cursor_right_n(job, steps - 1)
+		end
+	else
+		if job.edit.command[1] == "d" then
+			delete_cursor_end(job)
+		else
+			cursor_beg(job)
+			cursor_down_n(job, 1)
+		end
+	end
+end
+
+local function process_delete(job)
+	if job.edit.command[1] == "d" then
+		job.edit.command = {}
+		delete_rows_down(job, 1)
+	else
+		job.edit.command[1] = "d"
+	end
+	return true
 end
 
 inputs[tui.keys.UP   ] = function(job) cursor_up_n(job,    1) end
@@ -452,63 +487,37 @@ function(job)
 	return true
 end
 
+local command_map =
+{
+	h = {cursor_left_n ,   1, flush = true, realign = true},
+	l = {cursor_right_n,   1, flush = true, realign = true},
+	j = {cursor_down_n ,   1, flush = true, realign = true},
+	k = {cursor_up_n   ,   1, flush = true, realign = true},
+  b = {cursor_beg    , nil, flush = true, realign = true},
+	e = {cursor_end    , nil, flush = true, realign = true},
+  w = {cursor_word   ,   1, flush = true, realign = true},
+	d = {process_delete, nil, buffer = true, realign = true}
+}
+
 local function command_ch(job, ch)
-	if ch == "h" then
-		cursor_left_n(job, 1)
-		job.edit.command = {}
-
-	elseif ch == "l" then
-		cursor_right_n(job, 1)
-		job.edit.command = {}
-
-	elseif ch == "j" then
-		cursor_down_n(job, 1)
-		job.edit.command = {}
-
-	elseif ch == "k" then
-		cursor_up_n(job, 1)
-		job.edit.command = {}
-
-	elseif ch == "b" then
-		cursor_beg(job)
-		job.edit.command = {}
-
-	elseif ch == "e" then
-		cursor_end(job)
-		job.edit.command = {}
-
-	elseif ch == "w" then
--- step word or delete word
-		local ofs, steps = get_next_word(job)
-
-		if ofs then
-			if job.edit.command[1] == "d" then
-				delete_cursor_to(job, ofs)
-			else
-				cursor_right_n(job, steps - 1)
-			end
-		else
-			if job.edit.command[1] == "d" then
-				delete_cursor_end(job)
-			else
-				cursor_beg(job)
-				cursor_down_n(job, 1)
-			end
-		end
-		job.edit.command = {}
-
-	elseif ch == "d" then
-		if job.edit.command[1] == "d" then
-			job.edit.command = {}
-			delete_rows_down(job, 1)
-		else
-			job.edit.command[1] = "d"
-		end
-	else
+	local cmd = command_map[ch]
+	if not cmd then
 		return false
 	end
 
-	realign_synch(job)
+	if cmd.buffer then
+		cmd[1](job, ch)
+	else
+		cmd[1](job, cmd[2])
+	end
+
+	if cmd.flush then
+		job.edit.command = {}
+	end
+
+	if cmd.realign then
+		realign_synch(job)
+	end
 	return true
 end
 
@@ -565,6 +574,8 @@ function cat9.make_editable(job, opts)
 			return command_ch(job, ch)
 		elseif job.edit.mode == "replace" then
 			return -- replace_ch(job, ch)
+		elseif job.edit.mode == "visual" then
+
 		end
 	end
 

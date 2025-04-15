@@ -27,7 +27,7 @@ function(cat9, root, config)
 --	bnd[tui.keys.F3] = "builtin dev"
 	bnd.m1_click = "view #csel toggle"
 	bnd.m2_click = "open terminal #csel"
-	bnd.m1_data_col1_click = "view #csel select $=crow"
+	bnd.m1_data_col1_click = "view #csel mark $=crow"
 	bnd.m4_data_click = "view #csel scroll relative -1"
 	bnd.m5_data_click = "view #csel scroll relative 1"
 -- uncomment for chorded input
