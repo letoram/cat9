@@ -188,6 +188,7 @@ local function trigger_mode_swap(job)
 		job.edit.mode_closure()
 		job.edit.mode_closure = nil
 	end
+	cat9.flag_dirty(job)
 end
 
 local function set_input_mode(job)
@@ -195,7 +196,7 @@ local function set_input_mode(job)
 	job.edit.insert = {}
 	job.edit.vsel = {}
 	job.edit.mode = "insert"
-	job.bar_color_selected = config.edit.bar.ipnut
+	job.bar_color_selected = config.edit.bar.input
 end
 
 local function set_command_mode(job)
@@ -220,6 +221,11 @@ local function set_visual_mode(job)
 	job.edit.mode = "visual"
 	job.edit.start = {}
 	job.edit.start.x, job.edit.start.y = cursor_data_index(job)
+
+-- three different visual modes:
+--  visual line
+--  visual block
+--  visual char
 
 	job.bar_color_selected = config.edit.bar.visual
 end
@@ -390,7 +396,7 @@ local function cursor_delete_n(job, n)
 end
 
 -- map to view highlight
-local function insert_ch(job, ch, advance, leave)
+local function insert_ch(job, ch)
 	local row, col = cursor_data_index(job)
 	local bv = string.byte(ch, 1)
 
@@ -438,7 +444,7 @@ local function insert_ch(job, ch, advance, leave)
 			string.sub(job.data[row], 1, col) ..
 			ch ..
 			string.sub(job.data[row], col+1)
-		job.cursor[1] = job.cursor[1] + #ch
+		job.cursor[1] = job.cursor[1] + root.utf8_len(ch)
 
 		if job.data.invalidate then
 			job.data:invalidate(row)
@@ -511,6 +517,30 @@ local function cursor_word(job)
 	end
 end
 
+local function cursor_paste(job, before)
+	if not job.edit.yank_buffer then
+		return
+	end
+
+	if before and job.cursor[1] > 0 then
+		job.cursor[1] = job.cursor[1] - 1
+	end
+
+-- just iterate and simulate character insertion
+	for _, v in ipairs(job.edit.yank_buffer) do
+		cat9.each_ch(v,
+			function(ch)
+				insert_ch(job, ch)
+			end,
+			function()
+			end
+		)
+		if job.edit.yank_buffer.multiline then
+			insert_ch(job, "\n")
+		end
+	end
+end
+
 local function process_delete(job)
 	if job.edit.command[1] == "d" then
 		job.edit.command = {}
@@ -519,6 +549,47 @@ local function process_delete(job)
 		job.edit.command[1] = "d"
 	end
 	return true
+end
+
+local function vsel_to_yank(job, new)
+-- this can have gaps so first get the set of used rows and then sort
+	local ilist = {}
+	for k, _ in pairs(job.edit.vsel) do
+		table.insert(ilist, k)
+	end
+	table.sort(ilist)
+	if #ilist == 0 then
+		return
+	end
+
+	local rows = {multiline = #ilist > 1}
+
+	for _,v in ipairs(ilist) do
+		for _, set in ipairs(job.edit.vsel[v]) do
+			local count = set[2] - set[1]
+			local row = {}
+			if set[2] == root.utf8_len(job.data[v]) then
+				rows.multiline = true
+			end
+
+			cat9.each_ch(
+				job.data[v],
+				function(ch)
+					table.insert(row, ch)
+					count = count - 1
+					return count == 0
+				end,
+				function()
+				end,
+				set[1] + 1
+			)
+			row = table.concat(row, "")
+			table.insert(rows, row)
+		end
+	end
+
+	cat9.add_message(tostring(#rows) .. " lines yanked")
+	job.edit.yank_buffer = rows
 end
 
 inputs[tui.keys.UP   ] = function(job) cursor_up_n(job,    1) end
@@ -543,7 +614,9 @@ local command_map =
   b = {cursor_beg    , nil, flush = true, realign = true},
 	e = {cursor_end    , nil, flush = true, realign = true},
   w = {cursor_word   ,   1, flush = true, realign = true},
-	d = {process_delete, nil, buffer = true, realign = true}
+	d = {process_delete, nil, buffer = true, realign = true},
+	p = {cursor_paste,   nil, flush = true, realign = true},
+	P = {cursor_paste,  true, flush = true, realign = true}
 }
 
 local function command_ch(job, ch)
@@ -595,7 +668,7 @@ local function apply_vsel_delta_cont(job, delta, cr, cc, dr, dc)
 		cc = cc + sign
 
 -- wrapping, delta would be 0 if we don't step across rows
-		if cc < 0 then
+		if cc <= 0 then
 			crow[1] = 0
 			cr = cr - 1
 			cc = root:utf8_len(job.data[cr])
@@ -640,7 +713,12 @@ local function visual_ch(job, ch)
 
 -- other controls:
 -- toggle skip for gaps, switch to block, yank to new job
-	else
+	elseif ch == "y" or ch == "Y" then
+		vsel_to_yank(job, ch == "Y")
+		set_command_mode(job)
+
+	elseif ch == "v" then
+		set_command_mode(job)
 		return
 	end
 end
