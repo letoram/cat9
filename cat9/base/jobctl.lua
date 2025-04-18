@@ -799,7 +799,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- offsets and not just 'per line attributes'
 		if job.write_override then
 			job:write_override(cx,
-				y+i, row, set, ind, 0, job.selections[ind], ccols)
+				y+i, row, set, ind, 0, job.selections[ind], ccols, match)
 
 -- it is possible to set a generic highlight filter through view search
 -- which also works as a stepper filter for scroll

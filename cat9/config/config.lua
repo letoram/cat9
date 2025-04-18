@@ -212,6 +212,21 @@ return
 
 	edit =
 	{
+-- color override for visual selection
+		select = {
+			bc = tui.colors.ref_red,
+			br = 64,
+			bg = 0,
+			bb = 0,
+			border_down = true
+		},
+		bar = {
+			input = tui.colors.ref_green,
+			command = tui.colors.highlight,
+			visual = tui.colors.ref_blue,
+			append = tui.colors.ref_green,
+			replace = tui.colors.ref_red
+		}
 	},
 
 	glob =

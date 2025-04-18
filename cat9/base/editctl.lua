@@ -154,37 +154,10 @@ local inputs = {}
 --    %s/old/new/gc (g with confirm)
 --    :noh remove highlight
 --
-
-local function set_input_mode(job)
-	job.edit.insert = {}
-	job.edit.mode = "insert"
-	job.bar_color_selected = tui.colors.ref_green
-end
-
-local function set_command_mode(job)
-	job.edit.command = {}
-	job.edit.mode = "command"
-	job.bar_color_selected = tui.colors.highlight
-end
-
-local function set_append_mode(job)
-	set_input_mode(job)
-	job.cursor[1] = job.cursor[1] + 1
-end
-
-local function set_replace_mode(job)
-	job.edit.mode = "replace"
-	job.edit.replace = {}
-	job.bar_color_selected = tui.colors.ref_red
-end
-
-inputs[config.edit.input_mode   or tui.keys.I]      = set_input_mode
-inputs[config.edit.command_mode or tui.keys.ESCAPE] = set_command_mode
-inputs[config.edit.replace_mode or tui.keys.R]      = set_replace_mode
-inputs[config.edit.append_mode  or tui.keys.A]      = set_append_mode
-
 local function cursor_data_index(job)
-	return job.row_offset + job.cursor[2], job.col_offset + job.cursor[1]
+	local row = job.row_offset + job.cursor[2]
+	local col = job.col_offset + job.cursor[1]
+	return row, col
 end
 
 local function cursor_byte_index(job, ofs)
@@ -197,10 +170,81 @@ local function cursor_byte_index(job, ofs)
 	return root:utf8_step(row, job.col_offset + job.cursor[1] + ofs), y, row
 end
 
--- call when the underlying data has been modified and we want to redraw
+local function cell_delta(job, y1, x1, y2, x2)
+-- same row is simple
+	if y1 == y2 then
+		return x2 - x1
+
+-- for row delta we need to find current row to edge
+	elseif y2 > y1 then
+		return root:utf8_len(job.data[y1]) - x1 + x2
+	else
+		return -x1 - root:utf8_len(job.data[y2]) - x2
+	end
+end
+
+local function trigger_mode_swap(job)
+	if job.edit.mode_closure then
+		job.edit.mode_closure()
+		job.edit.mode_closure = nil
+	end
+end
+
+local function set_input_mode(job)
+	trigger_mode_swap(job)
+	job.edit.insert = {}
+	job.edit.vsel = {}
+	job.edit.mode = "insert"
+	job.bar_color_selected = config.edit.bar.ipnut
+end
+
+local function set_command_mode(job)
+	trigger_mode_swap(job)
+	job.edit.vsel = {}
+	job.edit.command = {}
+	job.edit.mode = "command"
+	job.bar_color_selected = config.edit.bar.command
+end
+
+local function set_append_mode(job)
+	trigger_mode_swap(job)
+	set_input_mode(job)
+	job.bar_color_selected = config.edit.bar.append
+	job.cursor[1] = job.cursor[1] + 1
+end
+
+local function set_visual_mode(job)
+	trigger_mode_swap(job)
+	job.edit.vsel = {}
+	job.edit.command = {}
+	job.edit.mode = "visual"
+	job.edit.start = {}
+	job.edit.start.x, job.edit.start.y = cursor_data_index(job)
+
+	job.bar_color_selected = config.edit.bar.visual
+end
+
+local function set_replace_mode(job)
+	trigger_mode_swap(job)
+	job.edit.mode = "replace"
+	job.edit.replace = {}
+	job.bar_color_selected = tui.colors.ref_red
+end
+
+inputs[config.edit.input_mode   or tui.keys.I]      = set_input_mode
+inputs[config.edit.command_mode or tui.keys.ESCAPE] = set_command_mode
+inputs[config.edit.replace_mode or tui.keys.R]      = set_replace_mode
+inputs[config.edit.append_mode  or tui.keys.A]      = set_append_mode
+inputs[config.edit.visual_mode  or tui.keys.V]      = set_visual_mode
+
+-- call when the underlying data has been modified and we want to redraw,
+-- ensures that the cursor is at a mode-apropriate position
 local function realign_synch(job)
 	local cy = cursor_data_index(job)
-	local co = job.edit.mode == "insert" and 1 or 0
+	local co = (
+		job.edit.mode == "insert" or
+		job.edit.mode == "visual"
+	) and 1 or 0
 
 	if not job.data[cy] then
 		job.cursor[1] = 1
@@ -245,6 +289,9 @@ end
 
 local function cursor_down_n(job, n)
 	local cy = cursor_data_index(job)
+-- if cursor at scroll bound, (region[4] - region[2] - pad)
+-- then adjust offset instead
+
 	while n > 0 do
 		cy = cy + 1
 		job.cursor[2] = job.cursor[2] + 1
@@ -521,6 +568,109 @@ local function command_ch(job, ch)
 	return true
 end
 
+-- The vsel format is a bit more involved than just start_i, stop_i to be
+-- able to handle gaps for block- select and how the rendering is attribute
+-- additive and draw-time and tracked in cell-space.
+--
+-- Rather than having a check for each navigation command, we take a start
+-- cursor position and a destination cursor position and apply as a sweep
+-- or as a block selection operation.
+local function apply_vsel_delta_cont(job, delta, cr, cc, dr, dc)
+	if delta == 0 then
+		return
+	end
+
+	local sign = math.abs(delta) / delta
+	while delta ~= 0 do
+		local crow
+		if not job.edit.vsel[cr] then
+			crow = {cc, cc}
+			job.edit.vsel[cr] = {crow}
+		else
+-- for #vsel[cr] > 1 we have selection with gaps, we then need to know
+-- which one we are currently in and if we should grow or shrink it.
+			crow = job.edit.vsel[cr][1]
+		end
+		local rlen = root:utf8_len(job.data[cr])
+		cc = cc + sign
+
+-- wrapping, delta would be 0 if we don't step across rows
+		if cc < 0 then
+			crow[1] = 0
+			cr = cr - 1
+			cc = root:utf8_len(job.data[cr])
+
+		elseif cc > rlen then
+			crow[2] = rlen
+			cr = cr + 1
+			cc = 0
+
+		elseif cc < crow[1] then
+			crow[1] = cc
+
+		elseif cc > crow[2] then
+			crow[2] = cc
+
+		elseif cc < crow[2] then
+			if sign > 0 then
+				crow[1] = cc
+			else
+				crow[2] = cc
+			end
+
+		elseif cc > crow[1] then
+			crow[1] = cc
+		end
+
+		delta = delta + -sign
+	end
+end
+
+-- cursor manipulation commands
+local visual_cmd_map = {"h", "l", "j", "k", "b", "e", "w"}
+local function visual_ch(job, ch)
+	local cr, cc = cursor_data_index(job)
+
+-- also need to track row_offset and col_offset so that scrolling is applied
+	if table.find_i(visual_cmd_map, ch) then
+		command_ch(job, ch)
+		local dr, dc = cursor_data_index(job)
+		local delta = cell_delta(job, cr, cc, dr, dc)
+		apply_vsel_delta_cont(job, delta,cr, cc, dr, dc)
+
+-- other controls:
+-- toggle skip for gaps, switch to block, yank to new job
+	else
+		return
+	end
+end
+
+local function editctl_write(job, cx, y, row, set, ind, _, selected, cols, match_index)
+-- first apply the regular- style write
+	job.root:write_to(cx, y, row, job:attr_lookup(set, ind, 0, job.selections[ind]))
+
+-- now override attribute for cells that match our index range
+	if job.edit.vsel[ind] then
+		for _,v in ipairs(job.edit.vsel[ind]) do
+			for i=v[1],v[2] do
+				local _, attr = job.root:get(cx + i, y, false)
+
+-- handle both indexed and explicit colors
+				if attr.fc then
+					attr.bc = config.edit.select.bc
+				else
+					attr.br = config.edit.select.br
+					attr.bg = config.edit.select.bg
+					attr.bb = config.edit.select.bb
+				end
+
+				attr.border_down = config.edit.select.border_down
+				job.root:write_to(cx + i, y, attr)
+			end
+		end
+	end
+end
+
 function cat9.make_editable(job, opts)
 	if job.block_edit then
 		cat9.add_message("job is not editable")
@@ -530,7 +680,9 @@ function cat9.make_editable(job, opts)
 	job.edit = {
 		mode = "command",
 		command = {},
-		tab = "  "
+		tab = "  ",
+		vsel = {
+		}
 	}
 
 -- option:
@@ -575,9 +727,11 @@ function cat9.make_editable(job, opts)
 		elseif job.edit.mode == "replace" then
 			return -- replace_ch(job, ch)
 		elseif job.edit.mode == "visual" then
-
+			return visual_ch(job, ch)
 		end
 	end
+
+	job.write_override = editctl_write
 
 	job.handlers.mouse_button =
 	function(job)
