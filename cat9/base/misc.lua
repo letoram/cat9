@@ -15,22 +15,43 @@ return
 function(cat9, root, config)
 local lastmsg
 
-function cat9.each_ch(str, cb, err, pos)
+function cat9.each_ch(str, cb, err, pos, dir)
 	local u8_step = root.utf8_step
+	local dir = dir or 1
 	local pos = pos or 1
+
+-- seek positive to codepoint position
+	pos = u8_step(str, pos)
+
+	if pos == -1 then
+		err(str, pos)
+		return
+	end
+
+-- now step in direction and callback
 	while true do
-		local nextch = u8_step(str, 1, pos)
+		local nextch, ch = u8_step(str, dir, pos)
 		if nextch == -1 then
-			if pos <= #str then
+			if nextch <= #str then
 				err(str, pos)
 			end
 			return
 		end
-		if cb(string.sub(str, pos, nextch-1), pos) then
-			break
+
+-- slice out the character, order based on direction
+		if nextch < pos then
+			if cb(string.sub(str, nextch, pos-1), nextch) then
+				break
+			end
+		else
+			if cb(string.sub(str, pos, nextch-1), pos) then
+				break
+			end
 		end
+
 		pos = nextch
 	end
+
 	return pos
 end
 

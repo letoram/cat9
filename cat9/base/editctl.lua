@@ -476,7 +476,7 @@ local function is_word_ch(ch)
 	return ch == string.upper(ch)
 end
 
-local function get_next_word(job)
+local function get_next_word(job, dir)
 	local beg, ind, row = cursor_byte_index(job, 0)
 	local in_word
 	local steps = 0
@@ -491,21 +491,25 @@ local function get_next_word(job)
 			end
 		end,
 		function()
-		end, beg
+		end, beg, dir
 	)
 
 	return stop, steps
 end
 
-local function cursor_word(job)
+local function cursor_word(job, step)
 -- step word or delete word
-	local ofs, steps = get_next_word(job)
+	local ofs, steps = get_next_word(job, step)
 
 	if ofs then
 		if job.edit.command[1] == "d" then
 			delete_cursor_to(job, ofs)
 		else
-			cursor_right_n(job, steps - 1)
+			if step > 0 then
+				cursor_right_n(job, steps - 1)
+			else
+				cursor_left_n(job, steps - 1)
+			end
 		end
 	else
 		if job.edit.command[1] == "d" then
@@ -547,6 +551,14 @@ local function process_delete(job)
 		delete_rows_down(job, 1)
 	else
 		job.edit.command[1] = "d"
+	end
+	return true
+end
+
+local function process_yank(job)
+	if job.edit.command[1] == "y" then
+	else
+		job.edit.command[1] = "y"
 	end
 	return true
 end
@@ -607,16 +619,18 @@ end
 
 local command_map =
 {
-	h = {cursor_left_n ,   1, flush = true, realign = true},
-	l = {cursor_right_n,   1, flush = true, realign = true},
-	j = {cursor_down_n ,   1, flush = true, realign = true},
-	k = {cursor_up_n   ,   1, flush = true, realign = true},
-  b = {cursor_beg    , nil, flush = true, realign = true},
-	e = {cursor_end    , nil, flush = true, realign = true},
-  w = {cursor_word   ,   1, flush = true, realign = true},
-	d = {process_delete, nil, buffer = true, realign = true},
-	p = {cursor_paste,   nil, flush = true, realign = true},
-	P = {cursor_paste,  true, flush = true, realign = true}
+	h     = {cursor_left_n ,   1, flush  = true,  realign = true},
+	l     = {cursor_right_n,   1, flush  = true,  realign = true},
+	j     = {cursor_down_n ,   1, flush  = true,  realign = true},
+	k     = {cursor_up_n   ,   1, flush  = true,  realign = true},
+  ["0"] = {cursor_beg    , nil, flush  = true,  realign = true},
+	e     = {cursor_end    , nil, flush  = true,  realign = true},
+  w     = {cursor_word   ,   1, flush  = true,  realign = true},
+	b     = {cursor_word   ,  -1, flush  = true,  realign = true},
+	p     = {cursor_paste,   nil, flush  = true,  realign = true},
+	P     = {cursor_paste,  true, flush  = true,  realign = true},
+	y     = {process_yank,   nil, flush  = false, realign = false, buffer = true},
+	d     = {process_delete, nil, flush  = false, realign = true,  buffer = true},
 }
 
 local function command_ch(job, ch)
