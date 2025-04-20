@@ -796,12 +796,31 @@ function cat9.make_editable(job, opts)
 		return
 	end
 
+-- toggle off
+	if job.edit then
+		local restore = job.edit.restore
+		job.edit = nil
+		job.key_input = restore.key_input
+		job.write = restore.write
+		job.write_override = restore.write_override
+		job.handlers.mouse_button = restore.mouse_button
+		job.handlers.toggle_selected = restore.toggle_selected
+		return
+	end
+
 	job.edit = {
 		mode = "command",
 		command = {},
 		tab = "  ",
 		scroll_ofs = 4,
 		vsel = {
+		},
+		restore = {
+			key_input = job.key_input,
+			write = job.write,
+			write_override = job.write_override,
+			mouse_button = job.handlers.mouse_button,
+			toggle_selected = job.handlers.toggle_selected
 		}
 	}
 

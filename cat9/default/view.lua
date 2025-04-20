@@ -430,7 +430,11 @@ function suggest.view(args, raw)
 
 	if not job.block_edit then
 		table.insert(set, "edit")
-		table.insert(set.hint, "Make job output editable")
+		table.insert(set.hint,
+			job.edit and
+				"Disable job edit mode" or
+				"Enable job edit mode"
+		)
 	end
 
 	for k,v in pairs(cat9.views) do
