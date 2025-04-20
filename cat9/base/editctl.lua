@@ -273,16 +273,41 @@ local function realign_synch(job)
 	cat9.flag_dirty(job)
 end
 
-local function cursor_left_n(job, n)
+local function cursor_end(job, ch)
+	local cy = cursor_data_index(job)
+	if not job.data[cy] then
+		return
+	end
+
+	job.cursor[1] = job.root:utf8_len(job.data[cy])
+end
+
+local function cursor_up_n(job, n)
+	while n > 0 do
+		if job.cursor[2] == 0 then
+			break
+		end
+		job.cursor[2] = job.cursor[2] - 1
+		n = n - 1
+	end
+end
+
+local function cursor_left_n(job, n, wrap)
 	while n > 0 do
 		if job.cursor[1] > 0 then
 			job.cursor[1] = job.cursor[1] - 1
+			n = n - 1
 		elseif job.col_offset > 0 then
 			job.col_offset = job.col_offset - 1
-		else
-			break
+			n = n - 1
+		elseif wrap then
+			if job.cursor[2] > 0 then
+				cursor_up_n(job, 1)
+				cursor_end(job)
+			else
+				break
+			end
 		end
-		n = n - 1
 	end
 end
 
@@ -313,25 +338,6 @@ end
 local function cursor_beg(job, ch)
 	job.cursor[1] = 0
 	job.col_offset = 0
-end
-
-local function cursor_end(job, ch)
-	local cy = cursor_data_index(job)
-	if not job.data[cy] then
-		return
-	end
-
-	job.cursor[1] = job.root:utf8_len(job.data[cy])
-end
-
-local function cursor_up_n(job, n)
-	while n > 0 do
-		if job.cursor[2] == 0 then
-			break
-		end
-		job.cursor[2] = job.cursor[2] - 1
-		n = n - 1
-	end
 end
 
 local function delete_rows_up(job, n)
@@ -473,13 +479,20 @@ local function delete_cursor_to(job, ofs)
 end
 
 local function is_word_ch(ch)
-	return ch == string.upper(ch)
+	return string.match(ch, "%w") ~= nil
 end
 
 local function get_next_word(job, dir)
 	local beg, ind, row = cursor_byte_index(job, 0)
 	local in_word
 	local steps = 0
+
+-- special case, jump up one
+	if dir < 0 and beg == 1 and ind > 1 then
+		ind = ind - 1
+		row = job.data[ind]
+		beg = #row - 1
+	end
 
 	stop = cat9.each_ch(row,
 		function(ch, pos)
@@ -502,13 +515,15 @@ local function cursor_word(job, step)
 	local ofs, steps = get_next_word(job, step)
 
 	if ofs then
+		if step < 0 then
+			cursor_left_n(job, steps - 1, true)
+		end
+
 		if job.edit.command[1] == "d" then
 			delete_cursor_to(job, ofs)
 		else
 			if step > 0 then
-				cursor_right_n(job, steps - 1)
-			else
-				cursor_left_n(job, steps - 1)
+				cursor_right_n(job, steps)
 			end
 		end
 	else
@@ -516,7 +531,9 @@ local function cursor_word(job, step)
 			delete_cursor_end(job)
 		else
 			cursor_beg(job)
-			cursor_down_n(job, 1)
+			if step > 0 then
+				cursor_down_n(job, 1)
+			end
 		end
 	end
 end
