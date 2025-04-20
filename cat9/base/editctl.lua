@@ -284,10 +284,13 @@ end
 
 local function cursor_up_n(job, n)
 	while n > 0 do
-		if job.cursor[2] == 0 then
+		if job.cursor[2] <= job.edit.scroll_ofs and job.row_offset > 1 then
+			job.row_offset = job.row_offset - 1
+		elseif job.cursor[2] == 0 then
 			break
+		else
+			job.cursor[2] = job.cursor[2] - 1
 		end
-		job.cursor[2] = job.cursor[2] - 1
 		n = n - 1
 	end
 end
@@ -322,10 +325,17 @@ local function cursor_down_n(job, n)
 	local cy = cursor_data_index(job)
 -- if cursor at scroll bound, (region[4] - region[2] - pad)
 -- then adjust offset instead
+	local page_size = job.region[4] - job.region[2] - 2
 
 	while n > 0 do
 		cy = cy + 1
-		job.cursor[2] = job.cursor[2] + 1
+		if (job.cursor[2] + 1 > page_size - job.edit.scroll_ofs) and
+			(job.data.linecount - job.row_offset > page_size) then
+			job.row_offset = job.row_offset + 1
+		else
+			job.cursor[2] = job.cursor[2] + 1
+		end
+
 		if not job.data[cy] then
 			cy = cy - 1
 			job.cursor[2] = job.cursor[2] - 1
@@ -790,6 +800,7 @@ function cat9.make_editable(job, opts)
 		mode = "command",
 		command = {},
 		tab = "  ",
+		scroll_ofs = 4,
 		vsel = {
 		}
 	}
