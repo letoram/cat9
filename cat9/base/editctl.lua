@@ -19,10 +19,6 @@ local inputs = {}
 --
 --  cursor:
 --   gj/gk (move cursor for multiline)
---   H to top of screen
---   M to middle
---   L to bottom
---   w forward to start of word
 --   W forward to start of word with punctuation
 --   e end of word
 --   E forward to end of word with punctuation
@@ -264,6 +260,7 @@ local function realign_synch(job)
 	end
 
 	if job.row_offset + job.cursor[2] > job.data.linecount then
+		print("realign synch", job.cursor[2])
 		job.cursor[2] = job.data.linecount - job.row_offset
 		if job.cursor[2] < 0 then
 			job.cursor[2] = 0
@@ -297,20 +294,31 @@ end
 
 local function cursor_left_n(job, n, wrap)
 	while n > 0 do
+-- simple step
 		if job.cursor[1] > 0 then
 			job.cursor[1] = job.cursor[1] - 1
 			n = n - 1
+-- or scroll leftwise rather than move the cursor
 		elseif job.col_offset > 0 then
 			job.col_offset = job.col_offset - 1
 			n = n - 1
+
+-- if we are at edge and permit wrap, move up one and go to end of row
 		elseif wrap then
 			if job.cursor[2] > 0 then
 				cursor_up_n(job, 1)
 				cursor_end(job)
+
+-- wrap at top is no-op (unless one wants wraparound to end)
 			else
 				break
 			end
+
+-- already at edge
+		else
+			break
 		end
+
 	end
 end
 
@@ -506,6 +514,7 @@ local function get_next_word(job, dir)
 
 	stop = cat9.each_ch(row,
 		function(ch, pos)
+			print(ch, pos)
 			steps = steps + 1
 			if in_word == nil then
 				in_word = is_word_ch(ch)
@@ -631,6 +640,29 @@ local function vsel_to_yank(job, new)
 	job.edit.yank_buffer = rows
 end
 
+local function cursor_vcenter(job)
+	local page_size = job.region[4] - job.region[2] - 2
+	job.cursor[2] = math.floor(page_size * 0.5)
+end
+
+local function cursor_top(job)
+	if job.row_offset > 1 then
+		job.cursor[2] = job.edit.scroll_ofs
+	else
+		job.cursor[2] = 0
+	end
+end
+
+local function cursor_bottom(job)
+	local page_size = job.region[4] - job.region[2] - 2
+
+	if page_size >= job.data.linecount - job.row_offset then
+		job.cursor[2] = job.data.linecount - job.row_offset
+	else
+		job.cursor[2] = page_size - job.edit.scroll_ofs
+	end
+end
+
 inputs[tui.keys.UP   ] = function(job) cursor_up_n(job,    1) end
 inputs[tui.keys.DOWN ] = function(job) cursor_down_n(job,  1) end
 inputs[tui.keys.LEFT ] = function(job) cursor_left_n(job,  1) end
@@ -651,11 +683,14 @@ local command_map =
 	j     = {cursor_down_n ,   1, flush  = true,  realign = true},
 	k     = {cursor_up_n   ,   1, flush  = true,  realign = true},
   ["0"] = {cursor_beg    , nil, flush  = true,  realign = true},
-	e     = {cursor_end    , nil, flush  = true,  realign = true},
+	["$"] = {cursor_end    , nil, flush  = true,  realign = true},
   w     = {cursor_word   ,   1, flush  = true,  realign = true},
 	b     = {cursor_word   ,  -1, flush  = true,  realign = true},
 	p     = {cursor_paste,   nil, flush  = true,  realign = true},
 	P     = {cursor_paste,  true, flush  = true,  realign = true},
+	M     = {cursor_vcenter, nil, flush  = true,  realign = true},
+	H     = {cursor_top,     nil, flush  = true,  realign = true},
+	L     = {cursor_bottom,  nil, flush  = true,  realign = true},
 	y     = {process_yank,   nil, flush  = false, realign = false, buffer = true},
 	d     = {process_delete, nil, flush  = false, realign = true,  buffer = true},
 }
