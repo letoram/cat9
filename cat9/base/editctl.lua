@@ -260,7 +260,6 @@ local function realign_synch(job)
 	end
 
 	if job.row_offset + job.cursor[2] > job.data.linecount then
-		print("realign synch", job.cursor[2])
 		job.cursor[2] = job.data.linecount - job.row_offset
 		if job.cursor[2] < 0 then
 			job.cursor[2] = 0
@@ -514,7 +513,6 @@ local function get_next_word(job, dir)
 
 	stop = cat9.each_ch(row,
 		function(ch, pos)
-			print(ch, pos)
 			steps = steps + 1
 			if in_word == nil then
 				in_word = is_word_ch(ch)

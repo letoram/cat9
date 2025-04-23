@@ -257,6 +257,7 @@ load_feature("jobmeta.lua") -- job contextual information providers
 load_feature("json.lua")    -- json parsing
 load_feature("editctl.lua") -- making jobs editable
 load_feature("promptmeta.lua") --  prompt contextual information providers
+load_feature("diff_match_patch.lua")
 load_feature("bindings.lua", "config")
 load_builtins("default")
 cat9.path_set = nil -- binary completion for exec is statically cached

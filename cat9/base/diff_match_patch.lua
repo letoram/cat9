@@ -1,3 +1,6 @@
+return
+function(cat9, root, config)
+
 --[[
 * Diff Match and Patch
 * Copyright 2018 The diff-match-patch Authors.
@@ -2179,4 +2182,5 @@ _M.patch_splitMax = _patch_splitMax
 _M.patch_addPadding = _patch_addPadding
 _M.settings = settings
 
-return _M
+cat9.diff = _M
+end
