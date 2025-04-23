@@ -212,6 +212,9 @@ return
 
 	edit =
 	{
+-- bytes to limit on-enter backup
+		snapshot_size = 1024 * 1024 * 2,
+
 -- color override for visual selection
 		select = {
 			bc = tui.colors.ref_red,

@@ -4,9 +4,31 @@ function(cat9, root, config)
 -- since this runs in 'focused job input mode' the regular cat9/config/bindings.lua
 -- shouldn't be used and we keep the inputs as a separate part of default.lua config
 --
--- what would be interesting is to have a scope filter and a widen / step in
--- but we need cooperation with some language oracle and maintain a tmpfile that
--- we can feed it through
+-- missing features:
+-- =================
+--    1. undo buffer / replay
+--    2. history snapshotting / stepping
+--    3. range-folding (part of jobctrl so that rendering takes that into account for
+--                   line-numbering and skipping)
+--
+--      e.g. fold #0 1-5, 25-30
+--           with multiple levels:
+--                fold #0 2-3 would add [2-3] as a subtree to 1-5
+--
+--      and view- controls to specify which fold to expand/contract or show as only
+--      visible output.
+--
+--      and bindings to toggle the folding on / off
+--
+--    4. wrapping controls / rendering (affects stepping operations, mainly expand
+--                                   cursor to byte and row index)
+--
+--    5. edit template (line, offset and modify rendering to show as labels)
+--
+--    6. external highlighter, navigation, suggestion, fold-range resolver
+--             with poc for ispell
+--
+--    7. reflow / reformat visual selection
 --
 local inputs = {}
 
@@ -838,6 +860,10 @@ function cat9.make_editable(job, opts)
 		job.write_override = restore.write_override
 		job.handlers.mouse_button = restore.mouse_button
 		job.handlers.toggle_selected = restore.toggle_selected
+		if opts.revert and restore.history then
+			job.data = restore.history
+			cat9.flag_dirty(job)
+		end
 		return
 	end
 
@@ -846,6 +872,7 @@ function cat9.make_editable(job, opts)
 		command = {},
 		tab = "  ",
 		scroll_ofs = 4,
+		history = {},
 		vsel = {
 		},
 		restore = {
@@ -857,18 +884,18 @@ function cat9.make_editable(job, opts)
 		}
 	}
 
--- option:
---
---    fixed-lines,
---    template,
---    external highlighter,
---    external completion
+-- make a copy of the dataset unless it exceeds some upper bounds in order to
+-- produce diffs and revert
+	if job.data.bytecount < config.edit.snapshot_size then
+		local hd = {}
+		for i=1, job.data.linecount do
+			table.insert(hd, job.data[i])
+		end
+		hd.linecount = job.data.linecount
+		hd.bytecount = job.data.bytecount
+		job.edit.restore.history = hd
+	end
 
--- this takes as inner-view, e.g. wrap or crop.
---
--- we overlay an input and click handler that applies input editing actions
--- and match how vim input takes things.
---
 -- the option is for a template:
 --
 --  i.e. unmasked and cursor on it enforces a certain validation

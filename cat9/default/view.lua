@@ -279,10 +279,6 @@ local function view_monitor()
 	return
 end
 
-local function make_editable(job)
-	cat9.make_editable(job, {})
-end
-
 local function view_colour()
 	local job =
 	{
@@ -344,10 +340,6 @@ function builtins.view(job, ...)
 
 -- dynamically loaded views take precedence
 	local arg = {...}
-	if type(arg[1]) == "string" and arg[1] == "edit" then
-		make_editable(job)
-		return
-	end
 
 	local viewer = cat9.views[arg[1]]
 	if viewer then
@@ -426,15 +418,6 @@ function suggest.view(args, raw)
 	if job.deferred and job.pid then
 		table.insert(set, "defer")
 		table.insert(set.hint, "Toggle between live view and input statistics")
-	end
-
-	if not job.block_edit then
-		table.insert(set, "edit")
-		table.insert(set.hint,
-			job.edit and
-				"Disable job edit mode" or
-				"Enable job edit mode"
-		)
 	end
 
 	for k,v in pairs(cat9.views) do
