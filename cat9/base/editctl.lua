@@ -6,7 +6,6 @@ function(cat9, root, config)
 --
 -- missing features:
 -- =================
---    1. undo buffer / replay
 --    2. history snapshotting / stepping
 --    3. range-folding (part of jobctrl so that rendering takes that into account for
 --                   line-numbering and skipping)
@@ -440,41 +439,99 @@ local function cursor_delete_n(job, n)
 	end
 end
 
+local function process_undo(job)
+	local ui = job.edit.history.offset
+	local item = job.edit.history[#job.edit.history - ui]
+	if not item then
+		return
+	end
+
+-- each item is a set of patches,
+--
+-- e.g. start-row, remove or insert at byte offset and should be
+-- created as the inverse of the operation that preceeded it.
+--
+-- then when applying it we invert that again and add back into
+-- the history at the offset we are at.
+--
+-- this format is wasteful-ish in that it tracks single character
+-- edits as full line replacements.
+--
+	job.edit.history.offset = ui + 1
+
+	local revert = {}
+
+	for i,v in ipairs(item) do
+		if v.remove then
+			table.remove(job.data, v.line)
+			job.data.linecount = job.data.linecount - 1
+		end
+
+		if v.insert then
+			table.insert(job.data, v.line, v.insert)
+			job.data.linecount = job.data.linecount + 1
+		end
+
+		if v.replace then
+			job.data[v.line] = v.replace
+		end
+	end
+
+	cat9.flag_dirty(job)
+end
+
 -- map to view highlight
-local function insert_ch(job, ch)
+local function insert_ch(job, ch, track)
 	local row, col = cursor_data_index(job)
 	local bv = string.byte(ch, 1)
 
 	local insert = true
 	local consume = false
 
--- unicode fail:
---     to figure out the number of bytes to cursor position
---     root:utf8_len can be used to seek from start to cursor position and
---     step backwards (repeat until a valid length of 1+ is returned)
-
 	if ch == "\n" or ch == "\r" then
 		local bi = cursor_byte_index(job, -1)
 		local bd = cursor_byte_index(job, 0)
 		local ti = ""
 
+-- break up line
 		if bi > 1 then
-			ti = string.sub(job.data[row], bd)
-			job.data[row] = string.sub(job.data[row], 1, bi)
+			local old = job.data[row]
+			ti = string.sub(old, bd)
+			job.data[row] = string.sub(old, 1, bi)
 			table.insert(job.data, row + 1, ti)
+
+			if track then
+				table.insert(job.edit.history, {
+					{
+						line = row,
+						replace = old
+					},
+					{
+						line = row + 1,
+						remove = row
+					}
+				})
+			end
+
 		else
 			table.insert(job.data, row, "")
+
+			if track then
+				table.insert(job.edit.history, {
+					{
+						line = row,
+						remove = true
+					}
+				})
+			end
 		end
+
 		job.cursor[2] = job.cursor[2] + 1
 		job.data.linecount = job.data.linecount + 1
 		cursor_beg(job)
 
 		insert = false
 		consume = true
-
-		if job.data.invalidate then
-			job.data:invalidate(row)
-		end
 
 	elseif ch == "\t" then
 		ch = job.edit.tab
@@ -491,9 +548,6 @@ local function insert_ch(job, ch)
 			string.sub(job.data[row], col+1)
 		job.cursor[1] = job.cursor[1] + root.utf8_len(ch)
 
-		if job.data.invalidate then
-			job.data:invalidate(row)
-		end
 		consume = true
 	end
 
@@ -713,6 +767,7 @@ local command_map =
 	L     = {cursor_bottom,  nil, flush  = true,  realign = true},
 	y     = {process_yank,   nil, flush  = false, realign = false, buffer = true},
 	d     = {process_delete, nil, flush  = false, realign = true,  buffer = true},
+	u     = {process_undo, nil, flush = true, realign = true},
 }
 
 local function command_ch(job, ch)
@@ -872,7 +927,7 @@ function cat9.make_editable(job, opts)
 		command = {},
 		tab = "  ",
 		scroll_ofs = 4,
-		history = {},
+		history = {offset = 0},
 		vsel = {
 		},
 		restore = {
@@ -920,7 +975,7 @@ function cat9.make_editable(job, opts)
 		end
 
 		if job.edit.mode == "insert" then
-			return insert_ch(job, ch)
+			return insert_ch(job, ch, true)
 		elseif job.edit.mode == "command" then
 			return command_ch(job, ch)
 		elseif job.edit.mode == "replace" then
