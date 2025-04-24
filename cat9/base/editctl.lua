@@ -527,29 +527,45 @@ local function process_undo(job)
 
 -- each item is a set of patches,
 --
--- e.g. start-row, remove or insert at byte offset and should be
--- created as the inverse of the operation that preceeded it.
+-- e.g. start-row, remove or insert at byte offset and should be created as the
+-- inverse of the operation that preceeded it.
 --
--- then when applying it we invert that again and add back into
--- the history at the offset we are at.
+-- then when applying it we invert that again and add back into the history at
+-- the offset we are at.
 --
--- this format is wasteful-ish in that it tracks single character
--- edits as full line replacements.
+-- this format is wasteful-ish in that it tracks single character edits as full
+-- line replacements.
 --
-	local revert = {}
+--
+	local revert = {
+		cursor = {job.cursor[1], job.cursor[2]},
+		row_offset = job.row_offset,
+		col_offset = job.col_offset
+	}
 
 	for i,v in ipairs(item) do
 		if v.remove then
-			table.remove(job.data, v.line)
+			table.insert(revert, {
+				insert = table.remove(job.data, v.line),
+				line = v.line
+			})
 			job.data.linecount = job.data.linecount - 1
 		end
 
 		if v.insert then
+			table.insert(revert, {
+				remove = true,
+				line = v.line
+			})
 			table.insert(job.data, v.line, v.insert)
 			job.data.linecount = job.data.linecount + 1
 		end
 
 		if v.replace then
+			table.insert(revert, {
+				replace = job.data[v.line],
+				line = v.line
+			})
 			job.data[v.line] = v.replace
 		end
 	end
@@ -557,9 +573,22 @@ local function process_undo(job)
 	job.cursor = item.cursor
 	job.row_offset = item.row_offset
 	job.col_offset = item.col_offset
+
+	job.edit.history[#job.edit.history - ui] = revert
 	job.edit.history.offset = ui + 1
+
 	dump_undo(job, "post")
 	cat9.flag_dirty(job)
+end
+
+local function process_revert(job)
+	if job.edit.history.offset == 0 then
+		return
+	end
+
+	job.edit.history.offset = job.edit.history.offset - 1
+	process_undo(job)
+	job.edit.history.offset = job.edit.history.offset - 1
 end
 
 -- map to view highlight
@@ -841,7 +870,8 @@ local command_map =
 	L     = {cursor_bottom,  nil, flush  = true,  realign = true},
 	y     = {process_yank,   nil, flush  = false, realign = false, buffer = true},
 	d     = {process_delete, nil, flush  = false, realign = true,  buffer = true},
-	u     = {process_undo, nil, flush = true, realign = true},
+	u     = {process_undo,   nil, flush  = true,  realign = true},
+	r     = {process_revert, nil, flush  = true,  realign = true}
 }
 
 local function command_ch(job, ch)
