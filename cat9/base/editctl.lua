@@ -187,6 +187,29 @@ local function cursor_byte_index(job, ofs)
 	return root:utf8_step(row, job.col_offset + job.cursor[1] + ofs), y, row
 end
 
+local function add_history_item_set(job, items)
+	local new = {}
+
+	if items[1][1] then
+		items = items[1]
+	end
+
+	for _, v in ipairs(items) do
+		table.insert(new, v)
+	end
+
+	new.cursor = {job.cursor[1], job.cursor[2]}
+	new.row_offset = job.row_offset
+	new.col_offset = job.col_offset
+
+	if job.edit.history.offset > 0 then
+		job.edit.history = {}
+		job.edit.history.offset = 0
+	end
+
+	table.insert(job.edit.history, new)
+end
+
 local function cell_delta(job, y1, x1, y2, x2)
 -- same row is simple
 	if y1 == y2 then
@@ -380,22 +403,36 @@ end
 
 local function delete_rows_up(job, n)
 	local row = cursor_data_index(job)
+	local items = {}
+
 	while n > 0 and job.data[row-1] do
-		table.remove(job.data, row - 1)
+		table.insert(items, {
+			insert = table.remove(job.data, row - 1),
+			line = row - 1
+		})
+
 		n = n - 1
 		job.data.linecount = job.data.linecount - 1
 	end
+
+	add_history_item_set(job, items)
 	cat9.flag_dirty(job)
 end
 
 local function delete_rows_down(job, n)
 	local row = cursor_data_index(job)
+	local items = {}
+
 	while n > 0 and job.data[row] do
-		table.remove(job.data, row)
+		table.insert(items, {
+			insert = table.remove(job.data, row),
+			line = row
+		})
 		n = n - 1
 		job.data.linecount = job.data.linecount - 1
 	end
 
+	add_history_item_set(job, items)
 	cat9.flag_dirty(job)
 end
 
@@ -411,17 +448,26 @@ local function cursor_delete_n(job, n)
 	if cx == 0 then
 		if cy > 1 then
 			job.cursor[1] = job.root:utf8_len(job.data[cy - 1]) + 1
+			local old = job.data[cy - 1]
+
 			job.data[cy - 1] = job.data[cy - 1] .. job.data[cy]
-			table.remove(job.data, cy)
+
+			add_history_item(job,
+				{replace = old, line = cy - 1},
+				{insert = table.remove(job.data, cy), line = cy}
+			)
+
 			job.data.linecount = job.data.linecount - 1
 			job.data.bytecount = job.data.bytecount - 1
 			cursor_up_n(job, 1)
 
 			cat9.flag_dirty(job)
 		end
+
 		return
 	end
 
+	local row = job.data[cy]
 	while n > 0 and job.data[cy] do
 		local beg = cursor_byte_index(job, -2)
 		local cur = cursor_byte_index(job, 0)
@@ -437,9 +483,42 @@ local function cursor_delete_n(job, n)
 
 		n = n - 1
 	end
+
+	add_history_item(job, {replace = row, line = cy})
+end
+
+local function add_history_item(job, ...)
+	local args = {...}
+	add_history_item_set(job, args)
+end
+
+--
+-- temporary for debugging the undo feature
+--
+local function dump_undo(job)
+	if true then
+		return
+	end
+
+	print("offset", job.edit.history.offset, "count", #job.edit.history)
+	for i=#job.edit.history,1,-1 do
+		local item = job.edit.history[i]
+		for _, item in ipairs(item) do
+			if item.remove then
+				print(i, "remove", item.line)
+			end
+			if item.insert then
+				print(i, "insert", item.line, item.insert)
+			end
+			if item.replace then
+				print(i, "replace", item.line, item.replace)
+			end
+		end
+	end
 end
 
 local function process_undo(job)
+	dump_undo(job, "pre")
 	local ui = job.edit.history.offset
 	local item = job.edit.history[#job.edit.history - ui]
 	if not item then
@@ -457,8 +536,6 @@ local function process_undo(job)
 -- this format is wasteful-ish in that it tracks single character
 -- edits as full line replacements.
 --
-	job.edit.history.offset = ui + 1
-
 	local revert = {}
 
 	for i,v in ipairs(item) do
@@ -477,6 +554,11 @@ local function process_undo(job)
 		end
 	end
 
+	job.cursor = item.cursor
+	job.row_offset = item.row_offset
+	job.col_offset = item.col_offset
+	job.edit.history.offset = ui + 1
+	dump_undo(job, "post")
 	cat9.flag_dirty(job)
 end
 
@@ -501,28 +583,15 @@ local function insert_ch(job, ch, track)
 			table.insert(job.data, row + 1, ti)
 
 			if track then
-				table.insert(job.edit.history, {
-					{
-						line = row,
-						replace = old
-					},
-					{
-						line = row + 1,
-						remove = row
-					}
-				})
+				add_history_item(job,
+					{line = row, replace = old}, {line = row + 1, remove = row})
 			end
 
 		else
 			table.insert(job.data, row, "")
 
 			if track then
-				table.insert(job.edit.history, {
-					{
-						line = row,
-						remove = true
-					}
-				})
+				add_history_item(job, {line = row, remove = true})
 			end
 		end
 
@@ -542,6 +611,7 @@ local function insert_ch(job, ch, track)
 	end
 
 	if insert then
+		add_history_item(job, {line = row, replace = job.data[row]})
 		job.data[row] =
 			string.sub(job.data[row], 1, col) ..
 			ch ..
@@ -560,6 +630,7 @@ local function delete_cursor_end(job)
 	if beg < 0 then
 		return
 	end
+	add_history_item(job, {line = ind, replace = job.data[ind]})
 	job.data[ind] = string.sub(job.data[ind], 1, beg - 1)
 end
 
@@ -568,6 +639,7 @@ local function delete_cursor_to(job, ofs)
 	if beg < 0 then
 		return
 	end
+	add_history_item(job, {line = ind, replace = job.data[ind]})
 	job.data[ind] = string.sub(row, 1, beg - 1) .. string.sub(row, ofs)
 end
 
@@ -640,7 +712,9 @@ local function cursor_paste(job, before)
 		job.cursor[1] = job.cursor[1] - 1
 	end
 
--- just iterate and simulate character insertion
+-- just iterate and simulate character insertion, for undo history to do this
+-- atomically we don't want each insertion to actually register but rather save
+-- the pre-state and the post-state.
 	for _, v in ipairs(job.edit.yank_buffer) do
 		cat9.each_ch(v,
 			function(ch)
