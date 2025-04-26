@@ -15,5 +15,6 @@ return
 	'views/crop.lua',
 	'views/filter.lua',
 	'views/search.lua',
-	'views/edit.lua'
+	'views/edit.lua',
+	'views/fold.lua'
 }

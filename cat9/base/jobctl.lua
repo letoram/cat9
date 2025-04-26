@@ -97,6 +97,45 @@ local function drop_selection(job)
 	end
 end
 
+-- check if a line should be skipped due to folding,
+-- or the level of folds the line covers
+local function in_fold(folds, line, depth, start)
+	local i = start
+	while i <= #folds do
+		local fold = folds[i]
+
+-- is the fold supposed to be applied? since we can start at an offset in a fold
+-- when scrolled, we want to mark the header separately
+		if fold.active then
+			if line == fold.start and line <= fold.stop then
+				if line == fold.start then
+					return fold.stop + 1, depth + 1, true, i
+				end
+
+				return fold.stop + 1, depth + 1, false, i
+			end
+
+-- otherwise check if any of its children apply, can do this recursively
+		else
+			if line == fold.start then
+				return false, depth + 1, true, i
+			end
+
+			if line >= fold.start and line <= fold.stop then
+				local act, subdepth, base, ind = in_fold(fold.children, line, depth + 1, 1)
+				if act or base or subdepth > depth + 1 then
+					return act, subdepth, base, 1
+				end
+			end
+		end
+
+-- otherwise move on to the next root
+		i = i + 1
+	end
+
+	return false, depth, false, i
+end
+
 local function data_unbuffered(job, line, eof)
 	for _,v in ipairs(job.hooks.on_data) do
 		v(line, false, eof)
@@ -729,11 +768,51 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		job:redraw(false, cat9.selectedjob == job)
 	end
 
+	local fold_pos = 1
+	local fold_lp  = string.rep(" ", root:utf8_len(config.collapse_symbol))
+
 	for i=0,lc-1 do
 		local ind = base + i
+		local cx = x + config.content_offset
+		local row = set[ind]
+		local fold_header
+
+-- should we advance because we are in a folded range, or show a depth indicator?
+-- fold_skip is the number of lines to advance, depth the fold-level the line
+-- represents, fold_base is set if we are at the first line of a fold (i.e. cursor
+-- navigation) and fold_pos the index we search for since it's processed linearly
+-- from an offset.
+--
+-- we also change the linenumber: symbol to be linenumber > or linenumber | or
+-- linenumber < to indicate the folding action
+		if #job.folds > 0 then
+			local fold_prefix = fold_lp
+			local fold_skip, fold_depth,
+				fold_base, fold_pos = in_fold(job.folds, ind, 0, fold_pos)
+
+			if fold_skip then
+				ind = fold_skip
+				base = fold_skip - i
+
+				if fold_base then
+					fold_header = true
+					fold_prefix = config.expand_symbol
+					row = string.format(" -- [%d lines] %s", fold_skip, set[ind])
+				end
+
+			elseif fold_base then
+				fold_prefix = config.collapse_symbol
+
+-- or just signify the fold with an attribute
+			elseif fold_depth > 0 then
+				fold_prefix = "|"
+			end
+
+			root:write_to(cx, y+i, fold_prefix)
+			cx = cx + root:utf8_len(fold_prefix)
+		end
 
 -- bad .data early out
-		local row = set[ind]
 		if not row then
 			break
 		end
@@ -743,7 +822,6 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			row = string.sub(row, job.col_offset + 1)
 		end
 
-		local cx = x + config.content_offset
 		local ccols = cols
 
 -- updated on motion
@@ -799,8 +877,9 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- some jobs override this to have different formatting for different
 -- offsets and not just 'per line attributes'
 		if job.write_override then
-			job:write_override(cx,
-				y+i, row, set, ind, 0, job.selections[ind], ccols, match)
+			job:write_override(cx, y+i,
+				                 row, set, ind, 0,
+				                 job.selections[ind], ccols, match, fold_header)
 
 -- it is possible to set a generic highlight filter through view search
 -- which also works as a stepper filter for scroll
@@ -808,10 +887,13 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			local nc = #config.styles.match_set
 			local style = config.styles.match_set[((match-1) % nc) + 1]
 			root:write_to(cx, y+i, row, style)
+
 		else
--- finally print it, hightlight any manually selected lines
+-- finally print it, hightlight any manually selected lines or the indicator
+-- of a folded block
 			root:write_to(cx, y+i, row,
-				            job:attr_lookup(set, ind, 0, job.selections[ind]))
+				            job:attr_lookup(set, ind, 0,
+				                            job.selections[ind], fold_header))
 		end
 	end
 
@@ -1232,6 +1314,9 @@ function cat9.import_job(v, noinsert)
 	v.row_offset = 1
 	v.col_offset = 0
 	v.job = true
+	if not v.folds then
+		v.folds = {}
+	end
 	v.hide = hide_job
 	v.cursor = {0, 0, false} -- relative input cursor, last field is priority over mouse
 	v.align_offset = align_offset_window

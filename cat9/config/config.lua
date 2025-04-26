@@ -57,6 +57,8 @@ return
 	content_offset = 1,
 	job_pad        = 1,
 	collapsed_rows = 4,
+	collapse_symbol = collapse_sym,
+	expand_symbol = expand_sym,
 	autoclear_empty = true,
 	show_line_number = true,
 	autokill_quiet_bad = 100,
