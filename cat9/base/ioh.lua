@@ -588,6 +588,12 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		end
 	end
 
+	if job.mouse.on_fold then
+		job.mouse.on_fold.active = not job.mouse.on_fold.ative
+		cat9.flag_dirty(job)
+		return
+	end
+
 -- if that doesn't yield anything, a generic 'on data' one
 	if try("m%d_data_click", index) or try("m%d_click", index) then
 	end

@@ -109,22 +109,22 @@ local function in_fold(folds, line, depth, start)
 		if fold.active then
 			if line == fold.start and line <= fold.stop then
 				if line == fold.start then
-					return fold.stop + 1, depth + 1, true, i
+					return fold.stop + 1, depth + 1, true, i, fold
 				end
 
-				return fold.stop + 1, depth + 1, false, i
+				return fold.stop + 1, depth + 1, false, i, fold
 			end
 
 -- otherwise check if any of its children apply, can do this recursively
 		else
 			if line == fold.start then
-				return false, depth + 1, true, i
+				return false, depth + 1, true, i, fold
 			end
 
 			if line >= fold.start and line <= fold.stop then
-				local act, subdepth, base, ind = in_fold(fold.children, line, depth + 1, 1)
+				local act, subdepth, base, ind, infold = in_fold(fold.children, line, depth + 1, 1)
 				if act or base or subdepth > depth + 1 then
-					return act, subdepth, base, 1
+					return act, subdepth, base, 1, infold
 				end
 			end
 		end
@@ -738,6 +738,10 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	local lc = set.linecount
 	local root = job.root
 
+-- the actual linecount may be less due to folds within the visible set
+-- the calculation for this is expensive so avoid for now and assume that
+-- the returned actual linecount resolves better.
+
 -- and if we are probing, don't draw
 	if probe then
 		return lc
@@ -755,6 +759,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 	if job.mouse then
 		job.mouse.on_row = false
 		job.mouse.on_col = false
+		job.mouse.on_fold = false
 	end
 
 	local base = ofs
@@ -770,12 +775,15 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 	local fold_pos = 1
 	local fold_lp  = string.rep(" ", root:utf8_len(config.collapse_symbol))
+	local lc_skip = 0
 
 	for i=0,lc-1 do
 		local ind = base + i
+		local num_ind = ind
 		local cx = x + config.content_offset
 		local row = set[ind]
 		local fold_header
+		local current_fold
 
 -- should we advance because we are in a folded range, or show a depth indicator?
 -- fold_skip is the number of lines to advance, depth the fold-level the line
@@ -788,20 +796,23 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		if #job.folds > 0 then
 			local fold_prefix = fold_lp
 			local fold_skip, fold_depth,
-				fold_base, fold_pos = in_fold(job.folds, ind, 0, fold_pos)
+				fold_base, fold_pos, in_fold = in_fold(job.folds, ind, 0, fold_pos)
 
 			if fold_skip then
-				ind = fold_skip
-				base = fold_skip - i
-
 				if fold_base then
 					fold_header = true
 					fold_prefix = config.expand_symbol
-					row = string.format(" -- [%d lines] %s", fold_skip, set[ind])
+					row = string.format(" -- [%d lines] %s", fold_skip - ind, set[ind])
+					lc_skip = lc_skip + (fold_skip - ind)
+					current_fold = in_fold
 				end
+
+				ind = fold_skip
+				base = fold_skip - i
 
 			elseif fold_base then
 				fold_prefix = config.collapse_symbol
+				current_fold = in_fold
 
 -- or just signify the fold with an attribute
 			elseif fold_depth > 0 then
@@ -828,13 +839,14 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		local on_row = false
 		if job.mouse and job.mouse[2] == y+i then
 			on_row = true
-			job.mouse.on_row = ind
+			job.mouse.on_row = num_ind
+			job.mouse.on_fold = current_fold
 		end
 
 -- printing line numbers?
 		if job.show_line_number then
 -- left-justify
-			local num = string.lpad(tostring(job.lineno_offset + ind), digits)
+			local num = string.lpad(tostring(job.lineno_offset + num_ind), digits)
 
 -- set inverse attribute if mouse cursor is on top of it
 			lineattr.inverse = job.mouse and
@@ -897,7 +909,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 		end
 	end
 
-	return lc
+	return lc - lc_skip
 end
 
 function cat9.view_fmt_job(job, set, ...)
