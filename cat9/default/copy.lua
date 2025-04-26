@@ -1,4 +1,10 @@
 local function copy_tbl_ud(cat9, root, job)
+-- a painpoint here is that the linefeeds might be stripped and we want
+-- them back or replaced with a custom separator. To make this slightly
+-- less painful (internally :write queues each line extracted from the
+-- table to avoid modification-while-pending) that is set as an attribute
+-- inside job.src
+
 	job.dst:write(
 	job.src,
 		function(ok)
@@ -87,7 +93,6 @@ end
 local function deploy_copy(cat9, root, job)
 -- once committed - this is not directly cancellable (currently) without
 -- explicitly closing the job src/dst inputs
-	print("deploy_copy", type(job.src), type(job.dst))
 
 	if type(job.src) == "userdata" and type(job.dst) == "userdata" then
 		return copy_ud_ud(cat9, root, job)
@@ -183,7 +188,12 @@ function builtins.copy(src, opt1, opt2, opt3)
 			cat9.remove_job(src)
 			src = ud
 		else
+			local strip = src.stripped
 			src = src:slice(srcarg)
+-- strip away any specific options, such as setting a linefeed suffix
+			if strip then
+				src.suffix = "\n"
+			end
 		end
 
 	elseif type(src) == "string" then

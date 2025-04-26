@@ -210,6 +210,11 @@ local function add_history_item_set(job, items)
 	table.insert(job.edit.history, new)
 end
 
+local function add_history_item(job, ...)
+	local args = {...}
+	add_history_item_set(job, args)
+end
+
 local function cell_delta(job, y1, x1, y2, x2)
 -- same row is simple
 	if y1 == y2 then
@@ -485,11 +490,6 @@ local function cursor_delete_n(job, n)
 	end
 
 	add_history_item(job, {replace = row, line = cy})
-end
-
-local function add_history_item(job, ...)
-	local args = {...}
-	add_history_item_set(job, args)
 end
 
 --
@@ -1019,10 +1019,28 @@ function cat9.make_editable(job, opts)
 		job.write_override = restore.write_override
 		job.handlers.mouse_button = restore.mouse_button
 		job.handlers.toggle_selected = restore.toggle_selected
+
+-- here we'd really need / want nbio based communication between a threaded VM
+-- instance or process so that this isn't blocking and we can do this to large
+-- sources ...
+		if opts.diff and restore.history then
+			local t1 = table.concat(job.data, "\n")
+			local t2 = table.concat(restore.history, "\n")
+
+			local patch = cat9.diff.patch_make(t1, t2)
+
+			if patch then
+				cat9.patch_job(job, patch)
+			else
+				cat9.add_message("couldn't produce diff")
+			end
+		end
+
 		if opts.revert and restore.history then
 			job.data = restore.history
 			cat9.flag_dirty(job)
 		end
+
 		return
 	end
 

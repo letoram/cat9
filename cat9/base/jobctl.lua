@@ -498,6 +498,7 @@ function
 	cat9.import_job(job)
 	if job.out then
 		job.out:lf_strip(true, "\n")
+		job.stripped = true
 	end
 
 	table.insert(job.hooks.on_finish,
@@ -1064,6 +1065,36 @@ function cat9.add_fglob_job(out, path, cbh)
 	)
 
 	return ioh
+end
+
+-- bind a set of diffs to a source job and create a new job to visualise
+-- and provide controls for apply / revert / mask / remove
+function cat9.patch_job(source, patches)
+	local job = {
+		data = {
+			linecount = 0,
+			bytecount = 0
+		}
+	}
+
+	for _, patch in ipairs(patches) do
+		table.insert(job.data,
+			string.format("@@ -%d,%d +%d,%d @@",
+				patch.start1, patch.length1, patch.start2, patch.length2))
+		job.data.linecount = job.data.linecount + 1
+		for i,v in ipairs(patch.diffs) do
+			if v[1] == -1 then
+				table.insert(job.data, "-    " .. v[2])
+			elseif v[1] == 0 then
+				table.insert(job.data, "     " .. v[2])
+			else
+				table.insert(job.data, "+    " .. v[2])
+			end
+			job.data.linecount = job.data.linecount + 1
+		end
+	end
+
+	cat9.import_job(job)
 end
 
 function cat9.new_window(root, kind, closure, mode)

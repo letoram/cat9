@@ -1,4 +1,3 @@
--- just restore the default state, could possibly add vt100 processing here as well
 return
 function(cat9, root, builtins, suggest, views)
 views.hint.edit = "Controls for interactive editing"
@@ -11,6 +10,8 @@ function views.edit(job, suggest, args)
 		for i,v in ipairs(args) do
 			if v == "revert" then
 				opts.revert = true
+			elseif v == "diff" then
+				opts.diff = true
 			end
 		end
 
@@ -22,6 +23,8 @@ function views.edit(job, suggest, args)
 	if #args <= 1 and job.edit and job.edit.restore.history then
 		table.insert(set, "revert")
 		table.insert(set.hints, "Undo the last editing session")
+		table.insert(set, "diff")
+		table.insert(set.hints, "Create a patch from the changes made and store as a new job")
 	end
 
 	cat9.readline:suggest(cat9.prefix_filter(set, args[#args]), "word")
