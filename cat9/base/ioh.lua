@@ -589,7 +589,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 	end
 
 	if job.mouse.on_fold then
-		job.mouse.on_fold.active = not job.mouse.on_fold.ative
+		job.mouse.on_fold.active = not job.mouse.on_fold.active
 		cat9.flag_dirty(job)
 		return
 	end

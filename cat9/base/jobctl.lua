@@ -136,6 +136,61 @@ local function in_fold(folds, line, depth, start)
 	return false, depth, false, i
 end
 
+local function get_fold(job, line)
+	local stop, depth, base, index, fold = in_fold(job.folds, line, 0, 1)
+	return fold, index
+end
+
+local function set_fold(job, start, stop, active)
+
+-- enforce type and range constraints
+-- non-existing lines are permitted as they might get added later
+	if not type(start) == "number" then
+		return false, "Fold start line is not a number"
+	end
+	if not type(stop) == "number" then
+		return false, "Fold stop line is not a number"
+	end
+
+	if start == stop then
+		return false, "Fold doesn't specify a range (start == stop)"
+	end
+
+	if start > stop then
+		local tmp = stop
+		stop = start
+		start = tmp
+	end
+
+	local new = {start = start, stop = stop, active = active, children = {}}
+	new.delete =
+	function(fold)
+		cat9.remove_match(fold.parent, fold)
+	end
+
+-- first check if we are adding a subfold
+	local _, _, _, _, fold = in_fold(job.folds, start, 0, 1)
+
+	if fold then
+		if stop > fold.stop then
+			return false, "Fold range overflow"
+		elseif start == fold.start then
+			return false, "Fold already exists"
+		end
+
+		new.parent = fold
+		table.insert(fold.children, new)
+
+		cat9.flag_dirty(job)
+		return true
+	end
+
+	new.parent = job.folds
+	table.insert(job.folds, new)
+	cat9.flag_dirty(job)
+	return true
+end
+
 local function data_unbuffered(job, line, eof)
 	for _,v in ipairs(job.hooks.on_data) do
 		v(line, false, eof)
@@ -1326,6 +1381,9 @@ function cat9.import_job(v, noinsert)
 	v.row_offset = 1
 	v.col_offset = 0
 	v.job = true
+	v.get_fold = get_fold
+	v.set_fold = set_fold
+
 	if not v.folds then
 		v.folds = {}
 	end

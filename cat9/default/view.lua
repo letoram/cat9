@@ -91,7 +91,7 @@ local function detach(job, mode)
 		end, "split")
 end
 
-viewlut.hint.select = "Toggle a line in the view as selected"
+viewlut.hint.mark = "Toggle a line in the view as selected"
 function viewlut.mark(set, i, job)
 	local ind = set[i+1]
 	if type(ind) == "number" then
