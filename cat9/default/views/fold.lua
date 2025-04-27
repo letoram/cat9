@@ -2,8 +2,7 @@ return
 function(cat9, root, builtins, suggest, views)
 views.hint.fold = "Define or toggle foldable subregions"
 
-local function suggest_fold(
-	folds, show_active, show_inactive, args, start, cb, err)
+local function suggest_fold(folds, show_active, show_inactive, cb, err)
 
 -- complication is that the lines can append to a current region
 	if #folds == 0 then
@@ -11,35 +10,29 @@ local function suggest_fold(
 		return false
 	end
 
-	local set = {}
+	local set = {folds = {}}
 
--- navigate to the right subfold
-	if #args > start then
-		for i=start,#args-1 do
-			local ind = tonumber(args[i])
-			if not ind or not folds[ind] then
-				err("view #job fold action >...< : Parent fold does not exist")
-				return false
-			end
-			folds = folds.children[ind]
+	local function add_fold(v)
+		if show_active and v.active then
+			table.insert(set, tostring(v.start))
+			table.insert(set.folds, v)
+
+		elseif show_inactive and not v.active then
+			table.insert(set, tostring(v.start))
+			table.insert(set.folds, v)
 		end
 	end
 
-	local set = {hint = {}}
+	local function flatten(fold)
+		add_fold(fold)
+		for i,v in ipairs(fold.children) do
+			flatten(v)
+		end
+	end
+
+-- first level is a list of trees, so we need to process each root
 	for i,v in ipairs(folds) do
-		if v.active and show_active then
-			table.insert(set, tostring(i))
-			table.insert(set.hint, string.format("%d - %d", v.start, v.stop))
-		end
-		if not v.active and show_inactive then
-			table.insert(set, tostring(i))
-			table.insert(set.hint, string.format("%d - %d", v.start, v.stop))
-		end
-	end
-
-	if #set == 0 then
-		err("view #job fold action >...< : No matching folds defined")
-		return false
+		flatten(v)
 	end
 
 	cb(set)
@@ -110,13 +103,13 @@ local function fold_suggest(job, args)
 	end
 
 	if args[1] == "expand" then
-		return suggest_fold(job.folds, false, true, args, 2, sfun, cat9.add_message)
+		return suggest_fold(job.folds, false, true, sfun, cat9.add_message)
 
 	elseif args[1] == "contract" then
-		return suggest_fold(job.folds, true, false, args, 2, sfun, cat9.add_message)
+		return suggest_fold(job.folds, true, false, sfun, cat9.add_message)
 
 	elseif args[1] == "remove" then
-		return suggest_fold(job.folds, true, true, args, 2, sfun, cat9.add_message)
+		return suggest_fold(job.folds, true, true, sfun, cat9.add_message)
 
 	elseif args[1] == "set" then
 		return suggest_lines(job.data, args, 2, sfun, cat9.add_message)
@@ -148,13 +141,19 @@ function views.fold(job, suggest, args)
 	end
 
 	if args[1] == "expand" then
-		suggest_fold(job.folds, false, true, args, 2, toggle, errf)
+		suggest_fold(job.folds, false, true, toggle, errf)
 	elseif args[1] == "contract" then
-		suggest_fold(job.folds, false, true, args, 2, toggle, errf)
+		suggest_fold(job.folds, false, true, toggle, errf)
 	elseif args[1] == "toggle" then
-		suggest_fold(job.folds, false, true, args, 2, toggle, errf)
+		suggest_fold(job.folds, false, true, toggle, errf)
 	elseif args[1] == "remove" then
-
+		suggest_fold(job.folds, false, true, function(set)
+			for i,v in ipairs(set.folds) do
+				if tostring(v.start) == args[2] then
+					v:delete()
+				end
+			end
+		end, errf)
 -- set fold function validates
 	elseif args[1] == "set" then
 		return job:set_fold(tonumber(args[2]), tonumber(args[3]))

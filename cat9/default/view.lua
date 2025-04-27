@@ -343,7 +343,7 @@ function builtins.view(job, ...)
 
 	local viewer = cat9.views[arg[1]]
 	if viewer then
-		viewer(job, false, arg)
+		return viewer(job, false, arg)
 	end
 
 -- special case the detach as run_lut etc. is designed for and or, .. like filters

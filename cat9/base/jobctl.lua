@@ -126,6 +126,8 @@ local function in_fold(folds, line, depth, start)
 				if act or base or subdepth > depth + 1 then
 					return act, subdepth, base, 1, infold
 				end
+
+				return false, depth + 1, false, i, fold
 			end
 		end
 
@@ -163,10 +165,6 @@ local function set_fold(job, start, stop, active)
 	end
 
 	local new = {start = start, stop = stop, active = active, children = {}}
-	new.delete =
-	function(fold)
-		cat9.remove_match(fold.parent, fold)
-	end
 
 -- first check if we are adding a subfold
 	local _, _, _, _, fold = in_fold(job.folds, start, 0, 1)
@@ -178,6 +176,10 @@ local function set_fold(job, start, stop, active)
 			return false, "Fold already exists"
 		end
 
+		new.delete =
+		function(fold)
+			cat9.remove_match(fold.parent.children, fold)
+		end
 		new.parent = fold
 		table.insert(fold.children, new)
 
@@ -185,6 +187,11 @@ local function set_fold(job, start, stop, active)
 		return true
 	end
 
+	new.delete =
+	function(fold)
+		cat9.remove_match(fold.parent, fold)
+		cat9.flag_dirty(job)
+	end
 	new.parent = job.folds
 	table.insert(job.folds, new)
 	cat9.flag_dirty(job)
