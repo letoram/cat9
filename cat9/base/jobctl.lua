@@ -112,7 +112,11 @@ local function in_fold(folds, line, depth, start)
 					return fold.stop + 1, depth + 1, true, i, fold
 				end
 
-				return fold.stop + 1, depth + 1, false, i, fold
+				return false, depth + 1, false, i, fold
+			end
+
+			if line > fold.start and line <= fold.stop then
+				return fold.stop + 1, depth  + 1, false, i, fold
 			end
 
 -- otherwise check if any of its children apply, can do this recursively
@@ -154,8 +158,16 @@ local function set_fold(job, start, stop, active)
 		return false, "Fold stop line is not a number"
 	end
 
+	if stop < 1 then
+		return false, "Fold stop line must be larger than 0"
+	end
+
 	if start == stop then
 		return false, "Fold doesn't specify a range (start == stop)"
+	end
+
+	if start < 1 then
+		start = 1
 	end
 
 	if start > stop then
@@ -811,7 +823,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 -- the rows will naturally be capped to what we claimed to support
 	local lineattr = config.styles.line_number
-	local digits = #tostring(job.lineno_offset + set.linecount)
+	local digits = #tostring(set.linecount)
 	local ofs = job.row_offset
 	lc = lc > rows and rows or lc
 	if lc >= set.linecount then
@@ -837,6 +849,8 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 	local fold_pos = 1
 	local fold_lp  = string.rep(" ", root:utf8_len(config.collapse_symbol))
+	job.row_line_map = {active = true}
+	local used = 0
 	local lc_skip = 0
 
 	for i=0,lc-1 do
@@ -857,6 +871,8 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 -- linenumber < to indicate the folding action
 		if #job.folds > 0 then
 			local fold_prefix = fold_lp
+			local fold_attr = lineattr
+
 			local fold_skip, fold_depth,
 				fold_base, fold_pos, in_fold = in_fold(job.folds, ind, 0, fold_pos)
 
@@ -864,7 +880,7 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 				if fold_base then
 					fold_header = true
 					fold_prefix = config.expand_symbol
-					row = string.format(" -- [%d lines] %s", fold_skip - ind, set[ind])
+					row = string.format(" -- [%d lines] %s ...", fold_skip - ind, set[ind])
 					lc_skip = lc_skip + (fold_skip - ind)
 					current_fold = in_fold
 				end
@@ -878,10 +894,11 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 
 -- or just signify the fold with an attribute
 			elseif fold_depth > 0 then
-				fold_prefix = "|"
+				fold_attr = cat9.table_copy_shallow(fold_attr)
+				fold_attr.border_left = true
 			end
 
-			root:write_to(cx, y+i, fold_prefix)
+			root:write_to(cx, y+i, fold_prefix, fold_attr)
 			cx = cx + root:utf8_len(fold_prefix)
 		end
 
@@ -904,11 +921,12 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 			job.mouse.on_row = num_ind
 			job.mouse.on_fold = current_fold
 		end
+		job.row_line_map[i] = num_ind
 
 -- printing line numbers?
 		if job.show_line_number then
 -- left-justify
-			local num = string.lpad(tostring(job.lineno_offset + num_ind), digits)
+			local num = string.lpad(tostring(num_ind), digits)
 
 -- set inverse attribute if mouse cursor is on top of it
 			lineattr.inverse = job.mouse and
@@ -969,9 +987,11 @@ local function raw_view(job, set, x, y, cols, rows, probe)
 				            job:attr_lookup(set, ind, 0,
 				                            job.selections[ind], fold_header))
 		end
+
+		used = used + 1
 	end
 
-	return lc - lc_skip
+	return used --lc, lc_skip
 end
 
 function cat9.view_fmt_job(job, set, ...)
@@ -1118,6 +1138,20 @@ function(job, lines, set)
 				return nil, 0, 0
 			end
 		end)
+end
+
+local function resolve_cursor(job)
+-- if folds or wrapping is present there can be skips or repeats within the window
+	local row, col
+
+	if job.row_line_map.active then
+		row = job.row_line_map[job.cursor[2]] or (job.row_offset + job.cursor[2])
+	else
+		row = job.row_offset + job.cursor[2]
+	end
+
+	col = job.col_offset + job.cursor[1]
+	return row, col
 end
 
 local function find_lowest_free()
@@ -1354,7 +1388,7 @@ function cat9.hook_import_job(closure)
 	return old
 end
 
-local function align_offset_window(job)
+local function align_offset_window(job, fold_dir)
 -- on neagitve index just wrap around
 	if job.row_offset < 0 then
 		job.row_offset = job.data.linecount + job.row_offset
@@ -1371,9 +1405,21 @@ local function align_offset_window(job)
 		job.row_offset = 1
 	end
 
+-- respect active folds so we don't land at a boundary unless there is no
+-- other option
+	if #job.folds > 0 and fold_dir ~= nil then
+		local act, subdepth, base, ind, infold = in_fold(job.folds, job.row_offset, 0, 1)
+		if act then
+			if fold_dir > 0 then
+				job.row_offset = infold.stop + 1
+			else
+				job.row_offset = infold.start
+			end
+		end
+	end
+
 	cat9.flag_dirty(job)
 end
-
 
 -- make sure the expected fields are in a job, used both when importing from an
 -- outer context and when one has been created by parsing through
@@ -1390,6 +1436,11 @@ function cat9.import_job(v, noinsert)
 	v.job = true
 	v.get_fold = get_fold
 	v.set_fold = set_fold
+	v.resolve_cursor = resolve_cursor
+
+-- Updated on draw, contains the actual linenumbers for rows in order to map logical
+-- cursor position to data-row if the raw_view is used.
+	v.row_line_map = {active = false}
 
 	if not v.folds then
 		v.folds = {}
@@ -1469,7 +1520,6 @@ function cat9.import_job(v, noinsert)
 	function()
 		v.wrap = true
 		v.exit = nil
-		v.lineno_offset = 0
 		v.row_offset = 1
 		v.col_offset = 0
 		v.bar_color = tui.colors.ui

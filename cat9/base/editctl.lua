@@ -7,18 +7,6 @@ function(cat9, root, config)
 -- missing features:
 -- =================
 --    2. history snapshotting / stepping
---    3. range-folding (part of jobctrl so that rendering takes that into account for
---                   line-numbering and skipping)
---
---      e.g. fold #0 1-5, 25-30
---           with multiple levels:
---                fold #0 2-3 would add [2-3] as a subtree to 1-5
---
---      and view- controls to specify which fold to expand/contract or show as only
---      visible output.
---
---      and bindings to toggle the folding on / off
---
 --    4. wrapping controls / rendering (affects stepping operations, mainly expand
 --                                   cursor to byte and row index)
 --
@@ -70,6 +58,8 @@ local inputs = {}
 -- zt position on top
 -- zb position on bottom
 --
+-- ctrl + b page up
+-- ctrl + d page down
 -- Ctrl + e y up down line (keep cursor)
 -- Ctrl + b f up down page (cursor to last or first)
 -- Ctrl + d u cursor and screen up down half page
@@ -109,11 +99,15 @@ local inputs = {}
 --   ctrl + R redo
 --   . repeat last
 --
+--   folding:
+--    zo - open
+--    zc - close
+--    zM - close-all
+--    zR - open-all
+--    za - toggle
+--
 --   marking:
---    v - start visual, mark
---    V - start linewise visual
 --    o - move to end of marked
---    ctrl+v visual block
 --    O - move to corner of block
 --    aw mark word
 --    ab mark block with ()
@@ -171,11 +165,6 @@ local inputs = {}
 --    %s/old/new/gc (g with confirm)
 --    :noh remove highlight
 --
-local function cursor_data_index(job)
-	local row = job.row_offset + job.cursor[2]
-	local col = job.col_offset + job.cursor[1]
-	return row, col
-end
 
 local function cursor_byte_index(job, ofs)
 	local y = job.row_offset + job.cursor[2]
@@ -215,19 +204,6 @@ local function add_history_item(job, ...)
 	add_history_item_set(job, args)
 end
 
-local function cell_delta(job, y1, x1, y2, x2)
--- same row is simple
-	if y1 == y2 then
-		return x2 - x1
-
--- for row delta we need to find current row to edge
-	elseif y2 > y1 then
-		return root:utf8_len(job.data[y1]) - x1 + x2
-	else
-		return -x1 - root:utf8_len(job.data[y2]) - x2
-	end
-end
-
 local function trigger_mode_swap(job)
 	if job.edit.mode_closure then
 		job.edit.mode_closure()
@@ -259,20 +235,43 @@ local function set_append_mode(job)
 	job.cursor[1] = job.cursor[1] + 1
 end
 
-local function set_visual_mode(job)
+local function set_visual_mode(job, mods)
 	trigger_mode_swap(job)
 	job.edit.vsel = {}
 	job.edit.command = {}
 	job.edit.mode = "visual"
-	job.edit.start = {}
-	job.edit.start.x, job.edit.start.y = cursor_data_index(job)
+	job.edit.vrange = {}
+	job.edit.vrange.start_row, job.edit.vrange.start_col = job:resolve_cursor()
+	job.edit.vrange.stop_row = job.edit.vrange.start_row
+	job.edit.vrange.stop_col = job.edit.vrange.start_col
 
 -- three different visual modes:
 --  visual line
 --  visual block
 --  visual char
+--
+-- these are not implementation wise much difficult, they just apply different
+-- conditions to how the cursor moves, selection is still calculated by
+-- snapshotting before and after cursor movement and inverting selection status
+-- for everything between the two positions.
+--
+	job.edit.mode_closure =
+	function()
+		job.edit.lineneav = false
+		job.edit.blocknav = false
+	end
+
+	if bit.band(mods, tui.modifiers.SHIFT) > 0 then
+		job.edit.linenav = true
+		job.cursor[1] = 0
+		job.col_offset = 0
+
+	elseif bit.band(mods, tui.modifiers.CTRL) > 0 then
+		job.edit.blocknav = true
+	end
 
 	job.bar_color_selected = config.edit.bar.visual
+	cat9.flag_dirty(job)
 end
 
 local function set_replace_mode(job)
@@ -291,7 +290,7 @@ inputs[config.edit.visual_mode  or tui.keys.V]      = set_visual_mode
 -- call when the underlying data has been modified and we want to redraw,
 -- ensures that the cursor is at a mode-apropriate position
 local function realign_synch(job)
-	local cy = cursor_data_index(job)
+	local cy = job:resolve_cursor()
 	local co = (
 		job.edit.mode == "insert" or
 		job.edit.mode == "visual"
@@ -299,8 +298,8 @@ local function realign_synch(job)
 
 	if not job.data[cy] then
 		job.cursor[1] = 1
--- should be u8 len, also insert mode needs us to be at the next
-	elseif job.cursor[1] >= #job.data[cy] + co then
+
+	elseif job.cursor[1] >= job.root:utf8_len(job.data[cy]) + co then
 		job.cursor[1] = #job.data[cy] - 1
 	end
 
@@ -308,18 +307,25 @@ local function realign_synch(job)
 		job.cursor[1] = 0
 	end
 
-	if job.row_offset + job.cursor[2] > job.data.linecount then
-		job.cursor[2] = job.data.linecount - job.row_offset
-		if job.cursor[2] < 0 then
-			job.cursor[2] = 0
-		end
+-- check so we are within the visible range of the job still
+	if job.cursor[2] > job.region[4] - job.region[2] + 2 then
+		job.cursor[2] = job.region[4] - 2
+	end
+
+-- if the job add some padding that doesn't correspond to actual data
+-- in the job, step until we realign
+	cy = job:resolve_cursor()
+
+	while not job.data[cy] do
+		job.cursor[2] = job.cursor[2] - 1
+		cy = job:resolve_cursor()
 	end
 
 	cat9.flag_dirty(job)
 end
 
 local function cursor_end(job, ch)
-	local cy = cursor_data_index(job)
+	local cy = job:resolve_cursor(job)
 	if not job.data[cy] then
 		return
 	end
@@ -341,6 +347,10 @@ local function cursor_up_n(job, n)
 end
 
 local function cursor_left_n(job, n, wrap)
+	if job.edit.linenav then
+		return
+	end
+
 	while n > 0 do
 -- simple step
 		if job.cursor[1] > 0 then
@@ -371,6 +381,10 @@ local function cursor_left_n(job, n, wrap)
 end
 
 local function cursor_right_n(job, n)
+	if job.edit.linenav then
+		return
+	end
+
 	while n > 0 do
 		job.cursor[1] = job.cursor[1] + 1
 		n = n - 1
@@ -378,24 +392,25 @@ local function cursor_right_n(job, n)
 end
 
 local function cursor_down_n(job, n)
-	local cy = cursor_data_index(job)
+	local cy = job:resolve_cursor()
 -- if cursor at scroll bound, (region[4] - region[2] - pad)
--- then adjust offset instead
+-- then invoke scroll through the view implementation
 	local page_size = job.region[4] - job.region[2] - 2
 
 	while n > 0 do
-		cy = cy + 1
 		if (job.cursor[2] + 1 > page_size - job.edit.scroll_ofs) and
-			(job.data.linecount - job.row_offset > page_size) then
-			job.row_offset = job.row_offset + 1
+			(job.data.linecount - cy > page_size) then
+			cat9.parse_string(false, "view #csel scroll +1")
 		else
 			job.cursor[2] = job.cursor[2] + 1
 		end
 
-		if not job.data[cy] then
-			cy = cy - 1
+-- if we land outside existing data (external source removing)
+-- try and sweep back to valid location
+		cy = job:resolve_cursor()
+		while cy > 0 and not job.data[cy] do
 			job.cursor[2] = job.cursor[2] - 1
-			break
+			cy = job:resolve_cursor()
 		end
 		n = n - 1
 	end
@@ -407,7 +422,7 @@ local function cursor_beg(job, ch)
 end
 
 local function delete_rows_up(job, n)
-	local row = cursor_data_index(job)
+	local row = job:resolve_cursor()
 	local items = {}
 
 	while n > 0 and job.data[row-1] do
@@ -425,7 +440,7 @@ local function delete_rows_up(job, n)
 end
 
 local function delete_rows_down(job, n)
-	local row = cursor_data_index(job)
+	local row = job:resolve_cursor()
 	local items = {}
 
 	while n > 0 and job.data[row] do
@@ -442,7 +457,7 @@ local function delete_rows_down(job, n)
 end
 
 local function cursor_delete_n(job, n)
-	local cy, cx = cursor_data_index(job)
+	local cy, cx = job:resolve_cursor()
 
 	local work = job.data[cy]
 	if not work then
@@ -593,7 +608,7 @@ end
 
 -- map to view highlight
 local function insert_ch(job, ch, track)
-	local row, col = cursor_data_index(job)
+	local row, col = job:resolve_cursor()
 	local bv = string.byte(ch, 1)
 
 	local insert = true
@@ -776,39 +791,34 @@ local function process_yank(job)
 	return true
 end
 
+local function slice_row(row, start, stop)
+	local count = stop - start
+	local res = {}
+
+	cat9.each_ch(row,
+		function(ch)
+			table.insert(res, ch)
+			count = count - 1
+			return count == 0
+		end,
+		function()
+		end,
+		start[1] + 1
+	)
+	return table.concat(res, "")
+end
+
 local function vsel_to_yank(job, new)
--- this can have gaps so first get the set of used rows and then sort
-	local ilist = {}
-	for k, _ in pairs(job.edit.vsel) do
-		table.insert(ilist, k)
-	end
-	table.sort(ilist)
-	if #ilist == 0 then
-		return
-	end
+	local rows = {multiline = #job.edit.vsel > 1}
 
-	local rows = {multiline = #ilist > 1}
-
-	for _,v in ipairs(ilist) do
-		for _, set in ipairs(job.edit.vsel[v]) do
-			local count = set[2] - set[1]
-			local row = {}
-			if set[2] == root.utf8_len(job.data[v]) then
-				rows.multiline = true
+	for _,v in ipairs(job.edit.vsel) do
+		if v.row then
+			table.insert(rows, job.data[v])
+		else
+			for _, set in ipairs(job.edit.vsel[v]) do
+				table.insert(rows, slice_row(job.data[v], set[1], set[2]))
 			end
 
-			cat9.each_ch(
-				job.data[v],
-				function(ch)
-					table.insert(row, ch)
-					count = count - 1
-					return count == 0
-				end,
-				function()
-				end,
-				set[1] + 1
-			)
-			row = table.concat(row, "")
 			table.insert(rows, row)
 		end
 	end
@@ -840,10 +850,10 @@ local function cursor_bottom(job)
 	end
 end
 
-inputs[tui.keys.UP   ] = function(job) cursor_up_n(job,    1) end
-inputs[tui.keys.DOWN ] = function(job) cursor_down_n(job,  1) end
-inputs[tui.keys.LEFT ] = function(job) cursor_left_n(job,  1) end
-inputs[tui.keys.RIGHT] = function(job) cursor_right_n(job, 1) end
+inputs[tui.keys.UP   ] = "k"
+inputs[tui.keys.DOWN ] = "j"
+inputs[tui.keys.LEFT ] = "h"
+inputs[tui.keys.RIGHT] = "l"
 inputs[tui.keys.BACKSPACE] =
 function(job)
 	if job.edit.mode == "insert" then
@@ -896,75 +906,85 @@ local function command_ch(job, ch)
 	return true
 end
 
--- The vsel format is a bit more involved than just start_i, stop_i to be
--- able to handle gaps for block- select and how the rendering is attribute
--- additive and draw-time and tracked in cell-space.
---
--- Rather than having a check for each navigation command, we take a start
--- cursor position and a destination cursor position and apply as a sweep
--- or as a block selection operation.
-local function apply_vsel_delta_cont(job, delta, cr, cc, dr, dc)
-	if delta == 0 then
-		return
+local function convert_cursor_to_vsel(job)
+	local set = {}
+	local start_row = job.edit.vrange.start_row
+	local start_col = job.edit.vrange.start_col
+	local stop_row = job.edit.vrange.stop_row
+	local stop_col = job.edit.vrange.stop_col
+
+	local function add_partial(ind, start, stop)
+		if stop < 0 then -- edge condition for empty lines
+			stop = 0
+		end
+
+		if start == stop then
+			return
+		end
+
+		set[ind] = { start < stop and {start, stop} or {stop, start} }
 	end
 
-	local sign = math.abs(delta) / delta
-	while delta ~= 0 do
-		local crow
-		if not job.edit.vsel[cr] then
-			crow = {cc, cc}
-			job.edit.vsel[cr] = {crow}
-		else
--- for #vsel[cr] > 1 we have selection with gaps, we then need to know
--- which one we are currently in and if we should grow or shrink it.
-			crow = job.edit.vsel[cr][1]
-		end
-		local rlen = root:utf8_len(job.data[cr])
-		cc = cc + sign
+	if start_row < stop_row then
+-- first fill cursor to end
+		add_partial(start_row, start_col, root:utf8_len(job.data[start_row]))
 
--- wrapping, delta would be 0 if we don't step across rows
-		if cc <= 0 then
-			crow[1] = 0
-			cr = cr - 1
-			cc = root:utf8_len(job.data[cr])
-
-		elseif cc > rlen then
-			crow[2] = rlen
-			cr = cr + 1
-			cc = 0
-
-		elseif cc < crow[1] then
-			crow[1] = cc
-
-		elseif cc > crow[2] then
-			crow[2] = cc
-
-		elseif cc < crow[2] then
-			if sign > 0 then
-				crow[1] = cc
+-- then add each line as full, mark full rows as that as a minor optimization
+		for i=start_row+1,stop_row do
+			if i == stop_row then
+				add_partial(i, 0, stop_col)
 			else
-				crow[2] = cc
+				set[i] = {row = true}
 			end
-
-		elseif cc > crow[1] then
-			crow[1] = cc
 		end
 
-		delta = delta + -sign
+	elseif start_row > stop_row then
+		for i=start_row-1,stop_row,-1 do
+			if i == stop_row then
+				add_partial(i, stop_col, root:utf8_len(job.data[i]))
+			else
+				set[i] = {row = true}
+			end
+		end
+	else
+		add_partial(start_row, start_col, stop_col)
 	end
+
+	job.edit.vsel = set
 end
 
 -- cursor manipulation commands
 local visual_cmd_map = {"h", "l", "j", "k", "b", "e", "w"}
 local function visual_ch(job, ch)
-	local cr, cc = cursor_data_index(job)
 
--- also need to track row_offset and col_offset so that scrolling is applied
+-- implement by forwarding certain navigation commands (which respect block/line)
+-- and remember both the cursor position and the offsets (to handle scrolling)
+--
+-- then we compare the deltas and generate the vsel from that (which is used for
+-- the yank/modify operations as well as the write_override that shows the selection)
+--
 	if table.find_i(visual_cmd_map, ch) then
 		command_ch(job, ch)
-		local dr, dc = cursor_data_index(job)
-		local delta = cell_delta(job, cr, cc, dr, dc)
-		apply_vsel_delta_cont(job, delta,cr, cc, dr, dc)
+
+-- explicitly force a redraw as resolving the cache for cursor to data index
+-- mapping across folds is done at raw_view stage.
+		if #job.folds > 0 then
+			cat9.redraw()
+		end
+
+-- did we grow ( > stop), shrink ( < stop) or invert direction ( < start )?
+		local row, col = job:resolve_cursor()
+		if job.edit.vrange.stop_row == row and job.edit.vrange.stop_col == col then
+			return
+		end
+
+		job.edit.vrange.stop_row = row
+		job.edit.vrange.stop_col = col
+
+-- applying cursor delta to vsel rather than calculating is much less wasteful,
+-- but also a lot more corner-casey so go with the naive approach for now.
+		convert_cursor_to_vsel(job)
+		cat9.flag_dirty(job)
 
 -- other controls:
 -- toggle skip for gaps, switch to block, yank to new job
@@ -982,15 +1002,13 @@ local function editctl_write(job, cx, y, row, set, ind, _, selected, cols, match
 -- first apply the regular- style write
 	job.root:write_to(cx, y, row, job:attr_lookup(set, ind, 0, job.selections[ind]))
 
--- now override attribute for cells that match our index range
-	if job.edit.vsel[ind] then
-		for _,v in ipairs(job.edit.vsel[ind]) do
-			for i=v[1],v[2] do
-				local _, attr = job.root:get(cx + i, y, false)
+	local function apply_range(start, stop)
+		for i=start, stop do
+			local _, attr = job.root:get(cx + i, y, false)
 
 -- handle both indexed and explicit colors
-				if attr.fc then
-					attr.bc = config.edit.select.bc
+			if attr.fc then
+				attr.bc = config.edit.select.bc
 				else
 					attr.br = config.edit.select.br
 					attr.bg = config.edit.select.bg
@@ -999,6 +1017,16 @@ local function editctl_write(job, cx, y, row, set, ind, _, selected, cols, match
 
 				attr.border_down = config.edit.select.border_down
 				job.root:write_to(cx + i, y, attr)
+		end
+	end
+
+-- now override attribute for cells that match our index range
+	if job.edit.vsel[ind] then
+		if job.edit.vsel[ind].row then
+			apply_range(0, root:utf8_len(row))
+		else
+			for _,v in ipairs(job.edit.vsel[ind]) do
+				apply_range(v[1], v[2])
 			end
 		end
 	end
@@ -1084,7 +1112,12 @@ function cat9.make_editable(job, opts)
 	job.key_input =
 	function(job, sub, keysym, code, mods)
 		if inputs[keysym] then
-			inputs[keysym](job, mods)
+			if type(inputs[keysym]) == "string" then
+				job:write(inputs[keysym])
+			else
+				inputs[keysym](job, mods)
+			end
+
 			realign_synch(job)
 			return true
 		end

@@ -184,6 +184,7 @@ function handlers.key(self, sub, keysym, code, mods)
 					if sj.handlers.toggle_selected then
 						sj.handlers.toggle_selected(sj, false)
 					end
+					return
 				end
 
 			elseif keysym == bnd.window_next then
@@ -198,6 +199,7 @@ function handlers.key(self, sub, keysym, code, mods)
 						break
 					end
 					cat9.flag_dirty(cat9.selectedjob)
+					return
 				end
 
 			elseif keysym == bnd.window_prev then
@@ -214,9 +216,8 @@ function handlers.key(self, sub, keysym, code, mods)
 					cat9.flag_dirty(cat9.selectedjob)
 				end
 				cat9.flag_dirty(cat9.selectedjob)
+				return
 			end
-
-			return
 		end
 
 -- check chorded input first, this is always consumed and reset afterwards
@@ -588,7 +589,7 @@ function handlers.mouse_button(self, index, x, y, mods, active)
 		end
 	end
 
-	if job.mouse.on_fold then
+	if job.mouse.on_fold and index == 1 then
 		job.mouse.on_fold.active = not job.mouse.on_fold.active
 		cat9.flag_dirty(job)
 		return

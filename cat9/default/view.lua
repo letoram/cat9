@@ -192,6 +192,7 @@ function viewlut.scroll(set, i, job)
 				if job.highlight_filter(job.data[job.row_offset]) then
 					count = count + 1
 				end
+				job:align_offset(1)
 			end
 		elseif row < 0 then
 			local count = 0
@@ -201,6 +202,7 @@ function viewlut.scroll(set, i, job)
 					count = count + 1
 				end
 			end
+			job:align_offset(-1)
 		end
 	else
 		local start = job.row_offset
@@ -213,9 +215,10 @@ function viewlut.scroll(set, i, job)
 		end
 
 		job.col_offset = job.col_offset + col
-	end
 
-	job:align_offset()
+-- force align again so offset doesn't start in fold
+		job:align_offset(row > 0 and 1 or -1)
+	end
 end
 
 local function view_monitor()
